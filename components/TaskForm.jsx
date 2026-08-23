@@ -14,30 +14,27 @@ import useDraftGuard from './useDraftGuard';
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم'];
 const TASK_TYPES = ['خرید', 'اداری', 'BM تعمیراتی', 'CM اصلاحی', 'موتورخانه', 'PM نگهداری پیشگیرانه', 'پیشگیرانه', 'EM اضطراری', 'HSE', 'چک‌کردن فاکتورها', 'بهسازی سیستم‌ها', 'اقدامات', 'پروژه', 'بازسازی', 'اصلاح نقشه', 'آموزشی', 'رفاهی', 'پرسنلی (ورود و خروج)', 'پرسنلی (تشویق و تنبیه)'];
 const CONSIDERABLE = ['', 'اقدام', 'پروژه'];
-// ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (پذیرش هر دو فرمت SQL و ISO)
+
+// ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (با Date.UTC برای جلوگیری از شیفت)
 const toPicker = (wallStr) => {
   if (!wallStr) return null;
   
-  // تبدیل فرمت SQL "YYYY-MM-DD HH:mm:ss" به فرمت قابل پارس
-  let d;
-  if (typeof wallStr === 'string' && wallStr.includes(' ')) {
-    // فرمت SQL: تبدیل به ISO
-    const isoStr = wallStr.replace(' ', 'T');
-    d = new Date(isoStr);
-  } else {
-    d = new Date(wallStr);
-  }
+  const m = String(wallStr).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
   
+  // ساخت Date با مولفه‌های UTC (ساعت دیواری = UTC)
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)));
   if (isNaN(d.getTime())) return null;
+  
   return new DateObject({ date: d, calendar: persian, locale: persian_fa });
 };
 
-// ✅ تبدیل DateObject شمسی به رشته ساعت‌دیواری (برای ارسال به سرور بدون شیفت)
+// ✅ تبدیل DateObject شمسی به رشته ساعت‌دیواری (برای ارسال به سرور)
 const fromPicker = (d) => {
   if (!d) return '';
   const dt = d.toDate();
   const p = (n) => String(n).padStart(2, '0');
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())} ${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}:${p(dt.getUTCSeconds())}`;
 };
 
 const assetSpec = (a) => `${a.AssetName}، قسمت: ${a.Location || '-'} (ساختمان ${a.Building || '-'}، بلوک: ${a.Block || '-'}، طبقه: ${a.Floor ?? '-'}، ورودی: ${a.Entrance || '-'}) شماره: ${a.AssetNumber ?? '-'} [کد:${a.AssetID}]`;
@@ -77,7 +74,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
     fetch('/api/persons').then((r) => r.json()).then((d) => { if (d.success) setPersons(d.data || []); }).catch(() => {});
   }, []);
 
-  // ✅ بارگذاری رکورد کامل با اصلاح خواندن FixedDueTime (TDF) و تاریخ‌ها
+  // ✅ بارگذاری رکورد کامل با اصلاح خواندن تاریخ‌ها از TimeDate_tbl
   useEffect(() => {
     if (!initial) return;
     (async () => {
@@ -85,6 +82,11 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
         const res = await fetch(`/api/tasks/${initial.TaskID}`);
         const d = await res.json();
         const src = d.success && d.data ? d.data : initial;
+        
+        // ✅ خواندن تاریخ‌ها از TimeDate_tbl (با alias TDDue و TDEnd)
+        const dueDateTime = src.TDDue || src.DueDateTime || '';
+        const endDateTime = src.TDEnd || src.EndDateTime || '';
+        
         setForm({
           TaskTtl: src.TaskTtl || '', 
           Descriptions: src.Descriptions || '', 
@@ -94,16 +96,17 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
           Complited: Number(src.Complited) === 1 ? 1 : 0,
           AssetID: src.AssetID ? String(src.AssetID) : '', 
           ApplicantName: src.ApplicantName || '',
-          // ✅ استفاده مستقیم از رشته ساعت‌دیواری بدون تبدیل به ISO
-          DueDateTime: src.DueDateTime || '', 
-          EndDateTime: src.EndDateTime || '',
-          // ✅ خواندن از TDF (نام مستعار در کوئری API) یا FixedDueTime
+          DueDateTime: dueDateTime,
+          EndDateTime: endDateTime,
           FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
           RequestNumber: src.RequestNumber != null ? String(src.RequestNumber) : '', 
           RegisterNumber: src.RegisterNumber != null ? String(src.RegisterNumber) : '',
           RequestDate: src.RequestDate || '',
         });
-      } catch {}
+      } catch (err) {
+        console.error('Error loading task:', err);
+      }
+      
       fetch(`/api/applicant-functor?taskId=${initial.TaskID}`).then((r) => r.json()).then((d) => {
         if (d.success && d.exists && d.data) {
           setFunctorName(d.data.FunctorName || '');
@@ -229,7 +232,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
             {functorName && <div className="text-xs text-gray-700 mt-1">انجام‌دهنده: {functorName}</div>}
           </div>
 
-          {/* ✅ بخش زمان‌بندی با چیدمان واکنش‌گرا (Flex Wrap) */}
+          {/* ✅ بخش زمان‌بندی با چیدمان واکنش‌گرا */}
           <div className="md:col-span-2 flex flex-wrap items-center gap-4 border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
             <label className="flex items-center gap-2 cursor-pointer shrink-0">
               <input 

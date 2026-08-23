@@ -4,13 +4,17 @@ import { query } from '@/lib/db';
 export async function GET(request, { params }) {
   const { id } = await params;
   try {
-    const rows = await query(`SELECT tsk.*, atk.AssetID, TD.DueDateTime, TD.EndDateTime, TD.Priorities AS TDP, TD.FixedDueTime AS TDF
+    const rows = await query(`SELECT tsk.*, atk.AssetID, 
+      TD.DueDateTime AS TDDue, TD.EndDateTime AS TDEnd, 
+      TD.Priorities AS TDP, TD.FixedDueTime AS TDF
       FROM Tsk_tbl tsk
       LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
       LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
       WHERE tsk.TaskID = ?`, [Number(id)]);
     return NextResponse.json({ success: true, data: rows[0] || null });
-  } catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+  } catch (e) { 
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  }
 }
 
 export async function PUT(request, { params }) {
@@ -25,7 +29,9 @@ export async function PUT(request, { params }) {
       else await query(`INSERT INTO Asset_Task_tbl (TaskID, AssetID) VALUES (?,?)`, [Number(id), b.AssetID]);
     }
     return NextResponse.json({ success: true });
-  } catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+  } catch (e) { 
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  }
 }
 
 export async function DELETE(request, { params }) {
@@ -38,5 +44,7 @@ export async function DELETE(request, { params }) {
     await query(`DELETE FROM Folder_tbl WHERE TaskID=?`, [Number(id)]);
     await query(`DELETE FROM Tsk_tbl WHERE TaskID=?`, [Number(id)]);
     return NextResponse.json({ success: true });
-  } catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+  } catch (e) { 
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  }
 }
