@@ -14,11 +14,20 @@ import useDraftGuard from './useDraftGuard';
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم'];
 const TASK_TYPES = ['خرید', 'اداری', 'BM تعمیراتی', 'CM اصلاحی', 'موتورخانه', 'PM نگهداری پیشگیرانه', 'پیشگیرانه', 'EM اضطراری', 'HSE', 'چک‌کردن فاکتورها', 'بهسازی سیستم‌ها', 'اقدامات', 'پروژه', 'بازسازی', 'اصلاح نقشه', 'آموزشی', 'رفاهی', 'پرسنلی (ورود و خروج)', 'پرسنلی (تشویق و تنبیه)'];
 const CONSIDERABLE = ['', 'اقدام', 'پروژه'];
-
-// ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (بدون شیفت منطقه زمانی)
+// ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (پذیرش هر دو فرمت SQL و ISO)
 const toPicker = (wallStr) => {
   if (!wallStr) return null;
-  const d = new Date(wallStr); // پارس به عنوان زمان محلی
+  
+  // تبدیل فرمت SQL "YYYY-MM-DD HH:mm:ss" به فرمت قابل پارس
+  let d;
+  if (typeof wallStr === 'string' && wallStr.includes(' ')) {
+    // فرمت SQL: تبدیل به ISO
+    const isoStr = wallStr.replace(' ', 'T');
+    d = new Date(isoStr);
+  } else {
+    d = new Date(wallStr);
+  }
+  
   if (isNaN(d.getTime())) return null;
   return new DateObject({ date: d, calendar: persian, locale: persian_fa });
 };
