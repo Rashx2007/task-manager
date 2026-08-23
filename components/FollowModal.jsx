@@ -24,12 +24,52 @@ const fromWall = (iso) => {
 
 const toPicker = (d) => (d ? new DateObject({ date: d, calendar: persian, locale: persian_fa }) : null);
 
+// ساخت تاریخ کامل از تاریخ + ساعت + دقیقه + AM/PM
+const buildDateTime = (dateObj, hour, minute, ampm) => {
+  if (!dateObj) return new Date();
+  let h = parseInt(hour) || 0;
+  const m = parseInt(minute) || 0;
+  
+  // تبدیل به فرمت 24 ساعته
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  
+  const d = new Date(dateObj);
+  d.setHours(h, m, 0, 0);
+  return d;
+};
+
+// استخراج ساعت، دقیقه و AM/PM از یک Date
+const extractTimeParts = (dateObj) => {
+  if (!dateObj) return { hour: '12', minute: '00', ampm: 'AM' };
+  let h = dateObj.getHours();
+  const m = dateObj.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  
+  // تبدیل به فرمت 12 ساعته
+  if (h > 12) h -= 12;
+  if (h === 0) h = 12;
+  
+  return {
+    hour: String(h).padStart(2, '0'),
+    minute: String(m).padStart(2, '0'),
+    ampm
+  };
+};
+
 export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const [rows, setRows] = useState([]);
   const [text, setTextState] = useState(shamsiStamp);
   const textRef = useRef(text);
-  const [start, setStart] = useState(new Date());
-  const [end, setEnd] = useState(new Date());
+  
+  // تاریخ (بدون زمان)
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
+  
+  // زمان (ساعت، دقیقه، AM/PM)
+  const [startTime, setStartTime] = useState({ hour: '12', minute: '00', ampm: 'PM' });
+  const [endTime, setEndTime] = useState({ hour: '12', minute: '00', ampm: 'PM' });
+  
   const [copyToDesc, setCopyToDesc] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -74,6 +114,30 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     };
   }, [onClose]);
 
+  // هنگام بارگذاری ردیف برای ویرایش
+  const pickRow = (r) => {
+    setEditingId(r.FollowID); 
+    setText(r.Description || '', false);
+    
+    if (r.DueDateTime) {
+      const d = fromWall(r.DueDateTime);
+      if (d) {
+        setStartDate(d);
+        setStartTime(extractTimeParts(d));
+      }
+    }
+    
+    if (r.EndDateTime) {
+      const d = fromWall(r.EndDateTime);
+      if (d) {
+        setEndDate(d);
+        setEndTime(extractTimeParts(d));
+      }
+    }
+    
+    setTimeout(() => taRef.current?.focus(), 30);
+  };
+
   const setCaret = (pos) => requestAnimationFrame(() => { 
     const ta = taRef.current; 
     if (ta) ta.selectionStart = ta.selectionEnd = pos; 
@@ -115,8 +179,10 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const resetEditor = () => {
     setEditingId(null); 
     setText(shamsiStamp(), false);
-    setStart(new Date()); 
-    setEnd(new Date());
+    setStartDate(new Date()); 
+    setEndDate(new Date());
+    setStartTime({ hour: '12', minute: '00', ampm: 'PM' });
+    setEndTime({ hour: '12', minute: '00', ampm: 'PM' });
     setTimeout(() => { 
       const ta = taRef.current; 
       if (ta) { 
@@ -134,6 +200,10 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     
     setBusy(true);
     try {
+      // ساخت تاریخ و زمان کامل
+      const startDateTime = buildDateTime(startDate, startTime.hour, startTime.minute, startTime.ampm);
+      const endDateTime = buildDateTime(endDate, endTime.hour, endTime.minute, endTime.ampm);
+      
       const res = editingId
         ? await fetch('/api/follow', { 
             method: 'PUT', 
@@ -141,8 +211,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
             body: JSON.stringify({ 
               followId: editingId, 
               description: text, 
-              dueDateTime: toWallISO(start), 
-              endDateTime: toWallISO(end) 
+              dueDateTime: toWallISO(startDateTime), 
+              endDateTime: toWallISO(endDateTime) 
             }) 
           })
         : await fetch('/api/follow', { 
@@ -151,8 +221,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
             body: JSON.stringify({ 
               taskId, 
               description: text, 
-              dueDateTime: toWallISO(start), 
-              endDateTime: toWallISO(end), 
+              dueDateTime: toWallISO(startDateTime), 
+              endDateTime: toWallISO(endDateTime), 
               updateDescription: copyToDesc 
             }) 
           });
@@ -191,15 +261,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     } catch {}
   };
 
-  const pickRow = (r) => {
-    setEditingId(r.FollowID); 
-    setText(r.Description || '', false);
-    if (r.DueDateTime) setStart(fromWall(r.DueDateTime) || new Date());
-    if (r.EndDateTime) setEnd(fromWall(r.EndDateTime) || new Date());
-    setTimeout(() => taRef.current?.focus(), 30);
-  };
-
   const inp = 'search-input w-full';
+  const selectClass = 'search-input text-center';
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
@@ -225,42 +288,116 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
             Enter در انتهای متن: سطر جدید با ✏ تاریخ | Ctrl+Space: بند 📌 | Ctrl+Alt+Space: زیربند ⚡
           </div>
 
-          {/* ✅ زمان شروع/پایان با DatePicker شمسی (فقط این فرم) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-            <div>
-              <label className="block text-sm font-bold mb-1">زمان شروع</label>
+          {/* ✅ زمان شروع/پایان با DatePicker فقط برای تاریخ + Select برای ساعت */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            {/* زمان شروع */}
+            <div className="border border-teal-600 rounded-lg p-3">
+              <label className="block text-sm font-bold mb-2">زمان شروع</label>
               <DatePicker 
-                value={toPicker(start)} 
-                onChange={(d) => setStart(d ? d.toDate() : new Date())}
+                value={toPicker(startDate)} 
+                onChange={(d) => setStartDate(d ? d.toDate() : new Date())}
                 calendar={persian} 
                 locale={persian_fa} 
-                format="YYYY/MM/DD HH:mm" 
-                enableTimePicker 
-                inputClass={inp} 
+                format="YYYY/MM/DD"
+                inputClass={inp}
               />
+              <div className="flex gap-1 mt-2 justify-center">
+                <select 
+                  value={startTime.hour} 
+                  onChange={(e) => setStartTime({...startTime, hour: e.target.value})}
+                  className={selectClass}
+                  style={{ width: '60px' }}
+                >
+                  {Array.from({length: 12}, (_, i) => (
+                    <option key={i+1} value={String(i+1).padStart(2, '0')}>
+                      {String(i+1).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+                <span className="self-center font-bold">:</span>
+                <select 
+                  value={startTime.minute} 
+                  onChange={(e) => setStartTime({...startTime, minute: e.target.value})}
+                  className={selectClass}
+                  style={{ width: '60px' }}
+                >
+                  {Array.from({length: 60}, (_, i) => (
+                    <option key={i} value={String(i).padStart(2, '0')}>
+                      {String(i).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+                <select 
+                  value={startTime.ampm} 
+                  onChange={(e) => setStartTime({...startTime, ampm: e.target.value})}
+                  className={selectClass}
+                  style={{ width: '70px' }}
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-bold mb-1">زمان پایان</label>
+
+            {/* زمان پایان */}
+            <div className="border border-teal-600 rounded-lg p-3">
+              <label className="block text-sm font-bold mb-2">زمان پایان</label>
               <DatePicker 
-                value={toPicker(end)} 
-                onChange={(d) => setEnd(d ? d.toDate() : new Date())}
+                value={toPicker(endDate)} 
+                onChange={(d) => setEndDate(d ? d.toDate() : new Date())}
                 calendar={persian} 
                 locale={persian_fa} 
-                format="YYYY/MM/DD HH:mm" 
-                enableTimePicker 
-                inputClass={inp} 
+                format="YYYY/MM/DD"
+                inputClass={inp}
               />
+              <div className="flex gap-1 mt-2 justify-center">
+                <select 
+                  value={endTime.hour} 
+                  onChange={(e) => setEndTime({...endTime, hour: e.target.value})}
+                  className={selectClass}
+                  style={{ width: '60px' }}
+                >
+                  {Array.from({length: 12}, (_, i) => (
+                    <option key={i+1} value={String(i+1).padStart(2, '0')}>
+                      {String(i+1).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+                <span className="self-center font-bold">:</span>
+                <select 
+                  value={endTime.minute} 
+                  onChange={(e) => setEndTime({...endTime, minute: e.target.value})}
+                  className={selectClass}
+                  style={{ width: '60px' }}
+                >
+                  {Array.from({length: 60}, (_, i) => (
+                    <option key={i} value={String(i).padStart(2, '0')}>
+                      {String(i).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+                <select 
+                  value={endTime.ampm} 
+                  onChange={(e) => setEndTime({...endTime, ampm: e.target.value})}
+                  className={selectClass}
+                  style={{ width: '70px' }}
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
             </div>
-            <label className="flex items-end gap-2 pb-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={copyToDesc} 
-                onChange={(e) => setCopyToDesc(e.target.checked)} 
-                className="w-4 h-4" 
-              />
-              <span className="text-sm font-bold">کپی متن در شرح کار</span>
-            </label>
           </div>
+
+          <label className="flex items-center gap-2 mt-3 cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={copyToDesc} 
+              onChange={(e) => setCopyToDesc(e.target.checked)} 
+              className="w-4 h-4" 
+            />
+            <span className="text-sm font-bold">کپی متن در شرح کار</span>
+          </label>
 
           <div className="flex gap-2 mt-4">
             <button onClick={save} disabled={busy} className="btn-success">
