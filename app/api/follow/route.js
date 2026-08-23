@@ -12,7 +12,7 @@ const dur = (s, e) => {
 export async function GET(request) {
   const taskId = Number(new URL(request.url).searchParams.get('taskId'));
   try {
-    const rows = await query(`SELECT * FROM Follow_tbl WHERE TaskID=? ORDER BY DueDateTime`, [taskId]);
+    const rows = await query(`SELECT * FROM Follow_tbl WHERE TaskID=? ORDER BY DueDateTime DESC`, [taskId]);
     return NextResponse.json({ success: true, rows });
   } catch (e) { 
     return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
