@@ -14,27 +14,26 @@ import useDraftGuard from './useDraftGuard';
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم'];
 const TASK_TYPES = ['خرید', 'اداری', 'BM تعمیراتی', 'CM اصلاحی', 'موتورخانه', 'PM نگهداری پیشگیرانه', 'پیشگیرانه', 'EM اضطراری', 'HSE', 'چک‌کردن فاکتورها', 'بهسازی سیستم‌ها', 'اقدامات', 'پروژه', 'بازسازی', 'اصلاح نقشه', 'آموزشی', 'رفاهی', 'پرسنلی (ورود و خروج)', 'پرسنلی (تشویق و تنبیه)'];
 const CONSIDERABLE = ['', 'اقدام', 'پروژه'];
-
-// ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (با Date.UTC برای جلوگیری از شیفت)
+// ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (با زمان محلی برای جلوگیری از شیفت)
 const toPicker = (wallStr) => {
   if (!wallStr) return null;
   
   const m = String(wallStr).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return null;
   
-  // ساخت Date با مولفه‌های UTC (ساعت دیواری = UTC)
-  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)));
+  // ساخت Date با مولفه‌های محلی (ساعت دیواری = زمان محلی)
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
   if (isNaN(d.getTime())) return null;
   
   return new DateObject({ date: d, calendar: persian, locale: persian_fa });
 };
 
-// ✅ تبدیل DateObject شمسی به رشته ساعت‌دیواری (برای ارسال به سرور)
+// ✅ تبدیل DateObject شمسی به رشته ساعت‌دیواری (با زمان محلی)
 const fromPicker = (d) => {
   if (!d) return '';
   const dt = d.toDate();
   const p = (n) => String(n).padStart(2, '0');
-  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())} ${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}:${p(dt.getUTCSeconds())}`;
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 };
 
 const assetSpec = (a) => `${a.AssetName}، قسمت: ${a.Location || '-'} (ساختمان ${a.Building || '-'}، بلوک: ${a.Block || '-'}، طبقه: ${a.Floor ?? '-'}، ورودی: ${a.Entrance || '-'}) شماره: ${a.AssetNumber ?? '-'} [کد:${a.AssetID}]`;
