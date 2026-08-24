@@ -8,9 +8,10 @@ const assetSpec = (t) =>
 
 export default function TaskTable({ tasks, onRowClick, onComplete, onEdit, onFolder, selectedTask }) {
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
-  if (!tasks || tasks.length === 0) return <div className="text-center py-12 text-gray-600">کاری یافت نشد</div>;
+  if (!tasks || tasks.length === 0)
+    return <div className="flex-1 min-h-0 flex items-center justify-center text-gray-600">کاری یافت نشد</div>;
   return (
-    <div className="flex-1 min-h-0 overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#f5efe4]">
+    <div className="flex-1 min-h-0 overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#D8C9B4]">
       <table className="task-table w-full min-w-[1300px]">
         <thead>
           <tr>

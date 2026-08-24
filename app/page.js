@@ -114,25 +114,27 @@ export default function Home() {
 
   return (
     <main className="h-screen bg-[#D8C9B4] flex flex-col overflow-hidden">
-      <Toolbar
-        onNewTask={openNew}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onComplete={() => (selectedTask ? handleComplete(selectedTask.TaskID) : alert('ابتدا یک کار را انتخاب کنید.'))}
-        onSearch={() => setShowSearch((s) => !s)}
-        onComprehensiveSearch={() => setShowComprehensive(true)}
-        onRefresh={handleRefresh}
-        onReport={() => setShowReports(true)}
-        onBackup={() => setShowBackup(true)}
-        onAssets={() => setShowAssets(true)}
-        onPersons={() => setShowPersons(true)}
-        onSettings={() => setShowSettings(true)}
-        onReschedule={handleReschedule}
-        onMoveFixed={handleMoveFixed}
-        onUpdateFolders={handleUpdateFolders}
-        onCorrectPrio={handleCorrectPrio}
-        onPriorityIncrease={handlePriorityIncrease}
-      />
+      <div className="shrink-0">
+        <Toolbar
+          onNewTask={openNew}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onComplete={() => (selectedTask ? handleComplete(selectedTask.TaskID) : alert('ابتدا یک کار را انتخاب کنید.'))}
+          onSearch={() => setShowSearch((s) => !s)}
+          onComprehensiveSearch={() => setShowComprehensive(true)}
+          onRefresh={handleRefresh}
+          onReport={() => setShowReports(true)}
+          onBackup={() => setShowBackup(true)}
+          onAssets={() => setShowAssets(true)}
+          onPersons={() => setShowPersons(true)}
+          onSettings={() => setShowSettings(true)}
+          onReschedule={handleReschedule}
+          onMoveFixed={handleMoveFixed}
+          onUpdateFolders={handleUpdateFolders}
+          onCorrectPrio={handleCorrectPrio}
+          onPriorityIncrease={handlePriorityIncrease}
+        />
+      </div>
 
       {showSearch && (
         <SearchPanel
@@ -141,8 +143,8 @@ export default function Home() {
         />
       )}
 
-          <div className="p-3 flex-1 min-h-0 flex flex-col">
-      <TaskTable
+      <div className="p-3 flex-1 min-h-0 flex flex-col">
+        <TaskTable
           tasks={tasks}
           onRowClick={setSelectedTask}
           onComplete={handleComplete}
@@ -152,7 +154,9 @@ export default function Home() {
         />
       </div>
 
-      <StatusBar count={status.count} today={status.today} />
+      <div className="shrink-0">
+        <StatusBar count={status.count} today={status.today} />
+      </div>
 
       {showTaskForm && (
         <TaskForm
