@@ -36,7 +36,7 @@ const fromPicker = (d) => {
 const assetSpec = (a) => `${a.AssetName}، قسمت: ${a.Location || '-'} (ساختمان ${a.Building || '-'}، بلوک: ${a.Block || '-'}، طبقه: ${a.Floor ?? '-'}، ورودی: ${a.Entrance || '-'}) شماره: ${a.AssetNumber ?? '-'} [کد:${a.AssetID}]`;
 
 export default function TaskForm({ initial = null, defaultAssetId = null, onClose, onSaved }) {
-  // ✅ TaskID داخل بدنهٔ کامپوننت — برای کار جدید، پس از ذخیره ست می‌شود
+  // ✅ TaskID داخل بدنهٔ کامپوننت — برای کار جدید پس از ذخیره ست می‌شود
   const [currentTaskId, setCurrentTaskId] = useState(initial ? initial.TaskID : null);
   const isEdit = Boolean(currentTaskId);
 
@@ -52,7 +52,8 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
   const [functorName, setFunctorName] = useState('');
   const [assetQuery, setAssetQuery] = useState('');
   const [form, setForm] = useState({
-    TaskTtl: '', Descriptions: '', Priorities: '3.متوسط', tskType: '', IsConsiderableAction: '', Complited: 0,
+    // ✅ مانند دسکتاپ: کار جدید با الویت «نامشخص» ثبت می‌شود
+    TaskTtl: '', Descriptions: '', Priorities: 'نامشخص', tskType: '', IsConsiderableAction: '', Complited: 0,
     AssetID: '', ApplicantName: '', DueDateTime: '', EndDateTime: '',
     FixedDueTime: false, RequestNumber: '', RegisterNumber: '', RequestDate: '',
   });
@@ -76,7 +77,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
         const d = await res.json();
         const src = d.success && d.data ? d.data : initial;
         setForm({
-          TaskTtl: src.TaskTtl || '', Descriptions: src.Descriptions || '', Priorities: src.TDP || src.Priorities || '3.متوسط',
+          TaskTtl: src.TaskTtl || '', Descriptions: src.Descriptions || '', Priorities: src.TDP || src.Priorities || 'نامشخص',
           tskType: src.tskType || '', IsConsiderableAction: src.IsConsiderableAction || '', Complited: Number(src.Complited) === 1 ? 1 : 0,
           AssetID: src.AssetID ? String(src.AssetID) : '', ApplicantName: src.ApplicantName || '',
           DueDateTime: src.TDDue || src.DueDateTime || '', EndDateTime: src.TDEnd || src.EndDateTime || '',
@@ -103,25 +104,6 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
 
   const handleChange = (e) => { const { name, value, type, checked } = e.target; setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value })); if (name === 'Descriptions') touch(value); };
 
-  // ✅ زمان‌بندی خودکار کار جدید بر اساس الویت
-  const scheduleTask = async (taskId) => {
-    try {
-      const res = await fetch('/api/timedate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId,
-          priority: form.Priorities || '3.متوسط',
-          hours: 0,
-          minutes: 30,
-          ...(form.FixedDueTime && { startLocal: form.DueDateTime, endLocal: form.EndDateTime }),
-        }),
-      });
-      const data = await res.json();
-      if (!data.success && !data.overlap) console.error('خطا در زمان‌بندی:', data.error);
-    } catch (err) { console.error('خطا در فراخوانی API زمان‌بندی:', err); }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.TaskTtl.trim()) { alert('موضوع را وارد کنید!'); return; }
@@ -139,19 +121,18 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
         const data = await res.json();
         if (!data.success) { alert('خطا: ' + (data.error || 'نامشخص')); setSaving(false); return; }
       } else {
-        // ایجاد کار جدید
+        // ایجاد کار جدید (مانند دسکتاپ: بدون زمان‌بندی خودکار)
         const res = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         if (!data.success) { alert('خطا: ' + (data.error || 'نامشخص')); setSaving(false); return; }
         taskId = data.TaskID;
-        setCurrentTaskId(taskId); // ✅ از این پس فرم در حالت ویرایش قرار می‌گیرد
-        await scheduleTask(taskId); // ✅ زمان‌بندی خودکار
+        setCurrentTaskId(taskId); // ✅ از این پس فرم در حالت ویرایش است و دکمه‌ها فعال می‌شوند
       }
 
       markSaved();
       if (wasNew) {
-        // ✅ مودال باز می‌ماند تا الویت و زمان تنظیم شود
-        alert(`کار جدید با کد ${taskId} ثبت شد.\nاکنون می‌توانید الویت و زمان آن را تنظیم کنید.`);
+        // ✅ مانند دسکتاپ: فرم باز می‌ماند و کد کار نمایش داده می‌شود
+        alert(`کار جدید با کد ${taskId} ثبت شد.\nاکنون دکمه «الویت و زمان (...)» را بزنید تا الویت و زمان آن تنظیم شود.`);
         if (onSaved) onSaved();
       } else {
         alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
@@ -232,7 +213,10 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
           {/* الویت و دکمه زمان */}
           <div>
             <label className="block text-sm font-bold mb-1">اولویت</label>
-            <select name="Priorities" value={form.Priorities} onChange={handleChange} disabled className={inp}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
+            <select name="Priorities" value={form.Priorities} onChange={handleChange} disabled className={inp}>
+              {!PRIORITIES.includes(form.Priorities) && <option value={form.Priorities}>{form.Priorities}</option>}
+              {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
           </div>
           <div className="flex items-end"><button type="button" disabled={!isEdit} onClick={() => setShowTimeDate(true)} className="btn-primary w-full">الویت و زمان (...)</button></div>
 
