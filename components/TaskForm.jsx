@@ -141,37 +141,102 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.TaskTtl.trim()) { alert('موضوع را وارد کنید!'); return; }
-    setSaving(true);
-    try {
-      const payload = { 
-        ...form, 
-        Complited: Number(form.Complited), 
-        AssetID: form.AssetID ? Number(form.AssetID) : null, 
-        FixedDueTime: form.FixedDueTime ? 1 : 0,
-        RequestNumber: form.RequestNumber.trim() ? Number(form.RequestNumber) : null, 
-        RegisterNumber: form.RegisterNumber.trim() ? Number(form.RegisterNumber) : null, 
-        RequestDate: form.RequestDate || null 
-      };
-      const res = isEdit
-        ? await fetch(`/api/tasks/${initial.TaskID}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  e.preventDefault();
+  if (!form.TaskTtl.trim()) { alert('موضوع را وارد کنید!'); return; }
+  setSaving(true);
+  try {
+    const payload = { 
+      ...form, 
+      Complited: Number(form.Complited), 
+      AssetID: form.AssetID ? Number(form.AssetID) : null, 
+      FixedDueTime: form.FixedDueTime ? 1 : 0,
+      RequestNumber: form.RequestNumber.trim() ? Number(form.RequestNumber) : null, 
+      RegisterNumber: form.RegisterNumber.trim() ? Number(form.RegisterNumber) : null, 
+      RequestDate: form.RequestDate || null 
+    };
+    
+    let taskId = initial?.TaskID;
+    let saveSuccess = false;
+    
+    if (isEdit) {
+      // ویرایش کار موجود
+      const res = await fetch(`/api/tasks/${initial.TaskID}`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+      });
       const data = await res.json();
-      if (data.success) { 
-        markSaved(); 
-        alert(isEdit ? 'تغییرات ذخیره شد.' : 'کار جدید ثبت شد.'); 
-        if (onSaved) onSaved(); 
-        if (onClose) onClose(); 
+      if (data.success) {
+        saveSuccess = true;
       } else {
         alert('خطا: ' + (data.error || 'نامشخص'));
+        setSaving(false);
+        return;
       }
-    } catch { 
-      alert('خطا در ارتباط با سرور'); 
+    } else {
+      // ایجاد کار جدید
+      const res = await fetch('/api/tasks', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+      });
+      const data = await res.json();
+      if (data.success) {
+        saveSuccess = true;
+        taskId = data.TaskID; // دریافت TaskID کار جدید
+      } else {
+        alert('خطا: ' + (data.error || 'نامشخص'));
+        setSaving(false);
+        return;
+      }
     }
-    setSaving(false);
-  };
+    
+    // ✅ زمان‌بندی خودکار برای کار جدید
+    if (!isEdit && taskId && saveSuccess) {
+      await scheduleTask(taskId);
+    }
+    
+    markSaved(); 
+    alert(isEdit ? 'تغییرات ذخیره شد.' : 'کار جدید ثبت شد.'); 
+    if (onSaved) onSaved(); 
+    if (onClose) onClose(); 
+  } catch { 
+    alert('خطا در ارتباط با سرور'); 
+  }
+  setSaving(false);
+};
   
+// ✅ تابع زمان‌بندی خودکار
+const scheduleTask = async (taskId) => {
+  try {
+    // مدت زمان پیش‌فرض: 30 دقیقه (قابل تغییر)
+    const defaultDuration = { hours: 0, minutes: 30 };
+    
+    const res = await fetch('/api/timedate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId,
+        priority: form.Priorities || '3.متوسط',
+        hours: defaultDuration.hours,
+        minutes: defaultDuration.minutes,
+        // اگر FixedDueTime است، زمان‌های انتخابی کاربر را بفرست
+        ...(form.FixedDueTime && {
+          startLocal: form.DueDateTime,
+          endLocal: form.EndDateTime
+        })
+      })
+    });
+    
+    const data = await res.json();
+    if (!data.success && !data.overlap) {
+      console.error('خطا در زمان‌بندی:', data.error);
+    }
+  } catch (err) {
+    console.error('خطا در فراخوانی API زمان‌بندی:', err);
+  }
+};
+
   const inp = 'search-input w-full';
 
   return (

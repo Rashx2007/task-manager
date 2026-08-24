@@ -1,21 +1,43 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { formatSqlDateTime } from '@/lib/schedule-logic';
-const p2 = (n) => String(n).padStart(2, '0');
-const tStr = (d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+import { nowWall, formatSqlDateTime } from '@/lib/schedule-logic';
+
+export async function GET(request) {
+  try {
+    const rows = await query(`SELECT * FROM Tsk_tbl ORDER BY DueDateTime`);
+    return NextResponse.json({ success: true, data: rows });
+  } catch (e) { 
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  }
+}
+
 export async function POST(request) {
   try {
     const b = await request.json();
-    const now = new Date();
-    const due = b.DueDateTime ? new Date(b.DueDateTime) : now;
-    const end = b.EndDateTime ? new Date(b.EndDateTime) : due;
-    const r = await query(`INSERT INTO Tsk_tbl (TaskTtl, Descriptions, Priorities, tskType, IsConsiderableAction, Complited, fixedDueTime, Submit_Date, Submit_Time)
-      OUTPUT INSERTED.TaskID VALUES (?,?,?,?,?,?,?,?,?)`,
-      [b.TaskTtl, b.Descriptions || null, b.Priorities || '3.متوسط', b.tskType || null, b.IsConsiderableAction || null, Number(b.Complited) || 0, Number(b.FixedDueTime) || 0, formatSqlDateTime(now), tStr(now)]);
-    const taskId = r[0].TaskID;
-    if (b.AssetID) await query(`INSERT INTO Asset_Task_tbl (TaskID, AssetID) VALUES (?,?)`, [taskId, b.AssetID]);
-    await query(`INSERT INTO TimeDate_tbl (TaskID, Submit_Date, Submit_Time, Priorities, FixedDueTime, Durationtime, DueDateTime, EndDateTime) VALUES (?,?,?,?,?,?,?,?)`,
-      [taskId, formatSqlDateTime(now), tStr(now), b.Priorities || '3.متوسط', Number(b.FixedDueTime) || 0, '00:00:00', formatSqlDateTime(due), formatSqlDateTime(end)]);
-    return NextResponse.json({ success: true, TaskID: taskId });
-  } catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+    const now = nowWall();
+    
+    const r = await query(
+      `INSERT INTO Tsk_tbl (TaskTtl, Descriptions, Priorities, tskType, IsConsiderableAction, Complited, fixedDueTime, Durationtime, DueDateTime, EndDateTime, Due_Date, Due_Time, End_Date, End_Time, RequestNumber, RegisterNumber, RequestDate) 
+       OUTPUT INSERTED.TaskID 
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        b.TaskTtl, 
+        b.Descriptions || null, 
+        b.Priorities || '3.متوسط', 
+        b.tskType || null, 
+        b.IsConsiderableAction || null, 
+        Number(b.Complited) || 0, 
+        Number(b.FixedDueTime) || 0,
+        '0:30:0', // مدت زمان پیش‌فرض
+        null, null, null, null, null, null, // زمان‌ها بعداً توسط timedate API تنظیم می‌شوند
+        b.RequestNumber || null, 
+        b.RegisterNumber || null, 
+        b.RequestDate || null
+      ]
+    );
+    
+    return NextResponse.json({ success: true, TaskID: r[0].TaskID });
+  } catch (e) { 
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  }
 }
