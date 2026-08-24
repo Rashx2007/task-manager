@@ -10,7 +10,7 @@ export default function TaskTable({ tasks, onRowClick, onComplete, onEdit, onFol
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
   if (!tasks || tasks.length === 0) return <div className="text-center py-12 text-gray-600">کاری یافت نشد</div>;
   return (
-    <div className="overflow-auto overscroll-contain rounded-lg shadow-lg" style={{ maxHeight: 'calc(100vh - 210px)' }}>
+    <div className="flex-1 min-h-0 overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#f5efe4]">
       <table className="task-table w-full min-w-[1300px]">
         <thead>
           <tr>

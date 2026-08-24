@@ -113,7 +113,7 @@ export default function Home() {
   const openEdit = (t) => { setEditTask(t); setShowTaskForm(true); };
 
   return (
-    <main className="min-h-screen bg-[#D8C9B4] pb-10">
+    <main className="h-screen bg-[#D8C9B4] flex flex-col overflow-hidden">
       <Toolbar
         onNewTask={openNew}
         onEdit={handleEdit}
@@ -141,8 +141,8 @@ export default function Home() {
         />
       )}
 
-      <div className="p-3">
-        <TaskTable
+          <div className="p-3 flex-1 min-h-0 flex flex-col">
+      <TaskTable
           tasks={tasks}
           onRowClick={setSelectedTask}
           onComplete={handleComplete}
