@@ -14,6 +14,8 @@ import useDraftGuard from './useDraftGuard';
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم'];
 const TASK_TYPES = ['خرید', 'اداری', 'BM تعمیراتی', 'CM اصلاحی', 'موتورخانه', 'PM نگهداری پیشگیرانه', 'پیشگیرانه', 'EM اضطراری', 'HSE', 'چک‌کردن فاکتورها', 'بهسازی سیستم‌ها', 'اقدامات', 'پروژه', 'بازسازی', 'اصلاح نقشه', 'آموزشی', 'رفاهی', 'پرسنلی (ورود و خروج)', 'پرسنلی (تشویق و تنبیه)'];
 const CONSIDERABLE = ['', 'اقدام', 'پروژه'];
+const [currentTaskId, setCurrentTaskId] = useState(initial?.TaskID || null);
+
 // ✅ تبدیل رشته ساعت‌دیواری سرور به DateObject شمسی (با زمان محلی برای جلوگیری از شیفت)
 const toPicker = (wallStr) => {
   if (!wallStr) return null;
@@ -39,7 +41,7 @@ const fromPicker = (d) => {
 const assetSpec = (a) => `${a.AssetName}، قسمت: ${a.Location || '-'} (ساختمان ${a.Building || '-'}، بلوک: ${a.Block || '-'}، طبقه: ${a.Floor ?? '-'}، ورودی: ${a.Entrance || '-'}) شماره: ${a.AssetNumber ?? '-'} [کد:${a.AssetID}]`;
 
 export default function TaskForm({ initial = null, defaultAssetId = null, onClose, onSaved }) {
-  const isEdit = Boolean(initial);
+  const isEdit = Boolean(currentTaskId);
   const [assets, setAssets] = useState([]);
   const [persons, setPersons] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -140,7 +142,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
     if (name === 'Descriptions') touch(value); 
   };
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
   e.preventDefault();
   if (!form.TaskTtl.trim()) { alert('موضوع را وارد کنید!'); return; }
   setSaving(true);
@@ -155,12 +157,12 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       RequestDate: form.RequestDate || null 
     };
     
-    let taskId = initial?.TaskID;
+    let taskId = currentTaskId;
     let saveSuccess = false;
     
-    if (isEdit) {
+    if (currentTaskId) {
       // ویرایش کار موجود
-      const res = await fetch(`/api/tasks/${initial.TaskID}`, { 
+      const res = await fetch(`/api/tasks/${currentTaskId}`, { 
         method: 'PUT', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(payload) 
@@ -184,6 +186,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       if (data.success) {
         saveSuccess = true;
         taskId = data.TaskID; // دریافت TaskID کار جدید
+        setCurrentTaskId(taskId); // ✅ ذخیره TaskID برای ویرایش بعدی
       } else {
         alert('خطا: ' + (data.error || 'نامشخص'));
         setSaving(false);
@@ -191,15 +194,26 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       }
     }
     
-    // ✅ زمان‌بندی خودکار برای کار جدید
-    if (!isEdit && taskId && saveSuccess) {
+    // ✅ زمان‌بندی خودکار برای کار جدید (فقط بار اول)
+    if (!currentTaskId && taskId && saveSuccess) {
       await scheduleTask(taskId);
     }
     
     markSaved(); 
-    alert(isEdit ? 'تغییرات ذخیره شد.' : 'کار جدید ثبت شد.'); 
+    
+    // ✅ نمایش TaskID در پیام
+    if (currentTaskId) {
+      alert(`تغییرات کار کد ${currentTaskId} ذخیره شد.`);
+    } else {
+      alert(`کار جدید با کد ${taskId} ثبت شد.\nحالا می‌توانید اولویت و زمان را تنظیم کنید.`);
+    }
+    
     if (onSaved) onSaved(); 
-    if (onClose) onClose(); 
+    
+    // ✅ فقط برای کارهای جدید مودال باز بماند
+    // برای ویرایش، مثل قبل بسته شود
+    if (currentTaskId && onClose) onClose();
+    
   } catch { 
     alert('خطا در ارتباط با سرور'); 
   }
