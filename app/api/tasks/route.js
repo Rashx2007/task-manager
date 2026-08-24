@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { nowWall, formatSqlDateTime } from '@/lib/schedule-logic';
+import { nowWall, formatSqlDateTime, timeStr } from '@/lib/schedule-logic';
 
 export async function GET(request) {
   try {
@@ -17,9 +17,9 @@ export async function POST(request) {
     const now = nowWall();
     
     const r = await query(
-      `INSERT INTO Tsk_tbl (TaskTtl, Descriptions, Priorities, tskType, IsConsiderableAction, Complited, fixedDueTime, Durationtime, DueDateTime, EndDateTime, Due_Date, Due_Time, End_Date, End_Time, RequestNumber, RegisterNumber, RequestDate) 
+      `INSERT INTO Tsk_tbl (TaskTtl, Descriptions, Priorities, tskType, IsConsiderableAction, Complited, fixedDueTime, Durationtime, Due_Date, Due_Time, End_Date, End_Time) 
        OUTPUT INSERTED.TaskID 
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         b.TaskTtl, 
         b.Descriptions || null, 
@@ -28,11 +28,11 @@ export async function POST(request) {
         b.IsConsiderableAction || null, 
         Number(b.Complited) || 0, 
         Number(b.FixedDueTime) || 0,
-        '0:30:0', // مدت زمان پیش‌فرض
-        null, null, null, null, null, null, // زمان‌ها بعداً توسط timedate API تنظیم می‌شوند
-        b.RequestNumber || null, 
-        b.RegisterNumber || null, 
-        b.RequestDate || null
+        '0:30:0',
+        formatSqlDateTime(now),
+        timeStr(now),
+        formatSqlDateTime(now),
+        timeStr(now)
       ]
     );
     
