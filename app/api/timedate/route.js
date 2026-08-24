@@ -46,7 +46,7 @@ export async function POST(request) {
     }
     await upsertTimeDate(tid, priority, isFixed ? 1 : 0, durationToStr(durMs), due, end);
     await syncTskTable(tid, priority, isFixed ? 1 : 0, durationToStr(durMs), due, end);
-    await sortNonFixedTasks(tid, end);
+    await sortNonFixedTasks(tid, due, end);
     return NextResponse.json({ success: true, due: dbToWall(due), end: dbToWall(end) });
   } catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
 }
