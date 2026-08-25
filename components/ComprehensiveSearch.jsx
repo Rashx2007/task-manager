@@ -20,7 +20,7 @@ const normalizeBlock = (b) => {
 
 export default function ComprehensiveSearch({ onResult, onClose }) {
   const [status, setStatus] = useState('current');
-  const [f, setF] = useState({ taskID: '', requestNumber: '', propertyCode: '', subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' });
+    const [f, setF] = useState({ subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' });
   const [start, setStart] = useState(new Date('2018-03-21'));
   const [end, setEnd] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 10); return d; });
 
@@ -168,7 +168,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   };
 
   const submit = (e) => { if (e && e.preventDefault) e.preventDefault(); doSearchWith({}); };
-  const clear = () => { setF({ taskID: '', requestNumber: '', propertyCode: '', subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' }); resetSel(); setSuggestions([]); setDeviceStatus('انتخاب دستگاه'); setSmartText(''); };
+  const clear = () => { setF({ subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' }); resetSel(); setSuggestions([]); setDeviceStatus('انتخاب دستگاه'); setSmartText(''); };
 
   const inp = 'search-input w-full';
 
@@ -216,10 +216,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
 
       {/* ---------- فرم فیلترها — چیدمان مطابق دسکتاپ ---------- */}
       <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div><label className="text-white text-sm">کد کار</label><input className={inp} value={f.taskID} onChange={set('taskID')} /></div>
-        <div><label className="text-white text-sm">شماره درخواست/ثبت</label><input className={inp} value={f.requestNumber} onChange={set('requestNumber')} /></div>
-        <div><label className="text-white text-sm">شماره اموال</label><input className={inp} value={f.propertyCode} onChange={set('propertyCode')} /></div>
-        <div className="hidden md:block" />
+        
 
         <div><label className="text-white text-sm">موضوع</label><input className={inp} value={f.subject} onChange={set('subject')} /></div>
         <div><label className="text-white text-sm">توضیحات</label><input className={inp} value={f.description} onChange={set('description')} /></div>
