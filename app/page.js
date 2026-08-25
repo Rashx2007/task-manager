@@ -121,7 +121,7 @@ export default function Home() {
           onDelete={handleDelete}
           onComplete={() => (selectedTask ? handleComplete(selectedTask.TaskID) : alert('ابتدا یک کار را انتخاب کنید.'))}
           onSearch={() => setShowSearch((s) => !s)}
-          onComprehensiveSearch={() => setShowComprehensive(true)}
+          onComprehensiveSearch={() => setShowComprehensive((s) => !s)}
           onRefresh={handleRefresh}
           onReport={() => setShowReports(true)}
           onBackup={() => setShowBackup(true)}
@@ -143,7 +143,14 @@ export default function Home() {
         />
       )}
 
-      <div className="p-3 flex-1 min-h-0 flex flex-col">
+      {showComprehensive && (
+        <ComprehensiveSearch
+          onResult={(rows) => { setTasks(rows); setLoadType('search'); }}
+          onClose={() => setShowComprehensive(false)}
+        />
+      )}
+
+     <div className="p-3 flex-1 min-h-0 flex flex-col">
         <TaskTable
           tasks={tasks}
           onRowClick={setSelectedTask}
@@ -166,12 +173,7 @@ export default function Home() {
           onSaved={() => loadTasks(loadType)}
         />
       )}
-      {showComprehensive && (
-        <ComprehensiveSearch
-          onResult={(rows) => { setTasks(rows); setLoadType('search'); }}
-          onClose={() => setShowComprehensive(false)}
-        />
-      )}
+      
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
       {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
       {showAssets && <AssetsModal onClose={() => setShowAssets(false)} onNewTaskWithAsset={openNewWithAsset} />}

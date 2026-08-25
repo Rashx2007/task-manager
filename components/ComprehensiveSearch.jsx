@@ -18,7 +18,7 @@ const normalizeBlock = (b) => {
   return b;
 };
 
-export default function ComprehensiveSearch({ onSearch, onClose }) {
+export default function ComprehensiveSearch({ onResult, onClose }) {
   const [status, setStatus] = useState('current');
   const [f, setF] = useState({ taskID: '', requestNumber: '', propertyCode: '', subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' });
   const [start, setStart] = useState(new Date('2018-03-21'));
@@ -96,11 +96,19 @@ export default function ComprehensiveSearch({ onSearch, onClose }) {
     else { setSuggestions([]); setDeviceStatus('دستگاهی با این مشخصات یافت نشد'); }
   };
 
-  const doSearchWith = (extra) => {
-    const endOfDay = end ? new Date(new Date(end).setHours(23, 59, 59, 999)) : null;
-    onSearch({ ...f, ...extra, status,
-      start: start ? new Date(start).toISOString() : null,
-      end: endOfDay ? endOfDay.toISOString() : null });
+  // ✅ جستجوی واقعی: فراخوانی API و برگرداندن نتیجه به صفحه
+  const doSearchWith = async (extra) => {
+    const p = (n) => String(n).padStart(2, '0');
+    const wall = (d) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    const s = start ? new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0) : null;
+    const e2 = end ? new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59) : null;
+    const payload = { ...f, ...extra, status, start: s ? wall(s) : null, end: e2 ? wall(e2) : null };
+    try {
+      const res = await fetch('/api/comprehensive-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await res.json();
+      if (d.success) { if (onResult) onResult(d.data || []); }
+      else alert('خطا: ' + d.error);
+    } catch { alert('خطا در ارتباط با سرور'); }
   };
 
   const finalize = (device) => {
@@ -159,7 +167,7 @@ export default function ComprehensiveSearch({ onSearch, onClose }) {
     show(t, 'انواع دستگاه برای انتخاب شما:');
   };
 
-  const submit = (e) => { e.preventDefault(); doSearchWith({}); };
+  const submit = (e) => { if (e && e.preventDefault) e.preventDefault(); doSearchWith({}); };
   const clear = () => { setF({ taskID: '', requestNumber: '', propertyCode: '', subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' }); resetSel(); setSuggestions([]); setDeviceStatus('انتخاب دستگاه'); setSmartText(''); };
 
   const inp = 'search-input w-full';
@@ -175,6 +183,7 @@ export default function ComprehensiveSearch({ onSearch, onClose }) {
       <div className="relative mb-3 bg-[#F7C4A5] p-2 rounded">
         <div className="flex items-center gap-2">
           <input value={smartText} onChange={(e) => onSmartChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
             className="search-input flex-1" placeholder="مثلاً: ط14 ، د فن‌کویل ، م موضوع ، ت توضیحات" />
           <span className="font-bold text-sm whitespace-nowrap">{deviceStatus}</span>
         </div>
@@ -207,31 +216,26 @@ export default function ComprehensiveSearch({ onSearch, onClose }) {
 
       {/* ---------- فرم فیلترها — چیدمان مطابق دسکتاپ ---------- */}
       <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {/* ردیف ۱ */}
         <div><label className="text-white text-sm">کد کار</label><input className={inp} value={f.taskID} onChange={set('taskID')} /></div>
         <div><label className="text-white text-sm">شماره درخواست/ثبت</label><input className={inp} value={f.requestNumber} onChange={set('requestNumber')} /></div>
         <div><label className="text-white text-sm">شماره اموال</label><input className={inp} value={f.propertyCode} onChange={set('propertyCode')} /></div>
         <div className="hidden md:block" />
 
-        {/* ردیف ۲ (مطابق دسکتاپ) */}
         <div><label className="text-white text-sm">موضوع</label><input className={inp} value={f.subject} onChange={set('subject')} /></div>
         <div><label className="text-white text-sm">توضیحات</label><input className={inp} value={f.description} onChange={set('description')} /></div>
         <div><label className="text-white text-sm">بلوک</label><input className={inp} value={f.block} onChange={set('block')} /></div>
         <div><label className="text-white text-sm">ورودی</label><input className={inp} value={f.entrance} onChange={set('entrance')} /></div>
 
-        {/* ردیف ۳ (مطابق دسکتاپ) */}
         <div><label className="text-white text-sm">دستگاه</label><input className={inp} value={f.assetName} onChange={set('assetName')} /></div>
         <div><label className="text-white text-sm">ساختمان</label><input className={inp} value={f.building} onChange={set('building')} /></div>
         <div><label className="text-white text-sm">طبقه</label><input className={inp} value={f.floor} onChange={set('floor')} /></div>
         <div><label className="text-white text-sm">قسمت</label><input className={inp} value={f.location} onChange={set('location')} /></div>
 
-        {/* ردیف ۴ (مطابق دسکتاپ) */}
         <div><label className="text-white text-sm">شماره دستگاه</label><input className={inp} value={f.assetNumber} onChange={set('assetNumber')} /></div>
         <div><label className="text-white text-sm">سیستم</label><input className={inp} value={f.mechSystem} onChange={set('mechSystem')} /></div>
         <div><label className="text-white text-sm">مشخصات</label><input className={inp} value={f.specifications} onChange={set('specifications')} /></div>
         <div className="hidden md:block" />
 
-        {/* دکمه‌ها */}
         <div className="col-span-full flex gap-2">
           <button type="submit" className="btn-success flex-1">جستجو</button>
           <button type="button" onClick={clear} className="btn-danger">پاک کردن</button>
