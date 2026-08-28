@@ -104,6 +104,25 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
 
   const handleChange = (e) => { const { name, value, type, checked } = e.target; setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value })); if (name === 'Descriptions') touch(value); };
 
+  // ✅ بارگذاری مجدد اطلاعات زمان/الویت از دیتابیس (بعد از هر به‌روزرسانی در فرم الویت و زمان)
+  const reloadTimes = async () => {
+    if (!currentTaskId) return;
+    try {
+      const res = await fetch(`/api/tasks/${currentTaskId}`);
+      const d = await res.json();
+      if (d.success && d.data) {
+        const src = d.data;
+        setForm((f) => ({
+          ...f,
+          Priorities: src.TDP || src.Priorities || f.Priorities,
+          DueDateTime: src.TDDue || src.DueDateTime || '',
+          EndDateTime: src.TDEnd || src.EndDateTime || '',
+          FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
+        }));
+      }
+    } catch {}
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.TaskTtl.trim()) { alert('موضوع را وارد کنید!'); return; }
@@ -252,7 +271,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       </form>
 
       {/* مودال‌ها — taskId از currentTaskId گرفته می‌شود */}
-      {showTimeDate && isEdit && <TimeDateModal taskId={currentTaskId} onClose={() => setShowTimeDate(false)} onSaved={onSaved} />}
+      {showTimeDate && isEdit && <TimeDateModal taskId={currentTaskId} onClose={() => { setShowTimeDate(false); reloadTimes(); }} onSaved={() => { reloadTimes(); if (onSaved) onSaved(); }} />}
       {showFollow && isEdit && <FollowModal taskId={currentTaskId} subject={form.TaskTtl} onClose={() => setShowFollow(false)} onSaved={onSaved} />}
       {showAFModal && isEdit && <ApplicantFunctorModal taskId={currentTaskId} onClose={() => setShowAFModal(false)} onSaved={(a, f) => { setForm((x) => ({ ...x, ApplicantName: a })); setFunctorName(f || ''); }} />}
       {showSupplier && isEdit && <SupplierModal taskId={currentTaskId} onClose={() => setShowSupplier(false)} onSaved={onSaved} />}
