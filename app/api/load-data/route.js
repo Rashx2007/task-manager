@@ -22,8 +22,9 @@ export async function GET(request) {
         if (Number(od[0].c) > 0) {
           where = `(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`;
         } else {
-          // ✅ شرط ۳: در غیر این صورت فقط کارهای همان روز به ترتیب موعد نمایش داده شوند
-          where = `(tsk.Complited < 1) AND (TD.TaskID IS NULL OR TD.DueDateTime IS NULL OR CAST(TD.DueDateTime AS DATE) = CAST(GETDATE() AS DATE))`;
+          // ✅ شرط ۳: در غیر این صورت همهٔ کارهای غیرثابتِ اتمام‌نیافته تا تاریخ آن روز
+          // (به‌همراه کارهای ثابتِ همان روز) به ترتیب موعد نمایش داده شوند
+          where = `(tsk.Complited < 1) AND (TD.TaskID IS NULL OR TD.DueDateTime IS NULL OR CAST(TD.DueDateTime AS DATE) <= CAST(GETDATE() AS DATE))`;
         }
       }
     }
