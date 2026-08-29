@@ -24,10 +24,9 @@ export async function POST(request) {
     await query(`INSERT INTO Follow_tbl (TaskID, Description, DueDateTime, EndDateTime, Duration) VALUES (?,?,?,?,?)`,
       [tid, description, formatSqlDateTime(due), formatSqlDateTime(end), durationToStr(durMs)]);
 
-    // ✅ کپی متن پیگیری جدید در شرح کار (فرم ویرایش)
+    // ✅ جایگزینی شرح کار با متن پیگیری جدید (سابقهٔ کامل در Follow_tbl محفوظ است)
     if (updateDescription) {
-      await query(`UPDATE Tsk_tbl SET Descriptions = COALESCE(Descriptions, N'') + ? WHERE TaskID=?`,
-        ['\n' + description, tid]);
+      await query(`UPDATE Tsk_tbl SET Descriptions = ? WHERE TaskID=?`, [description, tid]);
     }
 
     // ✅ به‌روزرسانی زمان پایان کار در TimeDate_tbl (بیشینهٔ پایان پیگیری‌ها)
