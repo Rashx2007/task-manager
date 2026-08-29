@@ -79,7 +79,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
         setForm({
           TaskTtl: src.TaskTtl || '', Descriptions: src.Descriptions || '', Priorities: src.TDP || src.Priorities || 'نامشخص',
           tskType: src.tskType || '', IsConsiderableAction: src.IsConsiderableAction || '', Complited: Number(src.Complited) === 1 ? 1 : 0,
-          AssetID: src.AssetID ? String(src.AssetID) : '', ApplicantName: src.ApplicantName || '',
+          AssetID: (src.ResolvedAssetID || src.AssetID) ? String(src.ResolvedAssetID || src.AssetID) : '', ApplicantName: src.ApplicantName || '',
           DueDateTime: src.TDDue || src.DueDateTime || '', EndDateTime: src.TDEnd || src.EndDateTime || '',
           FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
           RequestNumber: src.RequestNumber != null ? String(src.RequestNumber) : '', RegisterNumber: src.RegisterNumber != null ? String(src.RegisterNumber) : '',

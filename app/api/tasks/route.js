@@ -39,9 +39,10 @@ export async function POST(request) {
     );
     const taskId = r[0].TaskID;
 
-    // ✅ هم‌سان با دسکتاپ (Insert_to_Asset_Task_tbl): ثبت دستگاه کار در Asset_Task_tbl
+    // ✅ معادل Insert_to_Asset_Task_tbl دسکتاپ: ثبت دستگاه کار در Asset_Task_tbl
     if (b.AssetID) {
       await query(`INSERT INTO Asset_Task_tbl (TaskID, AssetID) VALUES (?,?)`, [Number(taskId), Number(b.AssetID)]);
+      try { await query(`UPDATE Tsk_tbl SET AssetID=? WHERE TaskID=?`, [Number(b.AssetID), Number(taskId)]); } catch {}
     }
 
     return NextResponse.json({ success: true, TaskID: taskId });
