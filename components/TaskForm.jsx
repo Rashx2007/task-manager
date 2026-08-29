@@ -59,6 +59,8 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
   });
 
   const formRef = useRef(form); formRef.current = form;
+  const timeDateClickedRef = useRef(false); // آیا کاربر در این دور خودش «الویت و زمان» را زده است؟
+  const autoTimeDateRef = useRef(false);    // آیا مودال بعد از ویرایش خودکار باز شده است؟
   const { touch, markSaved } = useDraftGuard(() => formRef.current.Descriptions || '');
 
   useEffect(() => { const p = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = p; }; }, []);
@@ -167,7 +169,15 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       } else {
         alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
         if (onSaved) onSaved();
-        if (onClose) onClose();
+        // ✅ معادل دسکتاپ: اگر در این دور «الویت و زمان» کلیک نشده و کار اتمام‌نیافته،
+        // فرم الویت و زمان خودکار باز می‌شود — برای کارهای ثابت و غیرثابت هر دو
+        if (Number(form.Complited) !== 1 && !timeDateClickedRef.current) {
+          timeDateClickedRef.current = true; // معادل TimeDateBtn_Not_Clicked = false (فقط یک‌بار)
+          autoTimeDateRef.current = true;
+          setShowTimeDate(true);
+        } else if (onClose) {
+          onClose();
+        }
       }
     } catch { alert('خطا در ارتباط با سرور'); }
     setSaving(false);
@@ -248,8 +258,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
               {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <div className="flex items-end"><button type="button" disabled={!isEdit} onClick={() => setShowTimeDate(true)} className="btn-primary w-full">الویت و زمان (...)</button></div>
-
+          <div className="flex items-end"><button type="button" disabled={!isEdit} onClick={() => { timeDateClickedRef.current = true; setShowTimeDate(true); }} className="btn-primary w-full">الویت و زمان (...)</button></div>
           {/* نوع کار و ضمائم */}
           <div>
             <label className="block text-sm font-bold mb-1">نوع کار</label>
@@ -282,7 +291,15 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       </form>
 
       {/* مودال‌ها — taskId از currentTaskId گرفته می‌شود */}
-      {showTimeDate && isEdit && <TimeDateModal taskId={currentTaskId} onClose={() => { setShowTimeDate(false); reloadTimes(); }} onSaved={() => { reloadTimes(); if (onSaved) onSaved(); }} />}
+      {showTimeDate && isEdit && <TimeDateModal taskId={currentTaskId} onClose={() => {
+        setShowTimeDate(false);
+        reloadTimes();
+        // ✅ معادل دسکتاپ: پس از بسته‌شدن مودالِ خودکار، «بستن فرم؟» پرسیده شود
+        if (autoTimeDateRef.current) {
+          autoTimeDateRef.current = false;
+          if (confirm('بستن فرم؟')) { if (onClose) onClose(); }
+        }
+      }} onSaved={() => { reloadTimes(); if (onSaved) onSaved(); }} />}
       {showFollow && isEdit && <FollowModal taskId={currentTaskId} subject={form.TaskTtl} onClose={() => setShowFollow(false)} onSaved={() => { reloadDescription(); if (onSaved) onSaved(); }} />}
       {showAFModal && isEdit && <ApplicantFunctorModal taskId={currentTaskId} onClose={() => setShowAFModal(false)} onSaved={(a, f) => { setForm((x) => ({ ...x, ApplicantName: a })); setFunctorName(f || ''); }} />}
       {showSupplier && isEdit && <SupplierModal taskId={currentTaskId} onClose={() => setShowSupplier(false)} onSaved={onSaved} />}
