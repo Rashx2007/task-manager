@@ -9,9 +9,7 @@ const shamsiStamp = () => '\u200F✏ ' + new DateObject({ calendar: persian }).f
 const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
 
 const pad = (n) => String(n).padStart(2, '0');
-// Date محلی → رشتهٔ ساعت‌دیواری برای سرور
 const toWallISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}Z`;
-// رشتهٔ سرور → Date محلی
 const fromWall = (iso) => {
   if (!iso) return null;
   const m = String(iso).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
@@ -20,7 +18,7 @@ const fromWall = (iso) => {
 };
 const toPicker = (d) => (d ? new DateObject({ date: d, calendar: persian, locale: persian_fa }) : null);
 
-// ---------- اجزای ساعت — دقیقاً مانند فرم الویت و زمان ----------
+// ---------- اجزای ساعت — مانند فرم الویت و زمان ----------
 const to12 = (h24) => { const ampm = h24 >= 12 ? 'PM' : 'AM'; let h = h24 % 12; if (h === 0) h = 12; return { h, ampm }; };
 const fmtTime = (d) => { const { h, ampm } = to12(d.getHours()); return `${pad(h)}:${pad(d.getMinutes())} ${ampm}`; };
 const parseTimeText = (raw) => {
@@ -105,11 +103,13 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const [rows, setRows] = useState([]);
   const [text, setTextState] = useState(shamsiStamp);
   const textRef = useRef(text);
-  const [start, setStartState] = useState(new Date());
-  const [end, setEndState] = useState(new Date());
+  // ✅ شروع و پایان = لحظهٔ باز شدن مودال
+  const [start, setStartState] = useState(() => new Date());
+  const [end, setEndState] = useState(() => new Date());
   const startRef = useRef(start);
   const endRef = useRef(end);
-  const [copyToDesc, setCopyToDesc] = useState(true);
+  const endTouchedRef = useRef(false);
+  const [copyToDesc, setCopyToDesc] = useState(true); // ✅ پیش‌فرض همیشه فعال
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
   const taRef = useRef(null);
@@ -120,23 +120,21 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const setStart = (d) => { startRef.current = d; setStartState(d); };
   const setEnd = (d) => { endRef.current = d; setEndState(d); };
 
-  // ✅ همگام‌سازی مانند فرم الویت و زمان: شروع → پایان؛ تغییر دستی پایان مستقل
   const changeStartDate = (d) => {
     const nd = new Date(d); nd.setHours(startRef.current.getHours(), startRef.current.getMinutes(), 0, 0);
     setStart(nd);
-    const ne = new Date(nd); ne.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
-    setEnd(ne);
+    if (!endTouchedRef.current) { const ne = new Date(nd); ne.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0); setEnd(ne); }
   };
   const changeStartTime = (t) => {
     setStart(t);
-    const ne = new Date(endRef.current); ne.setHours(t.getHours(), t.getMinutes(), 0, 0);
-    setEnd(ne);
+    if (!endTouchedRef.current) { const ne = new Date(endRef.current); ne.setHours(t.getHours(), t.getMinutes(), 0, 0); setEnd(ne); }
   };
   const changeEndDate = (d) => {
+    endTouchedRef.current = true;
     const nd = new Date(d); nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
     setEnd(nd);
   };
-  const changeEndTime = (t) => setEnd(t);
+  const changeEndTime = (t) => { endTouchedRef.current = true; setEnd(t); };
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -195,11 +193,14 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     }
   };
 
+  // ✅ ردیف جدید: شروع = لحظهٔ زدن دکمه
   const resetEditor = () => {
     setEditingId(null);
     setText(shamsiStamp(), false);
-    setStart(new Date());
-    setEnd(new Date());
+    const now = new Date();
+    setStart(now);
+    setEnd(now);
+    endTouchedRef.current = false;
     setTimeout(() => {
       const ta = taRef.current;
       if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
@@ -208,8 +209,11 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
 
   const save = async () => {
     if (!text.trim()) { alert('متن پیگیری خالی است!'); return; }
-    const s = startRef.current, e2 = endRef.current;
-    if (!s || !e2 || e2 <= s) { alert('زمان پایان باید بعد از زمان شروع باشد.'); return; }
+    const s = startRef.current;
+    // ✅ پایان = لحظهٔ زدن دکمه ذخیره (مگر اینکه دستی تغییر کرده یا ردیفی برای ویرایش باز شده باشد)
+    const e2 = endTouchedRef.current ? endRef.current : new Date();
+    setEnd(e2);
+    if (e2 < s) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
     setBusy(true);
     try {
       const res = editingId
@@ -227,7 +231,6 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
       if (d.success) {
         markSaved();
         alert('مورد با موفقیت ثبت شد.');
-        resetEditor();
         load();
         if (onSaved) onSaved();
       } else {
@@ -252,6 +255,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     setText(r.Description || '', false);
     const sd = fromWall(r.DueDateTime); if (sd) setStart(sd);
     const ed = fromWall(r.EndDateTime); if (ed) setEnd(ed);
+    endTouchedRef.current = true; // زمان‌های ردیف ویرایشی حفظ شوند
     setTimeout(() => taRef.current?.focus(), 30);
   };
 
@@ -270,6 +274,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
           <label className="block text-sm font-bold mb-1">شرح پیگیری</label>
           <textarea
             ref={taRef}
+            dir="rtl"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -281,21 +286,27 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
             Enter در انتهای متن: سطر جدید با ✏ تاریخ | Ctrl+Space: بند 📌 | Ctrl+Alt+Space: زیربند ⚡
           </div>
 
-          {/* ✅ انتخابگر تاریخ و ساعت — دقیقاً مانند فرم الویت و زمان */}
+          {/* ✅ ساعت در کنار تاریخ */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
             <div className="border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
-              <label className="block text-sm font-bold mb-1">تاریخ شروع</label>
-              <DatePicker value={toPicker(start)} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
-              <label className="block text-sm font-bold mb-1 mt-2">ساعت شروع</label>
-              <TimeInput value={start} onChange={changeStartTime} />
+              <label className="block text-sm font-bold mb-1">زمان شروع</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <DatePicker value={toPicker(start)} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
+                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
+                </div>
+                <div className="w-44 shrink-0"><TimeInput value={start} onChange={changeStartTime} /></div>
+              </div>
             </div>
             <div className="border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
-              <label className="block text-sm font-bold mb-1">تاریخ پایان</label>
-              <DatePicker value={toPicker(end)} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
-              <label className="block text-sm font-bold mb-1 mt-2">ساعت پایان</label>
-              <TimeInput value={end} onChange={changeEndTime} />
+              <label className="block text-sm font-bold mb-1">زمان پایان</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <DatePicker value={toPicker(end)} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
+                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
+                </div>
+                <div className="w-44 shrink-0"><TimeInput value={end} onChange={changeEndTime} /></div>
+              </div>
             </div>
           </div>
 

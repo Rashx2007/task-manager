@@ -123,6 +123,17 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
     } catch {}
   };
 
+  // ✅ پس از ثبت پیگیری، شرح کار از دیتابیس بازخوانی شود تا متن کپی‌شده در فرم ویرایش دیده شود
+  const reloadDescription = async () => {
+    if (!currentTaskId) return;
+    try {
+      const res = await fetch(`/api/tasks/${currentTaskId}`);
+      const d = await res.json();
+      if (d.success && d.data) setForm((f) => ({ ...f, Descriptions: d.data.Descriptions || '' }));
+    } catch {}
+  };
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.TaskTtl.trim()) { alert('موضوع را وارد کنید!'); return; }
@@ -272,7 +283,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
 
       {/* مودال‌ها — taskId از currentTaskId گرفته می‌شود */}
       {showTimeDate && isEdit && <TimeDateModal taskId={currentTaskId} onClose={() => { setShowTimeDate(false); reloadTimes(); }} onSaved={() => { reloadTimes(); if (onSaved) onSaved(); }} />}
-      {showFollow && isEdit && <FollowModal taskId={currentTaskId} subject={form.TaskTtl} onClose={() => setShowFollow(false)} onSaved={onSaved} />}
+      {showFollow && isEdit && <FollowModal taskId={currentTaskId} subject={form.TaskTtl} onClose={() => setShowFollow(false)} onSaved={() => { reloadDescription(); if (onSaved) onSaved(); }} />}
       {showAFModal && isEdit && <ApplicantFunctorModal taskId={currentTaskId} onClose={() => setShowAFModal(false)} onSaved={(a, f) => { setForm((x) => ({ ...x, ApplicantName: a })); setFunctorName(f || ''); }} />}
       {showSupplier && isEdit && <SupplierModal taskId={currentTaskId} onClose={() => setShowSupplier(false)} onSaved={onSaved} />}
       {showFolder && isEdit && <FolderModal taskId={currentTaskId} onClose={() => setShowFolder(false)} onSaved={onSaved} />}

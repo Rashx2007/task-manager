@@ -1,87 +1,70 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { formatSqlDateTime } from '@/lib/schedule-logic';
-
-const dur = (s, e) => {
-  const ms = Math.max(0, new Date(e) - new Date(s));
-  const t = Math.round(ms / 1000);
-  const p = (n) => String(n).padStart(2, '0');
-  return `${p(Math.floor(t / 3600))}:${p(Math.floor((t % 3600) / 60))}:${p(t % 60)}`;
-};
+import { wallToDate, formatSqlDateTime } from '@/lib/schedule-logic';
+import { durationToStr } from '@/lib/scheduler-logic';
 
 export async function GET(request) {
-  const taskId = Number(new URL(request.url).searchParams.get('taskId'));
+  const { searchParams } = new URL(request.url);
+  const taskId = Number(searchParams.get('taskId'));
   try {
     const rows = await query(`SELECT * FROM Follow_tbl WHERE TaskID=? ORDER BY DueDateTime DESC`, [taskId]);
     return NextResponse.json({ success: true, rows });
-  } catch (e) { 
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
 
 export async function POST(request) {
   try {
     const { taskId, description, dueDateTime, endDateTime, updateDescription } = await request.json();
-    
-    // ثبت در جدول Follow_tbl
-    await query(
-      `INSERT INTO Follow_tbl (TaskID, Description, DueDateTime, EndDateTime, Duration) VALUES (?,?,?,?,?)`,
-      [
-        Number(taskId), 
-        description, 
-        formatSqlDateTime(new Date(dueDateTime)), 
-        formatSqlDateTime(new Date(endDateTime)), 
-        dur(dueDateTime, endDateTime)
-      ]
-    );
-    
-    // ✅ ثبت زمان انجام در TimeDate_tbl (Tsk_tbl این ستون را ندارد) — با محافظ تا ذخیره هرگز نشکند
-    try { 
-      await query(`UPDATE TimeDate_tbl SET Finish_DateTime=? WHERE TaskID=?`, 
-        [formatSqlDateTime(new Date(endDateTime)), Number(taskId)]); 
-    } catch {}
-    
-    // به‌روزرسانی شرح کار در صورت نیاز
+    const tid = Number(taskId);
+    const due = wallToDate(dueDateTime);
+    const end = wallToDate(endDateTime);
+    const durMs = Math.max(0, end - due);
+    await query(`INSERT INTO Follow_tbl (TaskID, Description, DueDateTime, EndDateTime, Duration) VALUES (?,?,?,?,?)`,
+      [tid, description, formatSqlDateTime(due), formatSqlDateTime(end), durationToStr(durMs)]);
+
+    // ✅ کپی متن پیگیری جدید در شرح کار (فرم ویرایش)
     if (updateDescription) {
-      await query(
-        `UPDATE Tsk_tbl SET Descriptions = ISNULL(Descriptions,'') + CHAR(13) + ? WHERE TaskID=?`, 
-        [description, Number(taskId)]
-      );
+      await query(`UPDATE Tsk_tbl SET Descriptions = COALESCE(Descriptions, N'') + ? WHERE TaskID=?`,
+        ['\n' + description, tid]);
     }
-    
+
+    // ✅ به‌روزرسانی زمان پایان کار در TimeDate_tbl (بیشینهٔ پایان پیگیری‌ها)
+    try {
+      const mx = await query(`SELECT MAX(EndDateTime) AS Finish FROM Follow_tbl WHERE TaskID=?`, [tid]);
+      if (mx.length && mx[0].Finish) {
+        await query(`UPDATE TimeDate_tbl SET Finish_DateTime=? WHERE TaskID=?`, [mx[0].Finish, tid]);
+      }
+    } catch {}
+
     return NextResponse.json({ success: true });
-  } catch (e) { 
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
 
 export async function PUT(request) {
   try {
     const { followId, description, dueDateTime, endDateTime } = await request.json();
-    
-    await query(
-      `UPDATE Follow_tbl SET Description=?, DueDateTime=?, EndDateTime=?, Duration=? WHERE FollowID=?`,
-      [
-        description, 
-        formatSqlDateTime(new Date(dueDateTime)), 
-        formatSqlDateTime(new Date(endDateTime)), 
-        dur(dueDateTime, endDateTime), 
-        Number(followId)
-      ]
-    );
-    
+    const due = wallToDate(dueDateTime);
+    const end = wallToDate(endDateTime);
+    const durMs = Math.max(0, end - due);
+    await query(`UPDATE Follow_tbl SET Description=?, DueDateTime=?, EndDateTime=?, Duration=? WHERE FollowID=?`,
+      [description, formatSqlDateTime(due), formatSqlDateTime(end), durationToStr(durMs), Number(followId)]);
     return NextResponse.json({ success: true });
-  } catch (e) { 
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
 
 export async function DELETE(request) {
-  const id = Number(new URL(request.url).searchParams.get('id'));
+  const { searchParams } = new URL(request.url);
+  const id = Number(searchParams.get('id'));
   try {
     await query(`DELETE FROM Follow_tbl WHERE FollowID=?`, [id]);
     return NextResponse.json({ success: true });
-  } catch (e) { 
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 }); 
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
