@@ -11,19 +11,19 @@ export async function GET(request) {
     } else if (type === 'all') {
       where = `(tsk.Complited < 1)`;
     } else {
-      // ✅ شرط ۱: اگر کار موقتی وجود دارد، فقط آنها نمایش داده شوند تا تعیین تکلیف شوند
-      const tmp = await query(`SELECT COUNT(*) AS c FROM Tsk_tbl WHERE (Complited < 1) AND (Temporary = 1)`);
-      if (Number(tmp[0].c) > 0) {
-        where = `(tsk.Complited < 1) AND (tsk.Temporary = 1)`;
+      // ✅ لایهٔ ۱: کارهای بدون الویت («نامشخص») یا موقتی → فقط آنها نمایش داده شوند تا تعیین تکلیف شوند
+      const uns = await query(`SELECT COUNT(*) AS c FROM Tsk_tbl
+        WHERE (Complited < 1) AND ((Temporary = 1) OR (Priorities = N'نامشخص') OR (Priorities IS NULL))`);
+      if (Number(uns[0].c) > 0) {
+        where = `(tsk.Complited < 1) AND ((tsk.Temporary = 1) OR (tsk.Priorities = N'نامشخص') OR (tsk.Priorities IS NULL))`;
       } else {
-        // ✅ شرط ۲: اگر کار ثابتِ سررسید‌گذشته وجود دارد، فقط آنها به ترتیب موعد نمایش داده شوند
+        // ✅ لایهٔ ۲: کارهای ثابتِ سررسید‌گذشته → فقط آنها به ترتیب موعد
         const od = await query(`SELECT COUNT(*) AS c FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID = tsk.TaskID
           WHERE (tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`);
         if (Number(od[0].c) > 0) {
           where = `(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`;
         } else {
-          // ✅ شرط ۳: در غیر این صورت همهٔ کارهای غیرثابتِ اتمام‌نیافته تا تاریخ آن روز
-          // (به‌همراه کارهای ثابتِ همان روز) به ترتیب موعد نمایش داده شوند
+          // ✅ لایهٔ ۳: همهٔ کارهای غیرثابتِ اتمام‌نیافته تا تاریخ آن روز + ثابت‌های همان روز، به ترتیب موعد
           where = `(tsk.Complited < 1) AND (TD.TaskID IS NULL OR TD.DueDateTime IS NULL OR CAST(TD.DueDateTime AS DATE) <= CAST(GETDATE() AS DATE))`;
         }
       }
