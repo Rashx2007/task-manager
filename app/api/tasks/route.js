@@ -37,7 +37,14 @@ export async function POST(request) {
         timeStr(now)
       ]
     );
-    return NextResponse.json({ success: true, TaskID: r[0].TaskID });
+    const taskId = r[0].TaskID;
+
+    // ✅ هم‌سان با دسکتاپ (Insert_to_Asset_Task_tbl): ثبت دستگاه کار در Asset_Task_tbl
+    if (b.AssetID) {
+      await query(`INSERT INTO Asset_Task_tbl (TaskID, AssetID) VALUES (?,?)`, [Number(taskId), Number(b.AssetID)]);
+    }
+
+    return NextResponse.json({ success: true, TaskID: taskId });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
