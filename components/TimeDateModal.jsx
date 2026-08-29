@@ -20,7 +20,6 @@ const toWall = (d) => {
 const to12 = (h24) => { const ampm = h24 >= 12 ? 'PM' : 'AM'; let h = h24 % 12; if (h === 0) h = 12; return { h, ampm }; };
 const fmtTime = (d) => { const { h, ampm } = to12(d.getHours()); return `${pad(h)}:${pad(d.getMinutes())} ${ampm}`; };
 
-// ✅ پارس هوشمند: ۱-۲ رقم → ساعت با دقیقه 00 | ۳ رقم → اگر دوتای اول 00-23 بود ساعت و سومی دقیقه | ۴ رقم → HH:MM
 const parseTimeText = (raw) => {
   const digits = String(raw || '').replace(/[^0-9]/g, '');
   if (!digits) return null;
@@ -35,7 +34,6 @@ const parseTimeText = (raw) => {
   return { hh, mm };
 };
 
-// ✅ انتخابگر ساعت دایره‌ای دومرحله‌ای (مثل Google Keep اندروید)
 function ClockPicker({ date, onConfirm, onClose }) {
   const [stage, setStage] = useState('hour');
   const [h24, setH24] = useState(date.getHours());
@@ -75,11 +73,13 @@ function ClockPicker({ date, onConfirm, onClose }) {
   );
 }
 
-// ✅ ورودی ساعت متنی هوشمند + دکمهٔ بازکردن انتخابگر دایره‌ای
 function TimeInput({ value, onChange }) {
   const [text, setText] = useState(fmtTime(value));
   const [showClock, setShowClock] = useState(false);
+  const inputRef = useRef(null);
   useEffect(() => { setText(fmtTime(value)); }, [value]);
+  // ✅ بازگشت فوکوس به ورودی پس از بسته‌شدن انتخابگر (تا Enter دوباره کار کند)
+  const refocus = () => setTimeout(() => { if (inputRef.current) inputRef.current.focus(); }, 0);
   const commit = () => {
     const p = parseTimeText(text);
     if (p) { const d = new Date(value); d.setHours(p.hh, p.mm, 0, 0); onChange(d); setText(fmtTime(d)); }
@@ -87,12 +87,14 @@ function TimeInput({ value, onChange }) {
   };
   return (
     <div className="relative flex items-center gap-1">
-      <input className="search-input w-full" dir="ltr" value={text} placeholder="HH:MM AM/PM"
+      <input ref={inputRef} className="search-input w-full" dir="ltr" value={text} placeholder="HH:MM AM/PM"
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); }} />
       <button type="button" className="btn-primary px-2" title="انتخابگر ساعت" onClick={() => setShowClock((s) => !s)}>🕒</button>
-      {showClock && <ClockPicker date={value} onClose={() => setShowClock(false)} onConfirm={(d) => { onChange(d); setText(fmtTime(d)); setShowClock(false); }} />}
+      {showClock && <ClockPicker date={value}
+        onClose={() => { setShowClock(false); refocus(); }}
+        onConfirm={(d) => { onChange(d); setText(fmtTime(d)); setShowClock(false); refocus(); }} />}
     </div>
   );
 }
@@ -112,7 +114,24 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const setEnd = (d) => { endRef.current = d; setEndState(d); };
   const isFixed = priority === 'زمان انجام ثابت';
 
-  // ✅ لود مقادیر فعلی (الویت، شروع/پایان، برآورد زمانی) + جدول کارهای زمان ثابت
+  // ✅ همگام‌سازی یک‌طرفه (مثل دسکتاپ): شروع → پایان跟随؛ تغییر دستی پایان مستقل اعمال می‌شود
+  const changeStartDate = (d) => {
+    const nd = new Date(d); nd.setHours(startRef.current.getHours(), startRef.current.getMinutes(), 0, 0);
+    setStart(nd);
+    const ne = new Date(nd); ne.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
+    setEnd(ne);
+  };
+  const changeStartTime = (t) => {
+    setStart(t);
+    const ne = new Date(endRef.current); ne.setHours(t.getHours(), t.getMinutes(), 0, 0);
+    setEnd(ne);
+  };
+  const changeEndDate = (d) => {
+    const nd = new Date(d); nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
+    setEnd(nd);
+  };
+  const changeEndTime = (t) => setEnd(t);
+
   useEffect(() => {
     (async () => {
       try {
@@ -137,17 +156,12 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     fetch('/api/load-data?type=fixed').then((r) => r.json()).then((d) => { if (d.success) setFixedRows(d.data || []); }).catch(() => {});
   }, [taskId]);
 
-  useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
   const save = async () => {
     if (!priority || priority === 'نامشخص') { alert('لطفاً الویت را انتخاب کنید!'); return; }
     const body = { taskId, priority };
     if (isFixed) {
       const s = startRef.current, e2 = endRef.current;
+      // ✅ چک همیشگی: پایان نباید قبل از شروع (یا برابر آن) باشد
       if (!s || !e2 || e2 <= s) { alert('زمان برنامه‌ای پایان باید بعد از زمان برنامه‌ای آغاز باشد.'); return; }
       body.startLocal = toWall(s);
       body.endLocal = toWall(e2);
@@ -174,6 +188,22 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     setBusy(false);
   };
 
+  // ✅ ESC = بستن | Enter = ثبت (وقتی فوکوس روی هیچ کنترلی نیست، مثلاً بعد از بسته‌شدن انتخابگر)
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Enter') {
+        const tag = (document.activeElement && document.activeElement.tagName) || '';
+        if (tag !== 'INPUT' && tag !== 'BUTTON' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+          e.preventDefault();
+          save();
+        }
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+
   const inp = 'search-input w-full';
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
 
@@ -198,21 +228,21 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
             <div>
               <label className="block text-sm font-bold mb-1">تاریخ شروع (سررسید)</label>
-              <DatePicker value={start} onChange={(d) => { if (!d) return; const nd = d.toDate(); nd.setHours(startRef.current.getHours(), startRef.current.getMinutes(), 0, 0); setStart(nd); }}
+              <DatePicker value={start} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
                 calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت شروع</label>
-              <TimeInput value={start} onChange={setStart} />
+              <TimeInput value={start} onChange={changeStartTime} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">تاریخ پایان</label>
-              <DatePicker value={end} onChange={(d) => { if (!d) return; const nd = d.toDate(); nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0); setEnd(nd); }}
+              <DatePicker value={end} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
                 calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت پایان</label>
-              <TimeInput value={end} onChange={setEnd} />
+              <TimeInput value={end} onChange={changeEndTime} />
             </div>
           </div>
         ) : (
@@ -232,7 +262,6 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           </div>
         )}
 
-        {/* ✅ جدول کارهای دارای زمان انجام ثابت (معادل dGV_Fixed_Tasks دسکتاپ) */}
         <div className="mt-4">
           <label className="block text-sm font-bold mb-1">کارهای دارای زمان انجام ثابت (برای انتخاب بازهٔ خالی)</label>
           <div className="overflow-auto max-h-48 rounded border border-teal-700">
