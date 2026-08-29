@@ -180,7 +180,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
       e.preventDefault();
       const s = ta.selectionStart, en = ta.selectionEnd;
       const selected = value.slice(s, en);
-      const nv = selected ? value.slice(0, s) + value.slice(en) + '\n         ' + selected : value + '\n         ';
+      const nv = selected ? value.slice(0, s) + value.slice(en) + '\n         📌 ' + selected : value + '\n         📌 ';
       setText(nv); setCaret(nv.length);
       return;
     }
