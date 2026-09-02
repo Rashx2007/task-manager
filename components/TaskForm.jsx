@@ -61,6 +61,8 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
   const formRef = useRef(form); formRef.current = form;
   const timeDateClickedRef = useRef(false); // آیا کاربر در این دور خودش «الویت و زمان» را زده است؟
   const autoTimeDateRef = useRef(false);    // آیا مودال بعد از ویرایش خودکار باز شده است؟
+  const applicantClickedRef = useRef(false); // آیا کاربر در این دور خودش «درخواست‌کننده» را زده است؟
+  const pendingCloseAskRef = useRef(false);  // پس از بسته‌شدن مودال خودکار، «بستن فرم؟» پرسیده شود؟
   const { touch, markSaved } = useDraftGuard(() => formRef.current.Descriptions || '');
 
   useEffect(() => { const p = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = p; }; }, []);
@@ -149,7 +151,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
 
       if (!wasNew) {
         // ویرایش کار موجود
-        const res = await fetch(`/api/tasks/${currentTaskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const res = await fetch(`/api/tasks/${currentTaskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, Complited: 0 }) });
         const data = await res.json();
         if (!data.success) { alert('خطا: ' + (data.error || 'نامشخص')); setSaving(false); return; }
       } else {
@@ -169,14 +171,34 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       } else {
         alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
         if (onSaved) onSaved();
-        // ✅ معادل دسکتاپ: اگر در این دور «الویت و زمان» کلیک نشده و کار اتمام‌نیافته،
-        // فرم الویت و زمان خودکار باز می‌شود — برای کارهای ثابت و غیرثابت هر دو
-        if (Number(form.Complited) !== 1 && !timeDateClickedRef.current) {
-          timeDateClickedRef.current = true; // معادل TimeDateBtn_Not_Clicked = false (فقط یک‌بار)
-          autoTimeDateRef.current = true;
-          setShowTimeDate(true);
-        } else if (onClose) {
-          onClose();
+        // ✅ معادل دسکتاپ: همیشه پس از ویرایش، سؤال اتمام پرسیده می‌شود
+        const done = confirm('آیا این کار اتمام یافته است؟');
+        if (done) {
+          // معادل EditTask(TaskId, 1)
+          try {
+            await fetch(`/api/tasks/${taskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, Complited: 1 }) });
+          } catch {}
+          alert('کار موردنظر اتمام یافت!');
+          if (onSaved) onSaved();
+          // مسیر اتمام: مودال الویت و زمان باز نمی‌شود؛ درخواست‌کننده فقط اگر کلیک نشده؛ سپس «بستن فرم؟»
+          if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm('بستن فرم؟')) {
+            if (onClose) onClose();
+          }
+        } else {
+          // مسیر عدم اتمام: الویت و زمان → درخواست‌کننده → «بستن فرم؟» (هر کدام فقط اگر کلیک نشده)
+          if (!timeDateClickedRef.current) {
+            timeDateClickedRef.current = true;
+            autoTimeDateRef.current = true;
+            setShowTimeDate(true);
+          } else if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm('بستن فرم؟')) {
+            if (onClose) onClose();
+          }
         }
       }
     } catch { alert('خطا در ارتباط با سرور'); }
@@ -226,7 +248,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
             <label className="block text-sm font-bold mb-1">درخواست‌کننده</label>
             <div className="flex gap-2">
               <input name="ApplicantName" value={form.ApplicantName} onChange={handleChange} list="persons-list" className={inp} />
-              <button type="button" disabled={!isEdit} onClick={() => setShowAFModal(true)} className="btn-primary px-3">...</button>
+              <button type="button" disabled={!isEdit} onClick={() => { applicantClickedRef.current = true; setShowAFModal(true); }} className="btn-primary px-3">...</button>
             </div>
             <datalist id="persons-list">{persons.map((p) => <option key={p.PersonID} value={p.PersonName} />)}</datalist>
             {functorName && <div className="text-xs text-gray-700 mt-1">انجام‌دهنده: {functorName}</div>}
@@ -294,14 +316,23 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       {showTimeDate && isEdit && <TimeDateModal taskId={currentTaskId} onClose={() => {
         setShowTimeDate(false);
         reloadTimes();
-        // ✅ معادل دسکتاپ: پس از بسته‌شدن مودالِ خودکار، «بستن فرم؟» پرسیده شود
         if (autoTimeDateRef.current) {
           autoTimeDateRef.current = false;
-          if (confirm('بستن فرم؟')) { if (onClose) onClose(); }
+          // ✅ معادل دسکتاپ: پس از الویت و زمان، نوبت مودال درخواست‌کننده/انجام‌دهنده است
+          if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm('بستن فرم؟')) { if (onClose) onClose(); }
         }
       }} onSaved={() => { reloadTimes(); if (onSaved) onSaved(); }} />}
       {showFollow && isEdit && <FollowModal taskId={currentTaskId} subject={form.TaskTtl} onClose={() => setShowFollow(false)} onSaved={() => { reloadDescription(); if (onSaved) onSaved(); }} />}
-      {showAFModal && isEdit && <ApplicantFunctorModal taskId={currentTaskId} onClose={() => setShowAFModal(false)} onSaved={(a, f) => { setForm((x) => ({ ...x, ApplicantName: a })); setFunctorName(f || ''); }} />}
+      {showAFModal && isEdit && <ApplicantFunctorModal taskId={currentTaskId} onClose={() => {
+        setShowAFModal(false);
+        if (pendingCloseAskRef.current) {
+          pendingCloseAskRef.current = false;
+          if (confirm('بستن فرم؟')) { if (onClose) onClose(); }
+        }
+      }} onSaved={(a, f) => { setForm((x) => ({ ...x, ApplicantName: a })); setFunctorName(f || ''); }} />}
       {showSupplier && isEdit && <SupplierModal taskId={currentTaskId} onClose={() => setShowSupplier(false)} onSaved={onSaved} />}
       {showFolder && isEdit && <FolderModal taskId={currentTaskId} onClose={() => setShowFolder(false)} onSaved={onSaved} />}
       {showAssetPicker && <AssetsModal onClose={() => setShowAssetPicker(false)} onSelectAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowAssetPicker(false); }} />}
