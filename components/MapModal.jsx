@@ -26,7 +26,12 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const [busy, setBusy] = useState(false);
   const boxRef = useRef(null);
 
-  const fetchSvg = async (url) => setSvgText(await (await fetch(url + '?v=' + Date.now())).text();
+  // ✅ نسخهٔ اصلاح‌شده (بدون پرانتز اضافه)
+  const fetchSvg = async (url) => {
+    const res = await fetch(url + '?v=' + Date.now());
+    const t = await res.text();
+    setSvgText(t);
+  };
 
   const load = async () => {
     if (!building || !floor) return;
@@ -62,7 +67,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     await load();
   };
 
-  // ✅ پرسش دربارهٔ لایه‌های ناشناخته و ثبت نگاشت
   const applyLayerAnswers = async () => {
     for (const layer of unknown) {
       const a = answers[layer]; if (!a) continue;
@@ -151,7 +155,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
           {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ فایل اتوکد تغییر کرده — همگام‌سازی</button>}
         </div>
 
-        {/* ✅ دیالوگ لایه‌های ناشناخته */}
         {unknown.length > 0 && (
           <div className="bg-[#F7C4A5] rounded p-3 mb-2">
             <b>لایه‌های ناشناخته یافت شد؛ برای هر لایه نوع دستگاه را مشخص کنید:</b>
@@ -170,7 +173,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
           </div>
         )}
 
-        {/* ✅ ثبت نیمه‌خودکار دستگاه‌های جدید روی نقشه */}
         {newOnMap.length > 0 && (
           <div className="bg-[#e6f3ef] border border-teal-600 rounded p-3 mb-2 max-h-40 overflow-auto">
             <b>دستگاه‌های روی نقشه که در دیتابیس نیستند:</b>
@@ -184,7 +186,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
           </div>
         )}
 
-        {/* ✅ دستگاه‌های حذف‌شده از نقشه */}
         {orphan.length > 0 && (
           <div className="bg-[#FC7470]/30 border border-red-500 rounded p-3 mb-2">
             <b>در دیتابیس هستند ولی روی نقشهٔ جدید نیستند:</b>
