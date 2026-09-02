@@ -9,6 +9,7 @@ import FollowModal from './FollowModal';
 import SupplierModal from './SupplierModal';
 import FolderModal from './FolderModal';
 import AssetsModal from './AssetsModal';
+import MapModal from './MapModal';
 import useDraftGuard from './useDraftGuard';
 
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم'];
@@ -49,6 +50,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
   const [showSupplier, setShowSupplier] = useState(false);
   const [showFolder, setShowFolder] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [functorName, setFunctorName] = useState('');
   const [assetQuery, setAssetQuery] = useState('');
   const [form, setForm] = useState({
@@ -234,6 +236,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
               <input className={inp} list="assets-list" placeholder="تایپ کنید یا از لیست انتخاب کنید..." value={assetQuery}
                 onChange={(e) => { const v = e.target.value; setAssetQuery(v); const f = assets.find((a) => assetSpec(a) === v); if (f) setForm((x) => ({ ...x, AssetID: String(f.AssetID) })); else if (!v) setForm((x) => ({ ...x, AssetID: '' })); }} />
               <button type="button" className="btn-primary px-3" onClick={() => setShowAssetPicker(true)}>...</button>
+              <button type="button" className="btn-primary px-3" title="نقشهٔ طبقه" onClick={() => setShowMap(true)}>🗺</button>
             </div>
             <datalist id="assets-list">{assets.map((a) => <option key={a.AssetID} value={assetSpec(a)} />)}</datalist>
             {form.AssetID && <div className="text-xs text-gray-700 mt-1">کد دستگاه: {form.AssetID}</div>}
@@ -336,6 +339,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
       {showSupplier && isEdit && <SupplierModal taskId={currentTaskId} onClose={() => setShowSupplier(false)} onSaved={onSaved} />}
       {showFolder && isEdit && <FolderModal taskId={currentTaskId} onClose={() => setShowFolder(false)} onSaved={onSaved} />}
       {showAssetPicker && <AssetsModal onClose={() => setShowAssetPicker(false)} onSelectAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowAssetPicker(false); }} />}
+      {showMap && <MapModal onClose={() => setShowMap(false)} onPickAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowMap(false); }} />}
     </div>
   );
 }
