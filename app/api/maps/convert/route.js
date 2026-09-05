@@ -15,7 +15,7 @@ export async function POST(request) {
     const hash = hashFile(map.DwgPath);
     if (hash === map.FileHash) return NextResponse.json({ success: true, unchanged: true });
 
-    const { svg, texts, layers } = dxfToSvg(ensureDxf(map.DwgPath));
+    const { svg, texts, layers, center } = dxfToSvg(ensureDxf(map.DwgPath));
     const rules = await query(`SELECT * FROM MapLayerRule_tbl`);
     const isBase = (l) => rules.some((r) => r.IsBase && likeToRegex(r.LayerLike).test(l));
     const isKnown = (l) => rules.some((r) => !r.IsBase && likeToRegex(r.LayerLike).test(l));
@@ -30,7 +30,7 @@ export async function POST(request) {
 
     await query(`DELETE FROM MapText_tbl WHERE MapID=?`, [map.MapID]);
     for (const t of texts) await query(`INSERT INTO MapText_tbl (MapID, Layer, TagText, X, Y) VALUES (?,?,?,?,?)`, [map.MapID, t.layer, t.text, t.x, t.y]);
-    await query(`UPDATE Map_tbl SET FileHash=?, Version=?, SvgPath=?, ConvertedAt=GETDATE() WHERE MapID=?`, [hash, version, '/maps/' + svgName, map.MapID]);
+    await query(`UPDATE Map_tbl SET FileHash=?, Version=?, SvgPath=?, ConvertedAt=GETDATE(), CenterX=?, CenterY=? WHERE MapID=?`, [hash, version, '/maps/' + svgName, center.x, center.y, map.MapID]);
 
     const assets = await query(`SELECT AssetID, MapTag FROM Asset_2_tbl WHERE Building=? AND Block=? AND Floor=? AND IsActive=1`, [map.Building, map.Block, map.Floor]);
     const assetTags = new Set(assets.map((a) => a.MapTag).filter(Boolean));

@@ -12,8 +12,8 @@ export async function POST(request) {
         await query(`UPDATE Asset_2_tbl SET MapTag=? WHERE AssetID=?`, [it.text, Number(it.assetId)]);
         ids.push(Number(it.assetId));
       } else {
-        const r = await query(`INSERT INTO Asset_2_tbl (AssetName, Building, Block, Floor, MapTag, IsActive) OUTPUT INSERTED.AssetID VALUES (?,?,?,?,?,1)`,
-          [it.deviceType, building, block || '', floor, it.text]);
+        const r = await query(`INSERT INTO Asset_2_tbl (AssetName, Building, Block, Floor, Entrance, Location, AssetNumber, MapTag, IsActive) OUTPUT INSERTED.AssetID VALUES (?,?,?,?,?,?,?,?,1)`,
+          [it.deviceType, building, block || '', floor, it.entrance || null, it.location || null, it.assetNumber || null, it.text]);
         ids.push(r[0].AssetID);
       }
     }
