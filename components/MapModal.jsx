@@ -42,6 +42,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const [center, setCenter] = useState(null);
   // مرور فایل نقشه
   const [showBrowse, setShowBrowse] = useState(false);
+  const [chosenDwg, setChosenDwg] = useState('');
   // فرم تعریف دستگاه
   const [defineOpen, setDefineOpen] = useState(false);
   const [defineForm, setDefineForm] = useState(null);
@@ -54,14 +55,32 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   };
 
   const load = async (b = building, bl = block, f = floor) => {
-    if (!b || !f) return;
-    const res = await fetch(`/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`);
-    const d = await res.json();
-    if (!d.success) { alert('خطا: ' + d.error); return; }
-    setRules(d.rules || []); setDeviceTypes(d.deviceTypes || []);
-    setMap(d.map || null); setTags(d.tags || []); setHashChanged(!!d.hashChanged);
-    setCenter(d.map && d.map.CenterX != null ? { x: d.map.CenterX, y: d.map.CenterY } : null);
-    if (d.map && d.svgUrl) fetchSvg(d.svgUrl); else setSvgText('');
+    if (!b || !f) { alert('لطفاً «ساختمان» و «طبقه» را وارد کنید تا نقشه بارگذاری شود.'); return; }
+    try {
+      let res = await fetch(`/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`);
+      let d = await res.json();
+      if (!d.success) { alert('خطا: ' + d.error); return; }
+      // ✅ اگر نقشه‌ای ثبت نشده و فایلی انتخاب شده، همین حالا ثبت شود
+      if (!d.map && chosenDwg) {
+        await fetch('/api/maps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building: b, block: bl, floor: f, dwgPath: chosenDwg }) });
+        res = await fetch(`/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`);
+        d = await res.json();
+      }
+      setRules(d.rules || []); setDeviceTypes(d.deviceTypes || []);
+      setMap(d.map || null); setTags(d.tags || []); setHashChanged(!!d.hashChanged);
+      setCenter(d.map && d.map.CenterX != null ? { x: d.map.CenterX, y: d.map.CenterY } : null);
+      if (d.map && d.svgUrl) fetchSvg(d.svgUrl); else setSvgText('');
+      // ✅ واکنش خودکار: اولین تبدیل بلافاصله انجام شود
+      if (d.map && d.hashChanged && !d.map.SvgPath) {
+        const c = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: d.map.MapID }) });
+        const cd = await c.json();
+        if (cd.success && !cd.unchanged) {
+          setHashChanged(false);
+          setUnknown(cd.unknownLayers || []); setNewOnMap(cd.newOnMap || []); setOrphan(cd.orphanInDb || []);
+          if (cd.svgUrl) fetchSvg(cd.svgUrl);
+        }
+      }
+    } catch (e) { alert('خطا در بارگذاری نقشه: ' + e.message); }
   };
 
   const convert = async () => {
@@ -82,16 +101,17 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   };
 
   // ✅ انتخاب فایل DWG + تشخیص خودکار ساختمان/بلوک/طبقه از نام فایل
-  const selectDwg = async (full) => {
+  const selectDwg = (full) => {
     const file = String(full).split('\\').pop();
     const nm = parseMapName(file);
-    const b = nm.building || building, bl = nm.block || block, f = nm.floor || floor;
     if (nm.building) setBuilding(nm.building);
     if (nm.block) setBlock(nm.block);
     if (nm.floor) setFloor(nm.floor);
+    setChosenDwg(full);
     setShowBrowse(false);
-    await fetch('/api/maps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building: b, block: bl, floor: f, dwgPath: full }) });
-    await load(b, bl, f);
+    const b = nm.building || building, f = nm.floor || floor;
+    if (!b || !f) alert('فایل انتخاب شد؛ لطفاً «ساختمان» و «طبقه» را پر کنید و «بارگذاری» بزنید.');
+    else load(b, nm.block || block, f);
   };
 
   // ✅ تشخیص ورودی از روی ناحیه (فقط ساختمان مرکزی)
@@ -277,7 +297,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       </div>
 
       {/* ✅ دیالوگ مرور پوشه‌ها */}
-      {showBrowse && <DwgBrowser onClose={() => setShowBrowse(false)} onSelect={(full) => { setShowBrowse(false); selectDwg(full); }} />}
+      {showBrowse && <DwgBrowser defaultPath="D:\\(فنی)" onClose={() => setShowBrowse(false)} onSelect={selectDwg} />}
     </div>
   );
 }
