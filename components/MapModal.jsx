@@ -8,16 +8,27 @@ const likeTest = (pattern, s) => {
 };
 const toEn = (s) => String(s).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
-// ✅ پیشنهاد قرارداد نام فایل نقشه: ساختمان_بلوک_طبقه.dwg (مثال: مرکزی_A_3.dwg)
+// ✅ قرارداد نام فایل: ساختمان+بلوک+طبقه — چه چسبیده (مرکزیC6) چه جدا‌شده (مرکزی_C_6)
 const parseMapName = (name) => {
-  const base = name.replace(/\.dwg$/i, '');
-  const parts = base.split(/[_\-\s]+/).map(toEn).filter(Boolean);
+  let base = toEn(String(name)).replace(/\.dwg$/i, '').trim();
   const out = { building: '', block: '', floor: '' };
-  for (const t of parts) {
-    if (/^[abc]$/i.test(t)) out.block = t.toUpperCase();
-    else if (/^-?\d+(\.\d+)?$/.test(t)) out.floor = t;
-    else if (!out.building) out.building = t;
-  }
+  // ۱) شماره طبقه = عدد انتهای نام
+  const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
+  if (mFloor) { out.floor = mFloor[1]; base = base.slice(0, mFloor.index); }
+  base = base.replace(/[_\-\s]+$/g, '');
+  // ۲) حرف بلوک = حرف A/B/C انتهای باقی‌مانده
+  const mBlock = base.match(/([A-Ca-c])$/);
+  if (mBlock) { out.block = mBlock[1].toUpperCase(); base = base.slice(0, mBlock.index); }
+  // ۳) باقی‌مانده = نام ساختمان
+  out.building = base.replace(/[_\-\s]+$/g, '').trim();
+  return out;
+};
+// ✅ تکمیل از نام پوشه‌ها در صورت کمبود (مثل: \(بلوک C)\(طبقه 6) )
+const parseMapInfo = (full) => {
+  const out = parseMapName(String(full).split('\\').pop());
+  if (!out.block) { const m = String(full).match(/بلوک[\s_\-]*([A-Ca-c])/); if (m) out.block = m[1].toUpperCase(); }
+  if (!out.floor) { const m = String(full).match(/طبقه[\s_\-]*(-?\d+(?:\.\d+)?)/); if (m) out.floor = toEn(m[1]); }
+  if (!out.building && /مرکزی|Markazi/i.test(String(full))) out.building = 'مرکزی';
   return out;
 };
 
@@ -102,8 +113,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
 
   // ✅ انتخاب فایل DWG + تشخیص خودکار ساختمان/بلوک/طبقه از نام فایل
   const selectDwg = (full) => {
-    const file = String(full).split('\\').pop();
-    const nm = parseMapName(file);
+    const nm = parseMapInfo(full);
     if (nm.building) setBuilding(nm.building);
     if (nm.block) setBlock(nm.block);
     if (nm.floor) setFloor(nm.floor);
