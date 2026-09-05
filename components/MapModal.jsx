@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import DwgBrowser from './DwgBrowser';
 
 const likeTest = (pattern, s) => {
   const rx = new RegExp('^' + String(pattern).split('%').map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
@@ -41,10 +42,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const [center, setCenter] = useState(null);
   // مرور فایل نقشه
   const [showBrowse, setShowBrowse] = useState(false);
-  const [browsePath, setBrowsePath] = useState('');
-  const [browseParent, setBrowseParent] = useState('');
-  const [browseDirs, setBrowseDirs] = useState([]);
-  const [browseFiles, setBrowseFiles] = useState([]);
   // فرم تعریف دستگاه
   const [defineOpen, setDefineOpen] = useState(false);
   const [defineForm, setDefineForm] = useState(null);
@@ -84,18 +81,9 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     setBusy(false);
   };
 
-  // ✅ مرور پوشه‌ها
-  const openBrowse = async (p) => {
-    const res = await fetch(`/api/browse-dwg?path=${encodeURIComponent(p || '')}`);
-    const d = await res.json();
-    if (!d.success) { alert('خطا: ' + d.error); return; }
-    setBrowsePath(d.current); setBrowseParent(d.parent); setBrowseDirs(d.dirs || []); setBrowseFiles(d.files || []);
-    setShowBrowse(true);
-  };
-
   // ✅ انتخاب فایل DWG + تشخیص خودکار ساختمان/بلوک/طبقه از نام فایل
-  const selectDwg = async (file) => {
-    const full = (browsePath.endsWith('\\') ? browsePath : browsePath + '\\') + file;
+  const selectDwg = async (full) => {
+    const file = String(full).split('\\').pop();
     const nm = parseMapName(file);
     const b = nm.building || building, bl = nm.block || block, f = nm.floor || floor;
     if (nm.building) setBuilding(nm.building);
@@ -151,10 +139,12 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   };
 
   const saveDefine = async () => {
-    const res = await fetch('/api/maps/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      building, block, floor,
-      items: [{ text: defineForm.tag, deviceType: defineForm.deviceType, entrance: defineForm.entrance, location: defineForm.location, assetNumber: defineForm.assetNumber }]
-    }) });
+    const res = await fetch('/api/maps/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        building, block, floor,
+        items: [{ text: defineForm.tag, deviceType: defineForm.deviceType, entrance: defineForm.entrance, location: defineForm.location, assetNumber: defineForm.assetNumber }]
+      })
+    });
     const d = await res.json();
     if (d.success && d.ids.length) { setDefineOpen(false); setDefineForm(null); onPickAsset(d.ids[0]); }
     else alert('خطا: ' + d.error);
@@ -217,8 +207,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
             </select>
           </label>
           <button className="btn-primary" onClick={() => load()}>بارگذاری</button>
-          <button className="btn-success" onClick={() => openBrowse('')}>📂 مرور فایل نقشه…</button>
-          {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ فایل اتوکد تغییر کرده — همگام‌سازی</button>}
+          <button className="btn-success" onClick={() => setShowBrowse(true)}>📂 مرور فایل نقشه…</button>          {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ فایل اتوکد تغییر کرده — همگام‌سازی</button>}
         </div>
 
         {unknown.length > 0 && (
@@ -288,27 +277,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       </div>
 
       {/* ✅ دیالوگ مرور پوشه‌ها */}
-      {showBrowse && (
-        <div className="fixed inset-0 bg-black/50 z-[10001] flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setShowBrowse(false); }}>
-          <div className="bg-white rounded-lg shadow-2xl w-[640px] max-h-[70vh] flex flex-col p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <button className="btn-primary px-2" onClick={() => openBrowse(browseParent)} disabled={browseParent === browsePath}>⬆</button>
-              <span className="text-xs font-bold flex-1" dir="ltr">{browsePath}</span>
-              <button onClick={() => setShowBrowse(false)} className="text-xl">✕</button>
-            </div>
-            <div className="overflow-auto flex-1 border rounded p-2">
-              {browseDirs.map((d) => (
-                <div key={d} className="px-2 py-1 hover:bg-teal-100 cursor-pointer text-sm" onClick={() => openBrowse((browsePath.endsWith('\\') ? browsePath : browsePath + '\\') + d)}>📁 {d}</div>
-              ))}
-              {browseFiles.map((f) => (
-                <div key={f} className="px-2 py-1 hover:bg-yellow-100 cursor-pointer text-sm" onClick={() => selectDwg(f)}>🗺 {f}</div>
-              ))}
-              {browseDirs.length === 0 && browseFiles.length === 0 && <div className="text-sm text-gray-500 p-2">موردی یافت نشد.</div>}
-            </div>
-            <div className="text-[11px] text-gray-600 mt-2">پیشنهاد نام‌گذاری: «ساختمان_بلوک_طبقه.dwg» مثل «مرکزی_A_3.dwg» تا ساختمان/بلوک/طبقه خودکار تشخیص داده شوند.</div>
-          </div>
-        </div>
-      )}
+      {showBrowse && <DwgBrowser onClose={() => setShowBrowse(false)} onSelect={(full) => { setShowBrowse(false); selectDwg(full); }} />}
     </div>
   );
 }
