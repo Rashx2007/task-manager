@@ -8,19 +8,25 @@ const likeTest = (pattern, s) => {
 };
 const toEn = (s) => String(s).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
-// ✅ قرارداد نام فایل: ساختمان+بلوک+طبقه — چه چسبیده (مرکزیC6) چه جدا‌شده (مرکزی_C_6)
+// ✅ هم‌ارز نام ساختمان‌ها (فارسی/لاتین/کد)
+const BUILDING_ALIASES = {
+  'مرکزی': 'مرکزی', 'markazi': 'مرکزی', 'mk': 'مرکزی', 'cen': 'مرکزی', 'central': 'مرکزی',
+  'سردخانه': 'سردخانه', 'sardkhaneh': 'سردخانه', 'sard': 'سردخانه',
+};
+// ✅ پارسر مقاوم: حذف کشیده/علائم بیدی + پشتیبانی نام‌های قدیمی و الگوی لاتین جدید
 const parseMapName = (name) => {
-  let base = toEn(String(name)).replace(/\.dwg$/i, '').trim();
+  let base = toEn(String(name))
+    .replace(/\.dwg$/i, '')
+    .replace(/[ـ‌‍‎‏‪‫]/g, '') // حذف کشیده «ـ» و علائم جهت‌دار
+    .trim();
   const out = { building: '', block: '', floor: '' };
-  // ۱) شماره طبقه = عدد انتهای نام
   const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
-  if (mFloor) { out.floor = mFloor[1]; base = base.slice(0, mFloor.index); }
+  if (mFloor) { out.floor = String(Number(mFloor[1])); base = base.slice(0, mFloor.index); }
   base = base.replace(/[_\-\s]+$/g, '');
-  // ۲) حرف بلوک = حرف A/B/C انتهای باقی‌مانده
   const mBlock = base.match(/([A-Ca-c])$/);
   if (mBlock) { out.block = mBlock[1].toUpperCase(); base = base.slice(0, mBlock.index); }
-  // ۳) باقی‌مانده = نام ساختمان
-  out.building = base.replace(/[_\-\s]+$/g, '').trim();
+  const bRaw = base.replace(/[_\-\s]+$/g, '').trim();
+  out.building = BUILDING_ALIASES[bRaw.toLowerCase()] || bRaw;
   return out;
 };
 // ✅ تکمیل از نام پوشه‌ها در صورت کمبود (مثل: \(بلوک C)\(طبقه 6) )
