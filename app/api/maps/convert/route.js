@@ -6,17 +6,18 @@ import { hashFile, ensureDxf, dxfToSvg, likeToRegex } from '@/lib/map-converter'
 
 export async function POST(request) {
   try {
-    const { mapId } = await request.json();
+    const { mapId, force } = await request.json();
     const maps = await query(`SELECT * FROM Map_tbl WHERE MapID=?`, [Number(mapId)]);
     if (!maps.length) return NextResponse.json({ success: false, error: 'نقشه یافت نشد.' }, { status: 404 });
     const map = maps[0];
     if (!map.DwgPath || !fs.existsSync(map.DwgPath)) return NextResponse.json({ success: false, error: 'فایل DWG پیدا نشد: ' + map.DwgPath }, { status: 404 });
 
     const hash = hashFile(map.DwgPath);
-    if (hash === map.FileHash) return NextResponse.json({ success: true, unchanged: true });
+    if (!force && hash === map.FileHash) return NextResponse.json({ success: true, unchanged: true });
 
-    const { svg, texts, layers, center } = dxfToSvg(ensureDxf(map.DwgPath));
     const rules = await query(`SELECT * FROM MapLayerRule_tbl`);
+    const basePatterns = rules.filter((r) => r.IsBase).map((r) => r.LayerLike);
+    const { svg, texts, layers, center } = dxfToSvg(ensureDxf(map.DwgPath), basePatterns);
     const isBase = (l) => rules.some((r) => r.IsBase && likeToRegex(r.LayerLike).test(l));
     const isKnown = (l) => rules.some((r) => !r.IsBase && likeToRegex(r.LayerLike).test(l));
     // ✅ لایه‌های ناشناختهٔ دارای متن → باید از کاربر پرسیده شود

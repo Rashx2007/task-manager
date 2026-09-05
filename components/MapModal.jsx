@@ -6,18 +6,21 @@ const likeTest = (pattern, s) => {
   const rx = new RegExp('^' + String(pattern).split('%').map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
   return rx.test(s || '');
 };
-const toEn = (s) => String(s).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+const toEn = (s) => String(s)
+  .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+  .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
 // ✅ هم‌ارز نام ساختمان‌ها (فارسی/لاتین/کد)
 const BUILDING_ALIASES = {
   'مرکزی': 'مرکزی', 'markazi': 'مرکزی', 'mk': 'مرکزی', 'cen': 'مرکزی', 'central': 'مرکزی',
   'سردخانه': 'سردخانه', 'sardkhaneh': 'سردخانه', 'sard': 'سردخانه',
 };
-// ✅ پارسر مقاوم: حذف کشیده/علائم بیدی + پشتیبانی نام‌های قدیمی و الگوی لاتین جدید
+
+// ✅ پارسر مقاوم: حذف کشیده/علائم بیدی + پشتیبانی نام چسبیده و جدا‌شده
 const parseMapName = (name) => {
   let base = toEn(String(name))
     .replace(/\.dwg$/i, '')
-    .replace(/[ـ‌‍‎‏‪‫]/g, '') // حذف کشیده «ـ» و علائم جهت‌دار
+    .replace(/[ـ‌‍‎‏‪‫]/g, '')
     .trim();
   const out = { building: '', block: '', floor: '' };
   const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
@@ -29,13 +32,27 @@ const parseMapName = (name) => {
   out.building = BUILDING_ALIASES[bRaw.toLowerCase()] || bRaw;
   return out;
 };
-// ✅ تکمیل از نام پوشه‌ها در صورت کمبود (مثل: \(بلوک C)\(طبقه 6) )
+
+// ✅ تکمیل از نام پوشه‌های مسیر در صورت کمبود
 const parseMapInfo = (full) => {
   const out = parseMapName(String(full).split('\\').pop());
   if (!out.block) { const m = String(full).match(/بلوک[\s_\-]*([A-Ca-c])/); if (m) out.block = m[1].toUpperCase(); }
   if (!out.floor) { const m = String(full).match(/طبقه[\s_\-]*(-?\d+(?:\.\d+)?)/); if (m) out.floor = toEn(m[1]); }
   if (!out.building && /مرکزی|Markazi/i.test(String(full))) out.building = 'مرکزی';
   return out;
+};
+
+// ✅ واریانت‌های لایهٔ متن دستگاه: FanCoil-Num / FanCoil-Text / FanCoilNumbers و…
+const ruleForLayer = (rules, L) => {
+  let r = rules.find((r) => !r.IsBase && likeTest(r.LayerLike, L));
+  if (r) return r;
+  const stripped = String(L).replace(/[-_ ]?(Text|Num|Numbers|Nums|Tag|Label)s?$/i, '');
+  r = rules.find((r) => !r.IsBase && likeTest(r.LayerLike, stripped));
+  if (r) return r;
+  return rules.find((r) => {
+    const bp = String(r.LayerLike).replace(/%.*$/, '');
+    return bp && String(L).toLowerCase().startsWith(bp.toLowerCase());
+  }) || null;
 };
 
 export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
@@ -49,6 +66,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const [tags, setTags] = useState([]);
   const [svgText, setSvgText] = useState('');
   const [hashChanged, setHashChanged] = useState(false);
+  const [center, setCenter] = useState(null);
   const [unknown, setUnknown] = useState([]);
   const [newOnMap, setNewOnMap] = useState([]);
   const [orphan, setOrphan] = useState([]);
@@ -56,11 +74,9 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const [answers, setAnswers] = useState({});
   const [newNames, setNewNames] = useState({});
   const [busy, setBusy] = useState(false);
-  const [center, setCenter] = useState(null);
-  // مرور فایل نقشه
+  const [centerMode, setCenterMode] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [chosenDwg, setChosenDwg] = useState('');
-  // فرم تعریف دستگاه
   const [defineOpen, setDefineOpen] = useState(false);
   const [defineForm, setDefineForm] = useState(null);
   const boxRef = useRef(null);
@@ -89,7 +105,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       if (d.map && d.svgUrl) fetchSvg(d.svgUrl); else setSvgText('');
       // ✅ واکنش خودکار: اولین تبدیل بلافاصله انجام شود
       if (d.map && d.hashChanged && !d.map.SvgPath) {
-        const c = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: d.map.MapID }) });
+        const c = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: d.map.MapID, force: true }) });
         const cd = await c.json();
         if (cd.success && !cd.unchanged) {
           setHashChanged(false);
@@ -104,20 +120,20 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     if (!map) return;
     setBusy(true);
     try {
-      const res = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: map.MapID }) });
+      const res = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: map.MapID, force: true }) });
       const d = await res.json();
       if (!d.success) { alert('خطا: ' + d.error); return; }
       setHashChanged(false);
       if (!d.unchanged) {
         setUnknown(d.unknownLayers || []); setNewOnMap(d.newOnMap || []); setOrphan(d.orphanInDb || []);
         if (d.svgUrl) fetchSvg(d.svgUrl);
-        load();
+        await load();
       }
     } catch (e) { alert('خطا در تبدیل: ' + e.message); }
     setBusy(false);
   };
 
-  // ✅ انتخاب فایل DWG + تشخیص خودکار ساختمان/بلوک/طبقه از نام فایل
+  // ✅ انتخاب فایل DWG + تشخیص خودکار ساختمان/بلوک/طبقه
   const selectDwg = (full) => {
     const nm = parseMapInfo(full);
     if (nm.building) setBuilding(nm.building);
@@ -130,7 +146,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     else load(b, nm.block || block, f);
   };
 
-  // ✅ تشخیص ورودی از روی ناحیه (فقط ساختمان مرکزی)
+  // ✅ تشخیص ورودی از روی ناحیه نسبت به مرکز (فقط ساختمان مرکزی)
   const detectEntrance = (tag) => {
     if (!center || !tag) return '';
     if (!String(building).includes('مرکزی')) return '';
@@ -152,15 +168,14 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       }
     }
     setUnknown([]);
-    load();
+    convert();
   };
 
   const registerChecked = async () => {
     const items = newOnMap.filter((t) => checked[t.text]).map((t) => {
-      const layerDev = String(t.layer).replace(/[-_]?text$/i, '');
-      const r = rules.find((r) => !r.IsBase && likeTest(r.LayerLike, layerDev));
+      const r = ruleForLayer(rules, t.layer);
       const tag = tags.find((x) => x.text === t.text);
-      return { text: t.text, deviceType: r ? r.DeviceType : deviceType || 'نامشخص', entrance: detectEntrance(tag) };
+      return { text: t.text, deviceType: r ? r.DeviceType : (deviceType || 'نامشخص'), entrance: detectEntrance(tag) };
     });
     if (!items.length) return;
     const res = await fetch('/api/maps/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building, block, floor, items }) });
@@ -171,43 +186,59 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const deactivateOrphans = async () => {
     const items = orphan.map((o) => ({ assetId: o.assetId, deactivate: true }));
     await fetch('/api/maps/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
-    setOrphan([]); alert('دستگاه‌های حذف‌شده از نقشه، «ناموجود» علامت‌گذاری شدند (سابقه حفظ شد).');
+    setOrphan([]);
+    alert('دستگاه‌های حذف‌شده از نقشه، «ناموجود» علامت‌گذاری شدند (سابقه حفظ شد).');
   };
 
   const saveDefine = async () => {
-    const res = await fetch('/api/maps/register', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        building, block, floor,
-        items: [{ text: defineForm.tag, deviceType: defineForm.deviceType, entrance: defineForm.entrance, location: defineForm.location, assetNumber: defineForm.assetNumber }]
-      })
-    });
+    const res = await fetch('/api/maps/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      building, block, floor,
+      items: [{ text: defineForm.tag, deviceType: defineForm.deviceType, entrance: defineForm.entrance, location: defineForm.location, assetNumber: defineForm.assetNumber }]
+    }) });
     const d = await res.json();
     if (d.success && d.ids.length) { setDefineOpen(false); setDefineForm(null); onPickAsset(d.ids[0]); }
     else alert('خطا: ' + d.error);
   };
 
-  // نمایش لایه‌ها
+  // ✅ نمایش لایه‌ها: پایه همیشه + لایه‌های نوع دستگاه انتخابی (با واریانت‌ها)
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     box.querySelectorAll('g[data-layer]').forEach((g) => {
       const l = g.getAttribute('data-layer');
-      const r = rules.find((r) => likeTest(r.LayerLike, l));
-      g.style.display = (r && r.IsBase) || (r && !r.IsBase && deviceType && r.DeviceType === deviceType) ? '' : 'none';
+      const isB = rules.some((r) => r.IsBase && likeTest(r.LayerLike, l));
+      const r = ruleForLayer(rules, l);
+      g.style.display = isB || (r && deviceType && r.DeviceType === deviceType) ? '' : 'none';
     });
     box.querySelectorAll('text[data-tag]').forEach((t) => { t.style.cursor = 'pointer'; t.setAttribute('fill', '#c0392b'); t.setAttribute('stroke', 'none'); });
   }, [svgText, rules, deviceType]);
 
-  // ✅ کلیک روی برچسب: موجود → انتخاب | ناموجود → پیشنهاد تعریف + فرم خودکار‌پر (با لایهٔ -Text و تشخیص ورودی)
+  // ✅ کلیک: حالت تعیین مرکز + انتخاب/تعریف دستگاه
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     const onClick = (e) => {
+      if (centerMode && map) {
+        const svgEl = box.querySelector('svg');
+        if (svgEl && svgEl.createSVGPoint) {
+          const pt = svgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+          const m = svgEl.getScreenCTM();
+          if (m) {
+            const p = pt.matrixTransform(m.inverse());
+            (async () => {
+              await fetch('/api/maps/center', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: map.MapID, x: p.x, y: p.y }) });
+              setCenter({ x: p.x, y: p.y });
+              setCenterMode(false);
+              alert('مرکز نقشه تنظیم شد؛ تشخیص ورودی‌ها از این پس بر اساس این مرکز است.');
+            })();
+            return;
+          }
+        }
+      }
       const el = e.target.closest('[data-tag]'); if (!el) return;
       const txt = el.getAttribute('data-tag');
       const tag = tags.find((t) => t.text === txt);
       if (tag && tag.AssetID) { onPickAsset(tag.AssetID); return; }
       const layer = tag ? tag.Layer : '';
-      const deviceLayer = String(layer).replace(/[-_]?text$/i, '');
-      const r = rules.find((r) => !r.IsBase && likeTest(r.LayerLike, deviceLayer));
+      const r = ruleForLayer(rules, layer);
       if (confirm(`دستگاه «${txt}» در دیتابیس نیست. آیا تعریف شود؟`)) {
         setDefineForm({
           deviceType: r ? r.DeviceType : (deviceType || ''),
@@ -220,7 +251,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     };
     box.addEventListener('click', onClick);
     return () => box.removeEventListener('click', onClick);
-  }, [tags, rules, building, block, floor, center]);
+  }, [tags, rules, building, block, floor, center, centerMode, map, deviceType]);
 
   const inp = 'search-input';
 
@@ -243,7 +274,10 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
             </select>
           </label>
           <button className="btn-primary" onClick={() => load()}>بارگذاری</button>
-          <button className="btn-success" onClick={() => setShowBrowse(true)}>📂 مرور فایل نقشه…</button>          {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ فایل اتوکد تغییر کرده — همگام‌سازی</button>}
+          <button className="btn-success" onClick={() => setShowBrowse(true)}>📂 مرور فایل نقشه…</button>
+          {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ فایل اتوکد تغییر کرده — همگام‌سازی</button>}
+          {map && <button className="btn-primary" disabled={busy} onClick={convert} title="تبدیل مجدد نقشه">🔄</button>}
+          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز نقشه برای تشخیص ورودی‌ها">🎯</button>}
         </div>
 
         {unknown.length > 0 && (
@@ -308,11 +342,10 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
         <div ref={boxRef} className="bg-white rounded border border-gray-400 overflow-auto" style={{ height: '55vh' }}
           dangerouslySetInnerHTML={{ __html: svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }} />
         <div className="text-[11px] text-gray-600 mt-1">
-          کلیک روی برچسب: انتخاب دستگاه موجود یا تعریف دستگاه جدید | قرارداد نام فایل: ساختمان_بلوک_طبقه.dwg | قرارداد لایهٔ برچسب: «لایهٔ دستگاه + ‎-Text» | ورودی‌های مرکزی از روی ناحیهٔ نقشه تشخیص داده می‌شود.
+          کلیک روی برچسب: انتخاب دستگاه موجود یا تعریف دستگاه جدید | 🎯 تعیین مرکز برای تشخیص ورودی‌ها | لایه‌های دیوار/پارتیشن همیشه روشن‌اند.
         </div>
       </div>
 
-      {/* ✅ دیالوگ مرور پوشه‌ها */}
       {showBrowse && <DwgBrowser defaultPath="D:\\(فنی)" onClose={() => setShowBrowse(false)} onSelect={selectDwg} />}
     </div>
   );
