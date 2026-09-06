@@ -1,26 +1,29 @@
-import { useEffect, useRef } from 'react';
+'use client';
+import { useEffect, useRef, useState } from 'react';
 
-export default function useDraftGuard(getValue) {
-  const savedRef = useRef(null);
-  const warnedRef = useRef(false);
+// ✅ محافظ پیش‌نویس: پس از شروع تایپ، هر ۲ ثانیه یک‌بار از متن کپی می‌گیرد
+// تا اگر مودال ناگهانی بسته شد، متن قابل بازیابی باشد.
+export default function useDraftGuard(getText, key = 'draft_text') {
+  const [draft, setDraft] = useState(() => {
+    try { return (typeof window !== 'undefined' && localStorage.getItem(key)) || ''; } catch { return ''; }
+  });
+  const dirtyRef = useRef(false);
+  const getRef = useRef(getText);
+  getRef.current = getText;
 
   useEffect(() => {
-    const handler = (e) => {
-      const current = getValue();
-      if (current !== savedRef.current && !warnedRef.current) {
-        e.preventDefault();
-        e.returnValue = '';
-        warnedRef.current = true;
-        setTimeout(() => { warnedRef.current = false; }, 1000);
-      }
-    };
+    const id = setInterval(() => {
+      if (!dirtyRef.current) return;
+      try { localStorage.setItem(key, getRef.current() || ''); } catch {}
+    }, 2000);
+    return () => clearInterval(id);
+  }, [key]);
 
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [getValue]);
-
-  const touch = (val) => { savedRef.current = val; };
-  const markSaved = () => { savedRef.current = getValue(); };
-
-  return { touch, markSaved };
+  const touch = () => { dirtyRef.current = true; };
+  const markSaved = () => {
+    dirtyRef.current = false;
+    try { localStorage.removeItem(key); } catch {}
+    setDraft('');
+  };
+  return { touch, markSaved, draft };
 }

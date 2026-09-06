@@ -114,8 +114,16 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const taRef = useRef(null);
 
-  const { touch, markSaved } = useDraftGuard(() => textRef.current);
+  const { touch, markSaved, draft } = useDraftGuard(() => textRef.current, 'draft_follow_' + taskId);
   const setText = (v, guard = true) => { textRef.current = v; setTextState(v); if (guard) touch(v); };
+
+  // ✅ بازیابی متنِ ذخیره‌شده پس از بسته‌شدن ناگهانی مودال (فقط یک‌بار هنگام ورود)
+  useEffect(() => {
+    if (draft && draft.trim() && draft !== textRef.current) {
+      if (confirm('متن پیگیری ذخیره‌شدهٔ قبلی یافت شد؛ بازیابی شود؟')) setText(draft, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setStart = (d) => { startRef.current = d; setStartState(d); };
   const setEnd = (d) => { endRef.current = d; setEndState(d); };

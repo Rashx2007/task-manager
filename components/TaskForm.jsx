@@ -106,7 +106,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
     if (form.AssetID) { const a = assets.find((x) => String(x.AssetID) === String(form.AssetID)); if (a) setAssetQuery(assetSpec(a)); }
     else setAssetQuery('');
   }, [form.AssetID, assets]);
-  useEffect(() => { const h = (e) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
+
 
   const handleChange = (e) => { const { name, value, type, checked } = e.target; setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value })); if (name === 'Descriptions') touch(value); };
 
@@ -210,7 +210,7 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
   const inp = 'search-input w-full';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
       <form onSubmit={handleSubmit} onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!saving) handleSubmit(e); } }}
         className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[760px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-6">
         <h3 className="text-lg font-bold mb-4">{isEdit ? `ویرایش کار — کد: ${currentTaskId}` : 'ثبت کار جدید'}</h3>
