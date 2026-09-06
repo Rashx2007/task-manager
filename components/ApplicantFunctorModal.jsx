@@ -39,10 +39,12 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
     setSaving(false);
   };
 
-  return (
+    return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[560px] max-w-[95vw] p-6">
+      {/* ✅ Enter در هر دو ورودی = ذخیره (submit فرم) */}
+      <form onSubmit={(e) => { e.preventDefault(); save(); }}
+        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[560px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">درخواست‌کننده و انجام‌دهنده — کد کار: {taskId}</h3>
         <div className="mb-3">
           <label className="block text-sm font-bold mb-1">درخواست‌کننده</label>
@@ -54,10 +56,10 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
         </div>
         <datalist id="af-persons">{persons.map((p) => <option key={p.PersonID} value={p.PersonName} />)}</datalist>
         <div className="flex gap-3">
-          <button onClick={save} disabled={saving} className="btn-success">{saving ? '...' : 'ذخیره'}</button>
-          <button onClick={onClose} className="btn-danger">بستن</button>
+          <button type="submit" disabled={saving} className="btn-success">{saving ? '...' : 'ذخیره'}</button>
+          <button type="button" onClick={onClose} className="btn-danger">بستن</button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
