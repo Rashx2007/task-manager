@@ -207,11 +207,11 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         ))}
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">زمان آغاز:</span>
-          <DatePicker value={start} onChange={(d) => setStart(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" plugins={[<TodayPlugin />]} />
+          <DatePicker value={start} onChange={(d) => setStart(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" plugins={[<TodayPlugin onToday={(d) => setStart(d)} />]} />
         </div>
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">زمان پایان:</span>
-          <DatePicker value={end} onChange={(d) => setEnd(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" plugins={[<TodayPlugin />]} />
+          <DatePicker value={end} onChange={(d) => setEnd(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" plugins={[<TodayPlugin onToday={(d) => setEnd(d)} />]} />
         </div>
       </div>
 

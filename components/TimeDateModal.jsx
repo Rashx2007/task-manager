@@ -370,7 +370,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
             <div onKeyDown={(e) => onDateArrow(e, 'start')}>
               <label className="block text-sm font-bold mb-1">تاریخ شروع (سررسید)</label>
               <DatePicker value={start} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
+                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeStartDate(d)} />]} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت شروع</label>
@@ -379,7 +379,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
             <div onKeyDown={(e) => onDateArrow(e, 'end')}>
               <label className="block text-sm font-bold mb-1">تاریخ پایان</label>
               <DatePicker value={effEnd} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
+                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeEndDate(d)} />]} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت پایان</label>

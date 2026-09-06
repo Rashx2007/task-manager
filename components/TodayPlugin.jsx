@@ -1,19 +1,31 @@
 'use client';
-import { DateObject } from 'react-multi-date-picker';
-import persian from 'react-date-object/calendars/persian';
-import persian_fa from 'react-date-object/locales/persian_fa';
 
-// ✅ دکمهٔ «امروز» داخل تقویم — به‌صورت پلاگین react-multi-date-picker
-export default function TodayPlugin({ onChange }) {
+// ✅ دکمهٔ «امروز» زیر اعداد تقویم — با کال‌بک مستقیم onToday (بدون وابستگی به onChange داخلی کتابخانه)
+export default function TodayPlugin({ onToday }) {
   return (
-    <div className="flex justify-center pt-1 pb-2">
-      <button
-        type="button"
-        className="btn-primary px-4 py-1 text-xs"
-        onClick={() => onChange(new DateObject({ calendar: persian, locale: persian_fa }))}
-      >
-        امروز
-      </button>
-    </div>
+    <>
+      <style>{`
+        .rmdp-calendar { flex-wrap: wrap !important; }
+        .rmdp-today-wrap {
+          order: 99;
+          flex-basis: 100%;
+          display: flex;
+          justify-content: center;
+          padding: 4px 0 6px;
+        }
+        .rmdp-today-wrap button {
+          font-size: 11px !important;
+          padding: 2px 16px !important;
+          border-radius: 8px;
+          background: #0891b2;
+          color: #fff;
+          border: none;
+          cursor: pointer;
+        }
+      `}</style>
+      <div className="rmdp-today-wrap">
+        <button type="button" onClick={() => onToday && onToday(new Date())}>امروز</button>
+      </div>
+    </>
   );
 }

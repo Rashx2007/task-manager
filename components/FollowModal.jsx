@@ -302,7 +302,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <DatePicker value={toPicker(start)} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
-                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
+                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeStartDate(d)} />]} />
                 </div>
                 <div className="w-44 shrink-0"><TimeInput value={start} onChange={changeStartTime} /></div>
               </div>
@@ -312,7 +312,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <DatePicker value={toPicker(end)} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
-                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
+                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeEndDate(d)} />]} />
                 </div>
                 <div className="w-44 shrink-0"><TimeInput value={end} onChange={changeEndTime} /></div>
               </div>
