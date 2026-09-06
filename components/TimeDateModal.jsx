@@ -60,7 +60,7 @@ function ClockPicker({ date, onConfirm }) {
     if (stage !== 'minute') return;
     e.preventDefault();
     dragRef.current = true;
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
     setMinute(minuteFromEvent(e));
   };
   const onPointerMove = (e) => { if (dragRef.current && stage === 'minute') setMinute(minuteFromEvent(e)); };
@@ -74,43 +74,57 @@ function ClockPicker({ date, onConfirm }) {
 
   const handAngle = ((stage === 'hour' ? (hour % 12) * 30 : minute * 6) * Math.PI) / 180;
   const handR = stage === 'hour' ? (hour === 0 || hour > 12 ? 62 : 40) : 62;
-  const hx = 100 + handR * Math.sin(handAngle), hy = 100 - handR * Math.cos(handAngle);
+  const hx = 100 + handR * Math.sin(handAngle);
+  const hy = 100 - handR * Math.cos(handAngle);
 
   return (
     <div dir="ltr">
-      <div ref={faceRef} className="relative w-60 h-60 mx-auto rounded-full bg-gray-100 select-none"
+      <div
+        ref={faceRef}
+        className="relative w-60 h-60 mx-auto rounded-full bg-gray-100 select-none"
         style={{ touchAction: 'none', cursor: 'pointer' }}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-        onPointerCancel={() => { dragRef.current = false; }}>
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => { dragRef.current = false; }}
+      >
         <svg viewBox="0 0 200 200" className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
           <line x1="100" y1="100" x2={hx} y2={hy} stroke="#0891b2" strokeWidth="2" />
           <circle cx="100" cy="100" r="4" fill="#0891b2" />
           <circle cx={hx} cy={hy} r="10" fill="#0891b2" opacity="0.3" />
         </svg>
-        {stage === 'hour' ? hours.map(({ h, ring }) => {
-          const ang = ((h % 12) * 30 * Math.PI) / 180;
-          const R = ring === 'inner' ? 26 : 40;
-          const x = 50 + R * Math.sin(ang);
-          const y = 50 - R * Math.cos(ang);
-          return (
-            <button key={h} type="button"
-              className={`absolute w-7 h-7 -ml-3 -mt-3 rounded-full text-xs font-bold ${hour === h ? 'bg-teal-600 text-white' : 'hover:bg-teal-100'}`}
-              style={{ left: `${x}%`, top: `${y}%` }}
-              onClick={() => { setHour(h); setStage('minute'); }}>
-              {toFa(pad(h))}
-            </button>
-          );
-        }) : [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => {
-          const ang = (m * 6 * Math.PI) / 180;
-          const x = 50 + 40 * Math.sin(ang);
-          const y = 50 - 40 * Math.cos(ang);
-          return (
-            <span key={m} className="absolute w-7 h-7 -ml-3 -mt-3 flex items-center justify-center text-xs font-bold pointer-events-none"
-              style={{ left: `${x}%`, top: `${y}%`, color: minute === m ? '#0891b2' : '#333' }}>
-              {toFa(pad(m))}
-            </span>
-          );
-        })}
+        {stage === 'hour'
+          ? hours.map(({ h, ring }) => {
+              const ang = ((h % 12) * 30 * Math.PI) / 180;
+              const R = ring === 'inner' ? 26 : 40;
+              const x = 50 + R * Math.sin(ang);
+              const y = 50 - R * Math.cos(ang);
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  className={`absolute w-7 h-7 -ml-3 -mt-3 rounded-full text-xs font-bold ${hour === h ? 'bg-teal-600 text-white' : 'hover:bg-teal-100'}`}
+                  style={{ left: `${x}%`, top: `${y}%` }}
+                  onClick={() => { setHour(h); setStage('minute'); }}
+                >
+                  {toFa(pad(h))}
+                </button>
+              );
+            })
+          : [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => {
+              const ang = (m * 6 * Math.PI) / 180;
+              const x = 50 + 40 * Math.sin(ang);
+              const y = 50 - 40 * Math.cos(ang);
+              return (
+                <span
+                  key={m}
+                  className="absolute w-7 h-7 -ml-3 -mt-3 flex items-center justify-center text-xs font-bold pointer-events-none"
+                  style={{ left: `${x}%`, top: `${y}%`, color: minute === m ? '#0891b2' : '#333' }}
+                >
+                  {toFa(pad(m))}
+                </span>
+              );
+            })}
       </div>
       <div className="text-center text-sm mt-2 font-bold" dir="ltr">{toFa(pad(hour))} : {toFa(pad(minute))}</div>
       <div className="text-center text-[11px] text-gray-500 mt-1">
@@ -146,8 +160,16 @@ function TimeInput({ value, onChange }) {
   };
   return (
     <div className="relative flex items-center gap-1">
-      <input ref={inputRef} className="search-input w-full" dir="ltr" value={text} placeholder="HH:MM"
-        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={onKeyDown} />
+      <input
+        ref={inputRef}
+        className="search-input w-full"
+        dir="ltr"
+        value={text}
+        placeholder="HH:MM"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
+      />
       <button type="button" className="btn-primary px-2" title="انتخابگر ساعت" onClick={() => setShowClock((s) => !s)}>🕒</button>
       {showClock && (
         <div className="absolute z-[60] top-full mt-1 left-0 bg-white rounded-lg shadow-xl p-3 w-72" onClick={(e) => e.stopPropagation()}>
@@ -164,40 +186,52 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const [minutes, setMinutes] = useState('30');
   const [start, setStart] = useState(new Date());
   const [end, setEnd] = useState(new Date());
-  // ✅ طراحی اشتقاقی با تفکیک: تاریخ پایان و ساعت/دقیقهٔ پایان مستقل از هم پیروی می‌کنند
+  // تفکیک: تاریخ پایان و ساعت/دقیقهٔ پایان مستقل از هم همگام می‌شوند
   const [endDateTouched, setEndDateTouched] = useState(false);
   const [endTimeTouched, setEndTimeTouched] = useState(false);
-  const effEndDate = endDateTouched ? end : start;
-  const effEnd = new Date(effEndDate);
+
+  const effEnd = new Date(endDateTouched ? end : start);
   effEnd.setHours(
     endTimeTouched ? end.getHours() : start.getHours(),
     endTimeTouched ? end.getMinutes() : start.getMinutes(),
-    0, 0
+    0,
+    0
   );
-  const startRef = useRef(start); startRef.current = start;
-  const endRef = useRef(effEnd); endRef.current = effEnd;
+
+  const startRef = useRef(start);
+  startRef.current = start;
+  const endRef = useRef(effEnd);
+  endRef.current = effEnd;
+
   const [busy, setBusy] = useState(false);
   const [fixedRows, setFixedRows] = useState([]);
 
   const isFixed = priority === 'زمان انجام ثابت';
 
-  // تغییر شروع → همگام‌سازی دوباره (پایان = شروع)
+  // تغییر تاریخ شروع → فقط تاریخ پایان همگام شود
   const changeStartDate = (d) => {
-    const nd = new Date(d); nd.setHours(start.getHours(), start.getMinutes(), 0, 0);
+    const nd = new Date(d);
+    nd.setHours(start.getHours(), start.getMinutes(), 0, 0);
     setStart(nd);
-    setEndDateTouched(false); // فقط تاریخ پایان از start پیروی می‌کند؛ ساعت دست‌نخورده می‌ماند
+    setEndDateTouched(false);
   };
+  // تغییر ساعت شروع → فقط ساعت/دقیقهٔ پایان همگام شود
   const changeStartTime = (t) => {
     setStart(t);
-    setEndTimeTouched(false); // فقط ساعت/دقیقهٔ پایان از start پیروی می‌کند؛ تاریخ دست‌نخورده می‌ماند
+    setEndTimeTouched(false);
   };
-  // تغییر دستی پایان → استقلال پایان
+  // تغییر دستی تاریخ پایان → استقلال تاریخ پایان
   const changeEndDate = (d) => {
-    const nd = new Date(d); nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
+    const nd = new Date(d);
+    nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
     setEnd(nd);
     setEndDateTouched(true);
   };
-  const changeEndTime = (t) => { setEnd(t); setEndTimeTouched(true); };
+  // تغییر دستی ساعت پایان → استقلال ساعت پایان
+  const changeEndTime = (t) => {
+    setEnd(t);
+    setEndTimeTouched(true);
+  };
 
   // فلش بالا/پایین روی المان تاریخ: سال/ماه/روز بسته به جای نشانگر (شمسی)
   const onDateArrow = (e, which) => {
@@ -207,7 +241,8 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     e.preventDefault();
     const val = el.value || '';
     const caret = el.selectionStart != null ? el.selectionStart : val.length;
-    const i1 = val.indexOf('/'), i2 = val.lastIndexOf('/');
+    const i1 = val.indexOf('/');
+    const i2 = val.lastIndexOf('/');
     let seg = 'day';
     if (i1 !== -1 && caret <= i1) seg = 'year';
     else if (i2 !== -1 && caret > i1 && caret <= i2) seg = 'month';
@@ -215,11 +250,16 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     const cur = which === 'start' ? start : endRef.current;
     try {
       const parts = new DateObject({ date: cur, calendar: persian }).format('YYYY/MM/DD').split('/').map((x) => parseInt(x, 10));
-      let y = parts[0], m = parts[1], dd = parts[2];
-      if (seg === 'year') y += delta; else if (seg === 'month') m += delta; else dd += delta;
+      let y = parts[0];
+      let m = parts[1];
+      let dd = parts[2];
+      if (seg === 'year') y += delta;
+      else if (seg === 'month') m += delta;
+      else dd += delta;
       const nd = new DateObject({ year: y, month: m, day: dd, calendar: persian }).toDate();
-      if (which === 'start') changeStartDate(nd); else changeEndDate(nd);
-    } catch {}
+      if (which === 'start') changeStartDate(nd);
+      else changeEndDate(nd);
+    } catch (err) {}
   };
 
   const onDurArrow = (e, kind) => {
@@ -247,10 +287,18 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           const sd = fromWall(src.TDDue || src.DueDateTime);
           const ed = fromWall(src.TDEnd || src.EndDateTime);
           if (sd) setStart(sd);
-          if (ed) { setEnd(ed); setEndDateTouched(true); setEndTimeTouched(true); } // نمایش پایانِ ذخیره‌شده؛ با دست‌زدن به تاریخ/ساعت شروع، مولفهٔ مربوطه همگام می‌شود        }
-      } catch {}
+          if (ed) {
+            setEnd(ed);
+            setEndDateTouched(true);
+            setEndTimeTouched(true);
+          }
+        }
+      } catch (err) {}
     })();
-    fetch('/api/load-data?type=fixed').then((r) => r.json()).then((d) => { if (d.success) setFixedRows(d.data || []); }).catch(() => {});
+    fetch('/api/load-data?type=fixed')
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setFixedRows(d.data || []); })
+      .catch(() => {});
   }, [taskId]);
 
   useEffect(() => {
@@ -263,19 +311,25 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     if (!priority || priority === 'نامشخص') { alert('لطفاً الویت را انتخاب کنید!'); return; }
     const body = { taskId, priority };
     if (isFixed) {
-      const s = startRef.current, e2 = endRef.current;
+      const s = startRef.current;
+      const e2 = endRef.current;
       if (!s || !e2 || e2 <= s) { alert('زمان برنامه‌ای پایان باید بعد از زمان برنامه‌ای آغاز باشد.'); return; }
       body.startLocal = toWall(s);
       body.endLocal = toWall(e2);
     } else {
-      const h = Number(hours), m = Number(minutes);
+      const h = Number(hours);
+      const m = Number(minutes);
       if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59 || !((h >= 0 && m > 0) || (h > 0 && m >= 0))) { alert('برآورد زمانی صحیح وارد کنید.'); return; }
       body.hours = h;
       body.minutes = m;
     }
     setBusy(true);
     try {
-      const res = await fetch('/api/timedate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch('/api/timedate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       const d = await res.json();
       if (d.success) {
         alert('الویت و زمان با موفقیت ثبت شد.');
@@ -286,7 +340,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
       } else {
         alert('خطا: ' + d.error);
       }
-    } catch { alert('خطا در ارتباط با سرور'); }
+    } catch (err) { alert('خطا در ارتباط با سرور'); }
     setBusy(false);
   };
 
