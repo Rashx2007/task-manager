@@ -8,7 +8,7 @@ const distinct = (arr) =>
   [...new Set(arr.map((x) => (x == null ? '' : String(x))).filter((x) => x !== '' && x !== '-'))]
     .sort((a, b) => a.localeCompare(b, 'fa'));
 
-export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null }) {
+export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null }) {
   const [tab, setTab] = useState('devices');
   const [all, setAll] = useState([]);
   const [search, setSearch] = useState('');
@@ -52,10 +52,27 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
   const opt = (key, src) => distinct(src.map((a) => a[key]));
   const setF = (k) => (e) => setFlt({ ...flt, [k]: e.target.value });
 
-  const startAdd = () => {
+  const startAdd = (pre = null) => {
     setEditingId(null);
-    setForm({ AssetName: '', AssetNumber: '', Building: '', Block: '-', Floor: '', Entrance: '', Location: '', MechSystem: '', Specifications: '', PropertyCode: '0', SerialNumber: '0', FolderPath: DEFAULT_ASSET_FOLDER });
+    setForm({
+      AssetName: '', AssetNumber: '', Building: '', Block: '-', Floor: '', Entrance: '', Location: '',
+      MechSystem: '', Specifications: '', PropertyCode: '0', SerialNumber: '0', FolderPath: DEFAULT_ASSET_FOLDER,
+      ...(pre || {}),
+      AssetNumber: pre && pre.AssetNumber != null && String(pre.AssetNumber).trim() !== '' ? String(pre.AssetNumber) : '',
+      Floor: pre && pre.Floor != null && String(pre.Floor).trim() !== '' ? String(pre.Floor) : '',
+      Block: pre && pre.Block ? String(pre.Block) : '-',
+    });
   };
+
+  // ✅ اگر preset از نقشه آمده: مستقیم فرم افزودن با فیلدهای پیش‌پر باز شود
+  useEffect(() => {
+    if (preset) {
+      setTab('devices');
+      startAdd(preset);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const startEdit = (a) => {
     setEditingId(a.AssetID);
     setForm({ ...a, FolderPath: a.FolderPath || '' });
@@ -69,8 +86,21 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
         ? await fetch(`/api/assets/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
         : await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const d = await res.json();
-      if (d.success) { alert('ذخیره شد.'); setForm(null); setEditingId(null); loadAll(); }
-      else alert('خطا: ' + d.error);
+      if (d.success) {
+        alert('ذخیره شد.');
+        // ✅ لینک برچسب نقشه (MapTag) به دستگاه جدیدِ ساخته‌شده از نقشه
+        try {
+          const newId = d.AssetID || d.assetId || d.id || null;
+          if (!editingId && preset && preset.MapTag && newId) {
+            await fetch('/api/maps/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: [{ assetId: newId, text: preset.MapTag }] }),
+            });
+          }
+        } catch {}
+        setForm(null); setEditingId(null); loadAll();
+      } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
     setSaving(false);
   };
@@ -119,11 +149,10 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                 <select className={inp} value={flt.MechSystem} onChange={setF('MechSystem')}><option value="">سیستم</option>{opt('MechSystem', all).map((x) => <option key={x}>{x}</option>)}</select>
                 <select className={inp} value={flt.AssetName} onChange={setF('AssetName')}><option value="">دستگاه</option>{opt('AssetName', all).map((x) => <option key={x}>{x}</option>)}</select>
               </div>
-
               <div className="flex flex-wrap gap-2 mb-3">
                 {!onSelectAsset && (
                   <>
-                    <button className="btn-success" onClick={startAdd}>+ دستگاه جدید</button>
+                    <button className="btn-success" onClick={() => startAdd()}>+ دستگاه جدید</button>
                     <button className="btn-primary" disabled={!selectedAsset}
                       title={selectedAsset ? 'ایجاد کار جدید برای: ' + selectedAsset.AssetName : 'ابتدا یک دستگاه را از جدول انتخاب کنید'}
                       onClick={() => onNewTaskWithAsset && onNewTaskWithAsset(selectedAsset.AssetID)}>+ کار جدید با این دستگاه</button>
@@ -131,7 +160,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                 )}
                 {onSelectAsset && <div className="text-sm font-bold text-teal-800 py-2">یک دستگاه را انتخاب کنید تا به فرم کار برگردد.</div>}
               </div>
-
               <div className="overflow-auto overscroll-contain rounded border border-gray-300" style={{ maxHeight: '52vh' }}>
                 <table className="task-table w-full min-w-[1080px]">
                   <thead>
@@ -170,6 +198,11 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
 
           {tab === 'devices' && form !== null && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[700px]">
+              {preset && !editingId && (
+                <div className="md:col-span-4 bg-yellow-100 rounded p-2 text-sm font-bold">
+                  🗺 این دستگاه از نقشه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
+                </div>
+              )}
               <div>
                 <label className="text-sm font-bold">نام دستگاه *</label>
                 <input className={inp} list="asset-names" value={form.AssetName || ''} onChange={(e) => setForm({ ...form, AssetName: e.target.value })} />
@@ -193,7 +226,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
               <div><label className="text-sm font-bold">کد اموال</label><input className={inp} value={form.PropertyCode ?? ''} onChange={(e) => setForm({ ...form, PropertyCode: e.target.value })} /></div>
               <div><label className="text-sm font-bold">شماره سریال</label><input className={inp} value={form.SerialNumber ?? ''} onChange={(e) => setForm({ ...form, SerialNumber: e.target.value })} /></div>
               <div className="md:col-span-2"><label className="text-sm font-bold">مشخصات</label><input className={inp} value={form.Specifications ?? ''} onChange={(e) => setForm({ ...form, Specifications: e.target.value })} /></div>
-
               <div className="md:col-span-3">
                 <label className="text-sm font-bold">مسیر پوشه</label>
                 <div className="flex gap-2">
@@ -201,7 +233,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                   <button type="button" className="btn-primary whitespace-nowrap" onClick={() => setShowBrowser(true)}>مرور پوشه‌ها...</button>
                 </div>
               </div>
-
               <div className="md:col-span-4 flex gap-2 mt-2">
                 <button className="btn-success" disabled={saving} onClick={save}>{saving ? '...' : 'ذخیره'}</button>
                 <button className="btn-danger" onClick={() => { setForm(null); setEditingId(null); }}>انصراف</button>
