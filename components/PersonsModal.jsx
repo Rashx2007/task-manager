@@ -15,7 +15,7 @@ export default function PersonsModal({ onClose }) {
       const res = await fetch(`/api/persons?term=${encodeURIComponent(t || '')}`);
       const d = await res.json();
       if (d.success) setList(d.data || []);
-    } catch {}
+    } catch { }
   }, []);
   useEffect(() => { load(''); }, [load]);
 
@@ -55,7 +55,7 @@ export default function PersonsModal({ onClose }) {
       const res = await fetch(`/api/persons/${id}`, { method: 'DELETE' });
       const d = await res.json();
       if (d.success) load(term); else alert(d.error);
-    } catch {}
+    } catch { }
   };
 
   const inp = 'search-input w-full';
@@ -73,7 +73,7 @@ export default function PersonsModal({ onClose }) {
           {form === null ? (
             <>
               <div className="flex gap-2 mb-4">
-                <input className={inp} placeholder="جستجو (نام، دفتر، شماره، آدرس)..." value={term}
+                <input autoFocus className={inp} placeholder="جستجو (نام، دفتر، شماره، آدرس)..." value={term}
                   onChange={(e) => setTerm(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') load(term); }} />
                 <button className="btn-primary whitespace-nowrap" onClick={() => load(term)}>جستجو</button>
@@ -105,8 +105,7 @@ export default function PersonsModal({ onClose }) {
             </>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2"><label className="text-sm font-bold">نام *</label><input className={inp} value={form.PersonName} onChange={set('PersonName')} /></div>
-              <div><label className="text-sm font-bold">دفتر/سمت</label><input className={inp} value={form.OfficeName} onChange={set('OfficeName')} /></div>
+           <div className="md:col-span-2"><label className="text-sm font-bold">نام *</label><input autoFocus className={inp} value={form.PersonName} onChange={set('PersonName')} /></div>              <div><label className="text-sm font-bold">دفتر/سمت</label><input className={inp} value={form.OfficeName} onChange={set('OfficeName')} /></div>
               <div><label className="text-sm font-bold">داخلی ۱</label><input className={inp} value={form.WorkTellNumber1} onChange={set('WorkTellNumber1')} /></div>
               <div><label className="text-sm font-bold">داخلی ۲</label><input className={inp} value={form.WorkTellNumber2} onChange={set('WorkTellNumber2')} /></div>
               <div><label className="text-sm font-bold">داخلی ۳</label><input className={inp} value={form.WorkTellNumber3} onChange={set('WorkTellNumber3')} /></div>
