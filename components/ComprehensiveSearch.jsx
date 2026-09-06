@@ -10,7 +10,7 @@ const PAGE = 200;
 
 const toEn = (s) => String(s)
   .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-  .replace(/[٠-٩]/g, (d) => String('٠١٢٤٥٦٧٨٩'.indexOf(d)))
+  .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
   .replace(/−/g, '-');
 
 const normalizeFa = (s) => String(s == null ? '' : s)
@@ -31,6 +31,19 @@ const DEFAULT_END = () => { const d = new Date(); d.setFullYear(d.getFullYear() 
 const EMPTY_F = { subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' };
 const DEFAULT_OPEN = { quick: true, presets: true, smart: true, statusDate: false, form: false, facets: true };
 
+// ✅ تعریف در سطح ماژول (هویت ثابت) → بدون remount → بدون پریدن فوکوس
+function Sec({ k, title, badge, open, onToggle, children }) {
+  return (
+    <div className="mb-2 bg-[#F7C4A5] rounded">
+      <button type="button" onClick={() => onToggle(k)} className="w-full flex items-center justify-between px-2 py-1 font-bold text-sm">
+        <span>{title}{badge ? <span className="mr-2 bg-white/70 rounded px-1 text-xs">{badge}</span> : null}</span>
+        <span className="text-xs">{open ? '−' : '+'}</span>
+      </button>
+      {open ? <div className="px-2 pb-2">{children}</div> : null}
+    </div>
+  );
+}
+
 export default function ComprehensiveSearch({ onResult, onClose }) {
   const [status, setStatus] = useState('current');
   const [f, setF] = useState({ ...EMPTY_F });
@@ -42,7 +55,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   const [facets, setFacets] = useState({ buildings: [], deviceTypes: [], priorities: [] });
   const [facetFilters, setFacetFilters] = useState({ building: '', deviceType: '', priority: '' });
 
-  // ✅ جمع‌شوندگی بخش‌ها + صفحه‌بندی
   const [open, setOpen] = useState({ ...DEFAULT_OPEN });
   const [total, setTotal] = useState(null);
   const [loaded, setLoaded] = useState(0);
@@ -84,22 +96,11 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   const distinct = (arr) => [...new Set(arr.filter((x) => x !== null && String(x) !== ''))];
   const resetSel = () => { sel.current = { subject: '', description: '', type: '', building: '', block: '', floor: '', entrance: '', location: '' }; };
 
-  // ✅ جمع/باز کردن بخش‌ها
   const toggleSec = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const allOpen = open.quick && open.presets && open.smart && open.statusDate && open.form && open.facets;
   const toggleAll = () => setOpen(allOpen
     ? { quick: false, presets: false, smart: false, statusDate: false, form: false, facets: false }
     : { quick: true, presets: true, smart: true, statusDate: true, form: true, facets: true });
-
-  const Sec = ({ k, title, badge, children }) => (
-    <div className="mb-2 bg-[#F7C4A5] rounded">
-      <button type="button" onClick={() => toggleSec(k)} className="w-full flex items-center justify-between px-2 py-1 font-bold text-sm">
-        <span>{title}{badge ? <span className="mr-2 bg-white/70 rounded px-1 text-xs">{badge}</span> : null}</span>
-        <span className="text-xs">{open[k] ? '−' : '+'}</span>
-      </button>
-      {open[k] ? <div className="px-2 pb-2">{children}</div> : null}
-    </div>
-  );
 
   const filteredDevices = () => devices.filter((d) =>
     (!sel.current.subject || d.Subject === sel.current.subject) &&
@@ -177,12 +178,11 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         if (onResult) onResult(accRef.current);
         setCounts(d.counts || null);
         setFacets(d.facets || { buildings: [], deviceTypes: [], priorities: [] });
-        setOpen((o) => ({ ...o, form: false, statusDate: false })); // ✅ جمع‌کردن خودکار پس از جستجو
+        setOpen((o) => ({ ...o, form: false, statusDate: false }));
       } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
   };
 
-  // ✅ فاز ۳: نمایش بیشتر (صفحهٔ بعد)
   const loadMore = async () => {
     const base = lastPayloadRef.current;
     if (!base) return;
@@ -316,8 +316,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </div>
 
-      {/* ✅ بخش جمع‌شونده: جستجوی سریع */}
-      <Sec k="quick" title="🔍 جستجوی سریع (همه‌جا)" badge={quick ? 'فعال' : ''}>
+      <Sec k="quick" open={open.quick} onToggle={toggleSec} title="🔍 جستجوی سریع (همه‌جا)" badge={quick ? 'فعال' : ''}>
         <div className="bg-white p-2 rounded">
           <input className={inp} value={quick}
             onChange={(e) => setQuick(e.target.value)}
@@ -326,8 +325,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      {/* ✅ بخش جمع‌شونده: پریست‌ها */}
-      <Sec k="presets" title="⚡ جستجوی سریع (پریست‌ها)">
+      <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
         <div className="flex flex-wrap gap-2 items-center">
           <button type="button" onClick={() => applyPreset('today')} className="btn-primary px-3 py-1 text-xs">امروز</button>
           <button type="button" onClick={() => applyPreset('thisWeek')} className="btn-primary px-3 py-1 text-xs">این هفته</button>
@@ -339,7 +337,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      {/* ✅ نوار فیلترهای فعال (همیشه وقتی فعال است دیده می‌شود) */}
       {(facetFilters.building || facetFilters.deviceType || facetFilters.priority) && (
         <div className="mb-2 bg-yellow-100 p-2 rounded flex flex-wrap gap-2 items-center">
           <span className="text-sm font-bold">فیلترهای فعال:</span>
@@ -349,8 +346,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       )}
 
-      {/* ✅ بخش جمع‌شونده: جستجوی هوشمند دستگاه */}
-      <Sec k="smart" title="🩺 جستجوی هوشمند دستگاه" badge={smartText ? 'فعال' : ''}>
+      <Sec k="smart" open={open.smart} onToggle={toggleSec} title="🩺 جستجوی هوشمند دستگاه" badge={smartText ? 'فعال' : ''}>
         <div className="relative bg-white p-2 rounded">
           <div className="flex items-center gap-2">
             <input value={smartText} onChange={(e) => onSmartChange(e.target.value)}
@@ -368,8 +364,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      {/* ✅ بخش جمع‌شونده: وضعیت، تاریخ و تب‌های شمارنده */}
-      <Sec k="statusDate" title="📅 وضعیت و بازهٔ تاریخ" badge={statusBadge}>
+      <Sec k="statusDate" open={open.statusDate} onToggle={toggleSec} title="📅 وضعیت و بازهٔ تاریخ" badge={statusBadge}>
         <div className="bg-white p-2 rounded flex flex-col gap-2">
           {counts && (
             <div className="flex gap-2 flex-wrap items-center">
@@ -402,8 +397,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      {/* ✅ بخش جمع‌شونده: فرم فیلترها */}
-      <Sec k="form" title="🧾 فرم فیلترها" badge={formBadge}>
+      <Sec k="form" open={open.form} onToggle={toggleSec} title="🧾 فرم فیلترها" badge={formBadge}>
         <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-2 rounded">
           <div><label className="text-sm">موضوع</label><input className={inp} value={f.subject} onChange={set('subject')} /></div>
           <div><label className="text-sm">توضیحات</label><input className={inp} value={f.description} onChange={set('description')} /></div>
@@ -424,8 +418,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </form>
       </Sec>
 
-      {/* ✅ بخش جمع‌شونده: فست‌ها */}
-      <Sec k="facets" title="🎯 باریک‌کردن نتیجه (کلیکی)">
+      <Sec k="facets" open={open.facets} onToggle={toggleSec} title="🎯 باریک‌کردن نتیجه (کلیکی)">
         <div className="bg-white p-2 rounded">
           {(!facets || (facets.buildings.length === 0 && facets.deviceTypes.length === 0 && facets.priorities.length === 0)) ? (
             <div className="text-xs text-gray-500">پس از اولین جستجو، گزینه‌های باریک‌کردن اینجا ظاهر می‌شوند.</div>
@@ -469,7 +462,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      {/* ✅ فاز ۳: نوار صفحه‌بندی */}
       {total != null && (
         <div className="mt-2 bg-white/90 rounded p-2 flex items-center gap-2 flex-wrap">
           <span className="text-sm font-bold">نمایش {loaded} از {total} نتیجه</span>
