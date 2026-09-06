@@ -19,6 +19,12 @@ export default function PersonsModal({ onClose }) {
   }, []);
   useEffect(() => { load(''); }, [load]);
 
+  // ✅ نمایش هم‌زمان نتایج با شروع تایپ (debounce کوتاه برای کاهش درخواست‌ها)
+  useEffect(() => {
+    const t = setTimeout(() => { load(term); }, 250);
+    return () => clearTimeout(t);
+  }, [term, load]);
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
