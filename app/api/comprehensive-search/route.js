@@ -1,18 +1,38 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
+// ✅ نرمال‌سازی فارسی سمت سرور
+const normalizeFa = (s) => String(s == null ? '' : s)
+  .replace(/[يى]/g, 'ی')
+  .replace(/ك/g, 'ک')
+  .replace(/[\u200c\u200f\u200e]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+// ✅ عبارت REPLACE زنجیره‌ای T-SQL برای نرمال‌سازی یک ستون داخل LIKE
+const normCol = (col) =>
+  `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
+
 export async function POST(request) {
   try {
     const b = (await request.json()) || {};
     const conds = [];
     const params = [];
-    const like = (col, val) => { conds.push(`(${col} LIKE ?)`); params.push(`%${val}%`); };
+
+    // ✅ LIKE نرمال‌سازی‌شده روی هر دو طرف (ستون و ورودی)
+    const like = (col, val) => {
+      conds.push(`(${normCol(col)} LIKE ?)`);
+      params.push(`%${normalizeFa(val)}%`);
+    };
 
     if (b.status === 'current') conds.push('(tsk.Complited < 1)');
     else if (b.status === 'completed') conds.push('(tsk.Complited = 1)');
 
     if (String(b.taskID || '').trim()) { conds.push('(tsk.TaskID = ?)'); params.push(Number(b.taskID)); }
-    if (String(b.requestNumber || '').trim()) { conds.push('(tsk.RequestNumber = ? OR tsk.RegisterNumber = ?)'); params.push(Number(b.requestNumber), Number(b.requestNumber)); }
+    if (String(b.requestNumber || '').trim()) {
+      conds.push('(tsk.RequestNumber = ? OR tsk.RegisterNumber = ?)');
+      params.push(Number(b.requestNumber), Number(b.requestNumber));
+    }
     if (String(b.propertyCode || '').trim()) like('asset.PropertyCode', b.propertyCode);
     if (String(b.subject || '').trim()) like('tsk.TaskTtl', b.subject);
     if (String(b.description || '').trim()) like('tsk.Descriptions', b.description);
@@ -27,6 +47,10 @@ export async function POST(request) {
     if (String(b.specifications || '').trim()) like('asset.Specifications', b.specifications);
     if (b.start) { conds.push('(TD.DueDateTime >= ?)'); params.push(String(b.start)); }
     if (b.end) { conds.push('(TD.DueDateTime <= ?)'); params.push(String(b.end)); }
+
+    // ✅ فیلترهای اختیاری پریست‌ها (عقب‌گرد کامل: بدون ارسال → رفتار قبلی)
+    if (b.onlyFixed === true) conds.push('(TD.FixedDueTime = 1)');
+    if (b.onlyTemp === true) conds.push(`(tsk.Temporary = 1 OR tsk.Priorities IS NULL OR LTRIM(RTRIM(ISNULL(tsk.Priorities, N''))) = N'')`);
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location,
