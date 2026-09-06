@@ -34,7 +34,7 @@ const parseTimeText = (raw) => {
   return { hh, mm };
 };
 
-// ✅ انتخابگر ۲۴ساعته دوحلقه‌ای؛ دقیقه با کلیک/درگ و بسته‌شدن خودکار
+// انتخابگر ۲۴ساعته دوحلقه‌ای؛ دقیقه با کلیک/درگ و بسته‌شدن خودکار
 function ClockPicker({ date, onConfirm }) {
   const [stage, setStage] = useState('hour');
   const [hour, setHour] = useState(date.getHours());
@@ -69,7 +69,7 @@ function ClockPicker({ date, onConfirm }) {
     dragRef.current = false;
     const d = new Date(date);
     d.setHours(hour, minute, 0, 0);
-    onConfirm(d); // ✅ ثبت و بسته‌شدن خودکار
+    onConfirm(d);
   };
 
   const handAngle = ((stage === 'hour' ? (hour % 12) * 30 : minute * 6) * Math.PI) / 180;
@@ -120,7 +120,7 @@ function ClockPicker({ date, onConfirm }) {
   );
 }
 
-// ✅ ورودی ساعت ۲۴ساعته + فلش بالا/پایین + انتخابگر دایره‌ای
+// ورودی ساعت ۲۴ساعته + فلش بالا/پایین + انتخابگر دایره‌ای
 function TimeInput({ value, onChange }) {
   const [text, setText] = useState(fmtTime(value));
   const [showClock, setShowClock] = useState(false);
@@ -162,36 +162,37 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const [priority, setPriority] = useState('نامشخص');
   const [hours, setHours] = useState('00');
   const [minutes, setMinutes] = useState('30');
-  const [start, setStartState] = useState(new Date());
-  const [end, setEndState] = useState(new Date());
-  const startRef = useRef(start);
-  const endRef = useRef(end);
-  const endTouchedRef = useRef(false);
+  const [start, setStart] = useState(new Date());
+  const [end, setEnd] = useState(new Date());
+  // طراحی اشتقاقی: تا وقتی پایان دستی تغییر نکرده، پایان همیشه برابر شروع است
+  const [endTouched, setEndTouched] = useState(false);
+  const effEnd = endTouched ? end : new Date(start.getTime());
+  const startRef = useRef(start); startRef.current = start;
+  const endRef = useRef(effEnd); endRef.current = effEnd;
   const [busy, setBusy] = useState(false);
   const [fixedRows, setFixedRows] = useState([]);
 
-  const setStart = (d) => { startRef.current = d; setStartState(d); };
-  const setEnd = (d) => { endRef.current = d; setEndState(d); };
   const isFixed = priority === 'زمان انجام ثابت';
 
-  // ✅ شروع تغییر کرد → پایان هم مطابق آن (تا تغییر دستی پایان)
+  // تغییر شروع → همگام‌سازی دوباره (پایان = شروع)
   const changeStartDate = (d) => {
-    const nd = new Date(d); nd.setHours(startRef.current.getHours(), startRef.current.getMinutes(), 0, 0);
+    const nd = new Date(d); nd.setHours(start.getHours(), start.getMinutes(), 0, 0);
     setStart(nd);
-    if (!endTouchedRef.current) { const ne = new Date(nd); ne.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0); setEnd(ne); }
+    setEndTouched(false);
   };
   const changeStartTime = (t) => {
     setStart(t);
-    if (!endTouchedRef.current) { const ne = new Date(endRef.current); ne.setHours(t.getHours(), t.getMinutes(), 0, 0); setEnd(ne); }
+    setEndTouched(false);
   };
+  // تغییر دستی پایان → استقلال پایان
   const changeEndDate = (d) => {
-    endTouchedRef.current = true;
     const nd = new Date(d); nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
     setEnd(nd);
+    setEndTouched(true);
   };
-  const changeEndTime = (t) => { endTouchedRef.current = true; setEnd(t); };
+  const changeEndTime = (t) => { setEnd(t); setEndTouched(true); };
 
-  // ✅ فلش بالا/پایین روی المان تاریخ: سال/ماه/روز بسته به جای نشانگر (شمسی)
+  // فلش بالا/پایین روی المان تاریخ: سال/ماه/روز بسته به جای نشانگر (شمسی)
   const onDateArrow = (e, which) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const el = e.target;
@@ -204,7 +205,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     if (i1 !== -1 && caret <= i1) seg = 'year';
     else if (i2 !== -1 && caret > i1 && caret <= i2) seg = 'month';
     const delta = e.key === 'ArrowUp' ? 1 : -1;
-    const cur = which === 'start' ? start : end;
+    const cur = which === 'start' ? start : endRef.current;
     try {
       const parts = new DateObject({ date: cur, calendar: persian }).format('YYYY/MM/DD').split('/').map((x) => parseInt(x, 10));
       let y = parts[0], m = parts[1], dd = parts[2];
@@ -239,7 +240,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           const sd = fromWall(src.TDDue || src.DueDateTime);
           const ed = fromWall(src.TDEnd || src.EndDateTime);
           if (sd) setStart(sd);
-          if (ed) setEnd(ed); // بدون ست‌کردن endTouched: همگام‌سازی شروع→پایان حفظ می‌شود
+          if (ed) { setEnd(ed); setEndTouched(true); } // نمایش پایانِ ذخیره‌شده؛ با دست‌زدن به شروع، همگام می‌شود
         }
       } catch {}
     })();
@@ -316,12 +317,12 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
             </div>
             <div onKeyDown={(e) => onDateArrow(e, 'end')}>
               <label className="block text-sm font-bold mb-1">تاریخ پایان</label>
-              <DatePicker value={end} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
+              <DatePicker value={effEnd} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
                 calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت پایان</label>
-              <TimeInput value={end} onChange={changeEndTime} />
+              <TimeInput value={effEnd} onChange={changeEndTime} />
             </div>
           </div>
         ) : (
