@@ -69,6 +69,15 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
 
   useEffect(() => { const p = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = p; }; }, []);
 
+  // ✅ بستن فرم ویرایش با کلید Esc (فقط وقتی هیچ مودال فرزندی باز نیست)
+  useEffect(() => {
+    const anyChildOpen = showTimeDate || showAFModal || showFollow || showSupplier || showFolder || showAssetPicker || showMap;
+    if (anyChildOpen) return;
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose, showTimeDate, showAFModal, showFollow, showSupplier, showFolder, showAssetPicker, showMap]);
+
   useEffect(() => {
     fetch('/api/assets').then((r) => r.json()).then((d) => { if (d.success) setAssets(d.data || []); }).catch(() => {});
     fetch('/api/persons').then((r) => r.json()).then((d) => { if (d.success) setPersons(d.data || []); }).catch(() => {});
