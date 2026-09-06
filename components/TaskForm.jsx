@@ -88,6 +88,7 @@ export default function TaskForm({
   const [showFolder, setShowFolder] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [assetPreset, setAssetPreset] = useState(null);
   const [completeAsk, setCompleteAsk] = useState(null); // دیالوگ «اتمام یافته؟» با پیش‌فرض انصراف
   const askComplete = () =>
     new Promise((resolve) => setCompleteAsk({ resolve }));
@@ -131,7 +132,15 @@ export default function TaskForm({
 
   // ✅ بستن فرم ویرایش با کلید Esc (فقط وقتی هیچ مودال فرزندی باز نیست)
   useEffect(() => {
-        const anyChildOpen = showTimeDate || showAFModal || showFollow || showSupplier || showFolder || showAssetPicker || showMap || !!completeAsk;
+    const anyChildOpen =
+      showTimeDate ||
+      showAFModal ||
+      showFollow ||
+      showSupplier ||
+      showFolder ||
+      showAssetPicker ||
+      showMap ||
+      !!completeAsk;
     if (anyChildOpen) return;
     const h = (e) => {
       if (e.key === "Escape") onClose();
@@ -765,15 +774,11 @@ export default function TaskForm({
           onSaved={onSaved}
         />
       )}
-      {showAssetPicker && (
-        <AssetsModal
-          onClose={() => setShowAssetPicker(false)}
-          onSelectAsset={(id) => {
-            setForm((f) => ({ ...f, AssetID: String(id) }));
-            setShowAssetPicker(false);
-          }}
-        />
-      )}
+            {showAssetPicker && <AssetsModal
+        preset={assetPreset}
+        onClose={() => { setShowAssetPicker(false); setAssetPreset(null); }}
+        onSelectAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowAssetPicker(false); setAssetPreset(null); }}
+      />}
       {showMap && (
         <MapModal
           onClose={() => setShowMap(false)}
@@ -781,16 +786,51 @@ export default function TaskForm({
             setForm((f) => ({ ...f, AssetID: String(id) }));
             setShowMap(false);
           }}
+          onOpenDefineDevice={(preset) => {
+            setAssetPreset(preset);
+            setShowMap(false);
+            setShowAssetPicker(true);
+          }}
         />
       )}
       {completeAsk && (
-        <div className="fixed inset-0 bg-black/60 z-[10002] flex items-center justify-center p-4"
-          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); const r = completeAsk.resolve; setCompleteAsk(null); r(false); } }}>
+        <div
+          className="fixed inset-0 bg-black/60 z-[10002] flex items-center justify-center p-4"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              const r = completeAsk.resolve;
+              setCompleteAsk(null);
+              r(false);
+            }
+          }}
+        >
           <div className="bg-[#CCE6DF] rounded-lg shadow-2xl p-6 w-[380px] text-center">
             <div className="font-bold mb-5">آیا این کار اتمام یافته است؟</div>
             <div className="flex gap-3 justify-center">
-              <button type="button" className="btn-success px-6" onClick={() => { const r = completeAsk.resolve; setCompleteAsk(null); r(true); }}>OK</button>
-              <button type="button" autoFocus className="btn-danger px-6" onClick={() => { const r = completeAsk.resolve; setCompleteAsk(null); r(false); }}>Cancel</button>
+              <button
+                type="button"
+                className="btn-success px-6"
+                onClick={() => {
+                  const r = completeAsk.resolve;
+                  setCompleteAsk(null);
+                  r(true);
+                }}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                autoFocus
+                className="btn-danger px-6"
+                onClick={() => {
+                  const r = completeAsk.resolve;
+                  setCompleteAsk(null);
+                  r(false);
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

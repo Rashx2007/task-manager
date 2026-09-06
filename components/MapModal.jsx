@@ -10,18 +10,13 @@ const toEn = (s) => String(s)
   .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
   .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
-// ✅ هم‌ارز نام ساختمان‌ها (فارسی/لاتین/کد)
 const BUILDING_ALIASES = {
   'مرکزی': 'مرکزی', 'markazi': 'مرکزی', 'mk': 'مرکزی', 'cen': 'مرکزی', 'central': 'مرکزی',
   'سردخانه': 'سردخانه', 'sardkhaneh': 'سردخانه', 'sard': 'سردخانه',
 };
 
-// ✅ پارسر مقاوم: حذف کشیده/علائم بیدی + پشتیبانی نام چسبیده و جدا‌شده
 const parseMapName = (name) => {
-  let base = toEn(String(name))
-    .replace(/\.dwg$/i, '')
-    .replace(/[ـ‌‍‎‏‪‫]/g, '')
-    .trim();
+  let base = toEn(String(name)).replace(/\.dwg$/i, '').replace(/[ـ‌‍‎‏‪‫]/g, '').trim();
   const out = { building: '', block: '', floor: '' };
   const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
   if (mFloor) { out.floor = String(Number(mFloor[1])); base = base.slice(0, mFloor.index); }
@@ -33,7 +28,6 @@ const parseMapName = (name) => {
   return out;
 };
 
-// ✅ تکمیل از نام پوشه‌های مسیر در صورت کمبود
 const parseMapInfo = (full) => {
   const out = parseMapName(String(full).split('\\').pop());
   if (!out.block) { const m = String(full).match(/بلوک[\s_\-]*([A-Ca-c])/); if (m) out.block = m[1].toUpperCase(); }
@@ -42,7 +36,6 @@ const parseMapInfo = (full) => {
   return out;
 };
 
-// ✅ واریانت‌های لایهٔ متن دستگاه: FanCoil-Num / FanCoil-Text / FanCoilNumbers و…
 const ruleForLayer = (rules, L) => {
   let r = rules.find((r) => !r.IsBase && likeTest(r.LayerLike, L));
   if (r) return r;
@@ -55,7 +48,7 @@ const ruleForLayer = (rules, L) => {
   }) || null;
 };
 
-export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
+export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, defaults = {} }) {
   const [building, setBuilding] = useState(defaults.building || '');
   const [block, setBlock] = useState(defaults.block || '');
   const [floor, setFloor] = useState(defaults.floor || '');
@@ -77,23 +70,27 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
   const [centerMode, setCenterMode] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [chosenDwg, setChosenDwg] = useState('');
-  const [defineOpen, setDefineOpen] = useState(false);
-  const [defineForm, setDefineForm] = useState(null);
+
+  // ✅ زوم و pan
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
+
   const boxRef = useRef(null);
 
   const fetchSvg = async (url) => {
     const res = await fetch(url + '?v=' + Date.now());
     const t = await res.text();
     setSvgText(t);
+    setZoom(1); setPan({ x: 0, y: 0 });
   };
 
   const load = async (b = building, bl = block, f = floor) => {
-    if (!b || !f) { alert('لطفاً «ساختمان» و «طبقه» را وارد کنید تا نقشه بارگذاری شود.'); return; }
+    if (!b || !f) { alert('لطفاً «ساختمان» و «طبقه» را وارد کنید.'); return; }
     try {
       let res = await fetch(`/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`);
       let d = await res.json();
       if (!d.success) { alert('خطا: ' + d.error); return; }
-      // ✅ اگر نقشه‌ای ثبت نشده و فایلی انتخاب شده، همین حالا ثبت شود
       if (!d.map && chosenDwg) {
         await fetch('/api/maps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building: b, block: bl, floor: f, dwgPath: chosenDwg }) });
         res = await fetch(`/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`);
@@ -103,7 +100,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       setMap(d.map || null); setTags(d.tags || []); setHashChanged(!!d.hashChanged);
       setCenter(d.map && d.map.CenterX != null ? { x: d.map.CenterX, y: d.map.CenterY } : null);
       if (d.map && d.svgUrl) fetchSvg(d.svgUrl); else setSvgText('');
-      // ✅ واکنش خودکار: اولین تبدیل بلافاصله انجام شود
       if (d.map && d.hashChanged && !d.map.SvgPath) {
         const c = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: d.map.MapID, force: true }) });
         const cd = await c.json();
@@ -133,7 +129,6 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     setBusy(false);
   };
 
-  // ✅ انتخاب فایل DWG + تشخیص خودکار ساختمان/بلوک/طبقه
   const selectDwg = (full) => {
     const nm = parseMapInfo(full);
     if (nm.building) setBuilding(nm.building);
@@ -146,15 +141,14 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     else load(b, nm.block || block, f);
   };
 
-  // ✅ تشخیص ورودی از روی ناحیه نسبت به مرکز (فقط ساختمان مرکزی)
   const detectEntrance = (tag) => {
     if (!center || !tag) return '';
     if (!String(building).includes('مرکزی')) return '';
-    const dx = tag.x - center.x, dy = tag.y - center.y; // در SVG: شمال = dy منفی
-    if (dx < 0 && dy < 0) return '1'; // شمال غربی
-    if (dx < 0 && dy >= 0) return '2'; // جنوب غربی
-    if (dx >= 0 && dy >= 0) return '3'; // جنوب شرقی
-    return '4'; // شمال شرقی
+    const dx = tag.x - center.x, dy = tag.y - center.y;
+    if (dx < 0 && dy < 0) return '1';
+    if (dx < 0 && dy >= 0) return '2';
+    if (dx >= 0 && dy >= 0) return '3';
+    return '4';
   };
 
   const applyLayerAnswers = async () => {
@@ -175,7 +169,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     const items = newOnMap.filter((t) => checked[t.text]).map((t) => {
       const r = ruleForLayer(rules, t.layer);
       const tag = tags.find((x) => x.text === t.text);
-      return { text: t.text, deviceType: r ? r.DeviceType : (deviceType || 'نامشخص'), entrance: detectEntrance(tag) };
+      return { text: t.text, deviceType: r ? r.DeviceType : deviceType || 'نامشخص', entrance: detectEntrance(tag) };
     });
     if (!items.length) return;
     const res = await fetch('/api/maps/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building, block, floor, items }) });
@@ -190,17 +184,7 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
     alert('دستگاه‌های حذف‌شده از نقشه، «ناموجود» علامت‌گذاری شدند (سابقه حفظ شد).');
   };
 
-  const saveDefine = async () => {
-    const res = await fetch('/api/maps/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      building, block, floor,
-      items: [{ text: defineForm.tag, deviceType: defineForm.deviceType, entrance: defineForm.entrance, location: defineForm.location, assetNumber: defineForm.assetNumber }]
-    }) });
-    const d = await res.json();
-    if (d.success && d.ids.length) { setDefineOpen(false); setDefineForm(null); onPickAsset(d.ids[0]); }
-    else alert('خطا: ' + d.error);
-  };
-
-  // ✅ نمایش لایه‌ها: پایه همیشه + لایه‌های نوع دستگاه انتخابی (با واریانت‌ها)
+  // نمایش لایه‌ها
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     box.querySelectorAll('g[data-layer]').forEach((g) => {
@@ -209,13 +193,19 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       const r = ruleForLayer(rules, l);
       g.style.display = isB || (r && deviceType && r.DeviceType === deviceType) ? '' : 'none';
     });
-    box.querySelectorAll('text[data-tag]').forEach((t) => { t.style.cursor = 'pointer'; t.setAttribute('fill', '#c0392b'); t.setAttribute('stroke', 'none'); });
+    box.querySelectorAll('text[data-tag]').forEach((t) => {
+      t.style.cursor = 'pointer'; t.setAttribute('fill', '#c0392b'); t.setAttribute('stroke', 'none');
+      t.setAttribute('pointer-events', 'all');
+    });
   }, [svgText, rules, deviceType]);
 
-  // ✅ کلیک: حالت تعیین مرکز + انتخاب/تعریف دستگاه
+  // ✅ کلیک روی برچسب: چک تطابق کامل → انتخاب یا باز کردن مودال دستگاه‌ها با فیلدهای پیش‌پر
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
-    const onClick = (e) => {
+    const onClick = async (e) => {
+      // اگر کاربر درگ کرده، این کلیک را نادیده بگیر
+      if (dragRef.current.moved) { dragRef.current.moved = false; return; }
+      // حالت تعیین مرکز
       if (centerMode && map) {
         const svgEl = box.querySelector('svg');
         if (svgEl && svgEl.createSVGPoint) {
@@ -223,12 +213,10 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
           const m = svgEl.getScreenCTM();
           if (m) {
             const p = pt.matrixTransform(m.inverse());
-            (async () => {
-              await fetch('/api/maps/center', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: map.MapID, x: p.x, y: p.y }) });
-              setCenter({ x: p.x, y: p.y });
-              setCenterMode(false);
-              alert('مرکز نقشه تنظیم شد؛ تشخیص ورودی‌ها از این پس بر اساس این مرکز است.');
-            })();
+            await fetch('/api/maps/center', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: map.MapID, x: p.x, y: p.y }) });
+            setCenter({ x: p.x, y: p.y });
+            setCenterMode(false);
+            alert('مرکز نقشه تنظیم شد.');
             return;
           }
         }
@@ -236,22 +224,71 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
       const el = e.target.closest('[data-tag]'); if (!el) return;
       const txt = el.getAttribute('data-tag');
       const tag = tags.find((t) => t.text === txt);
-      if (tag && tag.AssetID) { onPickAsset(tag.AssetID); return; }
       const layer = tag ? tag.Layer : '';
       const r = ruleForLayer(rules, layer);
-      if (confirm(`دستگاه «${txt}» در دیتابیس نیست. آیا تعریف شود؟`)) {
-        setDefineForm({
-          deviceType: r ? r.DeviceType : (deviceType || ''),
-          tag: txt, building, block, floor,
-          entrance: detectEntrance(tag),
-          location: '', assetNumber: '',
+      const inferredType = r ? r.DeviceType : (deviceType || '');
+      const numMatch = txt.match(/^\s*-?\d+(?:\.\d+)?\s*$/);
+      const deviceNumber = numMatch ? String(parseInt(txt, 10)) : '';
+
+      // چک تطابق کامل در دیتابیس
+      try {
+        const res = await fetch('/api/assets/match-or-prefill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceType: inferredType,
+            deviceNumber,
+            building, block, floor,
+            entrance: detectEntrance(tag),
+            location: '',
+            mechSystem: '',
+            mapTag: txt,
+          }),
         });
-        setDefineOpen(true);
+        const d = await res.json();
+        if (d.found) {
+          if (onPickAsset) onPickAsset(d.assetId);
+        } else if (onOpenDefineDevice) {
+          onOpenDefineDevice(d.preset);
+        } else {
+          alert(`دستگاه «${txt}» در دیتابیس نیست و مودال دستگاه در دسترس نمی‌باشد.`);
+        }
+      } catch (err) {
+        alert('خطا در بررسی دستگاه: ' + err.message);
       }
     };
     box.addEventListener('click', onClick);
     return () => box.removeEventListener('click', onClick);
-  }, [tags, rules, building, block, floor, center, centerMode, map, deviceType]);
+  }, [tags, rules, building, block, floor, center, centerMode, map, deviceType, onPickAsset, onOpenDefineDevice]);
+
+  // ✅ کنترل‌های زوم و pan
+  const onWheel = (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setZoom((z) => Math.min(8, Math.max(0.2, z * factor)));
+  };
+  const onPointerDown = (e) => {
+    if (e.button !== 0) return;
+    dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.lastX;
+    const dy = e.clientY - dragRef.current.lastY;
+    const totalDx = Math.abs(e.clientX - dragRef.current.startX);
+    const totalDy = Math.abs(e.clientY - dragRef.current.startY);
+    if (totalDx > 4 || totalDy > 4) dragRef.current.moved = true;
+    dragRef.current.lastX = e.clientX; dragRef.current.lastY = e.clientY;
+    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+  };
+  const onPointerUp = (e) => {
+    dragRef.current.active = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+  const zoomIn = () => setZoom((z) => Math.min(8, z * 1.25));
+  const zoomOut = () => setZoom((z) => Math.max(0.2, z / 1.25));
+  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
   const inp = 'search-input';
 
@@ -275,46 +312,26 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
           </label>
           <button className="btn-primary" onClick={() => load()}>بارگذاری</button>
           <button className="btn-success" onClick={() => setShowBrowse(true)}>📂 مرور فایل نقشه…</button>
-          {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ فایل اتوکد تغییر کرده — همگام‌سازی</button>}
-          {map && <button className="btn-primary" disabled={busy} onClick={convert} title="تبدیل مجدد نقشه">🔄</button>}
-          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز نقشه برای تشخیص ورودی‌ها">🎯</button>}
+          {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ همگام‌سازی</button>}
+          {map && <button className="btn-primary" disabled={busy} onClick={convert} title="تبدیل مجدد">🔄</button>}
+          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز">🎯</button>}
         </div>
 
         {unknown.length > 0 && (
           <div className="bg-[#F7C4A5] rounded p-3 mb-2">
-            <b>لایه‌های ناشناخته یافت شد؛ برای هر لایه نوع دستگاه را مشخص کنید:</b>
+            <b>لایه‌های ناشناخته:</b>
             {unknown.map((l) => (
               <div key={l} className="flex gap-2 items-center mt-2">
                 <span className="text-sm font-bold w-40">{l}</span>
                 <select className={inp} value={answers[l] || ''} onChange={(e) => setAnswers({ ...answers, [l]: e.target.value })}>
                   <option value="">(انتخاب)</option>
-                  {deviceTypes.map((t) => <option key={t} value={t}>{t} (نوع موجود)</option>)}
+                  {deviceTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                   <option value="__new__">نوع جدید…</option>
                 </select>
                 {answers[l] === '__new__' && <input className={inp} placeholder="نام نوع جدید" value={newNames[l] || ''} onChange={(e) => setNewNames({ ...newNames, [l]: e.target.value })} />}
               </div>
             ))}
             <button className="btn-success mt-2" onClick={applyLayerAnswers}>ذخیرهٔ نگاشت و تبدیل مجدد</button>
-          </div>
-        )}
-
-        {defineOpen && defineForm && (
-          <div className="bg-[#e6f3ef] border border-teal-600 rounded p-3 mb-2">
-            <b>تعریف دستگاه جدید (فیلدها خودکار پر شده‌اند):</b>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-              <label className="text-xs font-bold">نوع دستگاه<input className={inp} value={defineForm.deviceType} onChange={(e) => setDefineForm({ ...defineForm, deviceType: e.target.value })} /></label>
-              <label className="text-xs font-bold">برچسب<input className={inp} value={defineForm.tag} readOnly /></label>
-              <label className="text-xs font-bold">ساختمان<input className={inp} value={defineForm.building} onChange={(e) => setDefineForm({ ...defineForm, building: e.target.value })} /></label>
-              <label className="text-xs font-bold">بلوک<input className={inp} value={defineForm.block} onChange={(e) => setDefineForm({ ...defineForm, block: e.target.value })} /></label>
-              <label className="text-xs font-bold">طبقه<input className={inp} value={defineForm.floor} onChange={(e) => setDefineForm({ ...defineForm, floor: e.target.value })} /></label>
-              <label className="text-xs font-bold">ورودی<input className={inp} value={defineForm.entrance} onChange={(e) => setDefineForm({ ...defineForm, entrance: e.target.value })} /></label>
-              <label className="text-xs font-bold">محل<input className={inp} value={defineForm.location} onChange={(e) => setDefineForm({ ...defineForm, location: e.target.value })} /></label>
-              <label className="text-xs font-bold">شماره دستگاه<input className={inp} value={defineForm.assetNumber} onChange={(e) => setDefineForm({ ...defineForm, assetNumber: e.target.value })} /></label>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <button className="btn-success" onClick={saveDefine}>ثبت دستگاه و انتخاب</button>
-              <button className="btn-danger" onClick={() => { setDefineOpen(false); setDefineForm(null); }}>انصراف</button>
-            </div>
           </div>
         )}
 
@@ -335,14 +352,43 @@ export default function MapModal({ onPickAsset, onClose, defaults = {} }) {
           <div className="bg-[#FC7470]/30 border border-red-500 rounded p-3 mb-2">
             <b>در دیتابیس هستند ولی روی نقشهٔ جدید نیستند:</b>
             {orphan.map((o) => <div key={o.assetId} className="text-sm">کد {o.assetId} — {o.tag}</div>)}
-            <button className="btn-danger mt-2" onClick={deactivateOrphans}>علامت «ناموجود در نقشه» (حفظ سابقه)</button>
+            <button className="btn-danger mt-2" onClick={deactivateOrphans}>علامت «ناموجود» (حفظ سابقه)</button>
           </div>
         )}
 
-        <div ref={boxRef} className="bg-white rounded border border-gray-400 overflow-auto" style={{ height: '55vh' }}
-          dangerouslySetInnerHTML={{ __html: svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }} />
+        {/* ✅ کانتینر نقشه با زوم و pan */}
+        <div ref={boxRef}
+          className="relative bg-white rounded border border-gray-400 overflow-hidden select-none"
+          style={{ height: '60vh', cursor: dragRef.current.active ? 'grabbing' : 'grab' }}
+          onWheel={onWheel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {/* دکمه‌های زوم */}
+          <div className="absolute top-2 left-2 z-20 flex flex-col gap-1 bg-white/90 rounded shadow p-1" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="btn-primary px-2 py-1 text-sm" onClick={zoomIn} title="بزرگ‌نمایی">+</button>
+            <button type="button" className="btn-primary px-2 py-1 text-sm" onClick={zoomOut} title="کوچک‌نمایی">−</button>
+            <button type="button" className="btn-primary px-2 py-1 text-sm" onClick={resetView} title="بازنشانی">⟲</button>
+          </div>
+          <div className="absolute top-2 right-2 z-20 bg-white/90 rounded shadow px-2 py-1 text-xs font-bold">
+            زوم: {Math.round(zoom * 100)}٪
+          </div>
+
+          {/* لایهٔ قابل تبدیل (zoom + pan) */}
+          <div
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              width: 'fit-content',
+              willChange: 'transform',
+            }}
+            dangerouslySetInnerHTML={{ __html: svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }}
+          />
+        </div>
         <div className="text-[11px] text-gray-600 mt-1">
-          کلیک روی برچسب: انتخاب دستگاه موجود یا تعریف دستگاه جدید | 🎯 تعیین مرکز برای تشخیص ورودی‌ها | لایه‌های دیوار/پارتیشن همیشه روشن‌اند.
+          چرخ ماوس = زوم | کشیدن = جابه‌جایی | کلیک روی برچسب قرمز = انتخاب یا باز شدن فرم دستگاه
         </div>
       </div>
 
