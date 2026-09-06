@@ -4,6 +4,7 @@ import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
 import persian_fa from 'react-date-object/locales/persian_fa';
 import useDraftGuard from './useDraftGuard';
+import TodayPlugin from './TodayPlugin';
 
 const shamsiStamp = () => '\u200F✏ ' + new DateObject({ calendar: persian }).format('YYYY.MM.DD') + ' ';
 const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
@@ -301,7 +302,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <DatePicker value={toPicker(start)} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
-                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
+                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
                 </div>
                 <div className="w-44 shrink-0"><TimeInput value={start} onChange={changeStartTime} /></div>
               </div>
@@ -311,7 +312,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <DatePicker value={toPicker(end)} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
-                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
+                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
                 </div>
                 <div className="w-44 shrink-0"><TimeInput value={end} onChange={changeEndTime} /></div>
               </div>

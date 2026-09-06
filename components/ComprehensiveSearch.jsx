@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import DatePicker from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
 import persian_fa from 'react-date-object/locales/persian_fa';
+import TodayPlugin from './TodayPlugin';
 
 const toEn = (s) => String(s)
   .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
@@ -206,11 +207,11 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         ))}
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">زمان آغاز:</span>
-          <DatePicker value={start} onChange={(d) => setStart(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" />
+          <DatePicker value={start} onChange={(d) => setStart(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" plugins={[<TodayPlugin />]} />
         </div>
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">زمان پایان:</span>
-          <DatePicker value={end} onChange={(d) => setEnd(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" />
+          <DatePicker value={end} onChange={(d) => setEnd(d ? d.toDate() : null)} calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass="search-input" plugins={[<TodayPlugin />]} />
         </div>
       </div>
 

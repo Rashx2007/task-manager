@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
 import persian_fa from 'react-date-object/locales/persian_fa';
+import TodayPlugin from './TodayPlugin';
 
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم', 'زمان انجام ثابت'];
 
@@ -369,7 +370,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
             <div onKeyDown={(e) => onDateArrow(e, 'start')}>
               <label className="block text-sm font-bold mb-1">تاریخ شروع (سررسید)</label>
               <DatePicker value={start} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
+                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت شروع</label>
@@ -378,7 +379,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
             <div onKeyDown={(e) => onDateArrow(e, 'end')}>
               <label className="block text-sm font-bold mb-1">تاریخ پایان</label>
               <DatePicker value={effEnd} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} />
+                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin />]} />
             </div>
             <div>
               <label className="block text-sm font-bold mb-1">ساعت پایان</label>
