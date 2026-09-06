@@ -164,9 +164,16 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const [minutes, setMinutes] = useState('30');
   const [start, setStart] = useState(new Date());
   const [end, setEnd] = useState(new Date());
-  // طراحی اشتقاقی: تا وقتی پایان دستی تغییر نکرده، پایان همیشه برابر شروع است
-  const [endTouched, setEndTouched] = useState(false);
-  const effEnd = endTouched ? end : new Date(start.getTime());
+  // ✅ طراحی اشتقاقی با تفکیک: تاریخ پایان و ساعت/دقیقهٔ پایان مستقل از هم پیروی می‌کنند
+  const [endDateTouched, setEndDateTouched] = useState(false);
+  const [endTimeTouched, setEndTimeTouched] = useState(false);
+  const effEndDate = endDateTouched ? end : start;
+  const effEnd = new Date(effEndDate);
+  effEnd.setHours(
+    endTimeTouched ? end.getHours() : start.getHours(),
+    endTimeTouched ? end.getMinutes() : start.getMinutes(),
+    0, 0
+  );
   const startRef = useRef(start); startRef.current = start;
   const endRef = useRef(effEnd); endRef.current = effEnd;
   const [busy, setBusy] = useState(false);
@@ -178,19 +185,19 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const changeStartDate = (d) => {
     const nd = new Date(d); nd.setHours(start.getHours(), start.getMinutes(), 0, 0);
     setStart(nd);
-    setEndTouched(false);
+    setEndDateTouched(false); // فقط تاریخ پایان از start پیروی می‌کند؛ ساعت دست‌نخورده می‌ماند
   };
   const changeStartTime = (t) => {
     setStart(t);
-    setEndTouched(false);
+    setEndTimeTouched(false); // فقط ساعت/دقیقهٔ پایان از start پیروی می‌کند؛ تاریخ دست‌نخورده می‌ماند
   };
   // تغییر دستی پایان → استقلال پایان
   const changeEndDate = (d) => {
     const nd = new Date(d); nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
     setEnd(nd);
-    setEndTouched(true);
+    setEndDateTouched(true);
   };
-  const changeEndTime = (t) => { setEnd(t); setEndTouched(true); };
+  const changeEndTime = (t) => { setEnd(t); setEndTimeTouched(true); };
 
   // فلش بالا/پایین روی المان تاریخ: سال/ماه/روز بسته به جای نشانگر (شمسی)
   const onDateArrow = (e, which) => {
@@ -240,8 +247,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           const sd = fromWall(src.TDDue || src.DueDateTime);
           const ed = fromWall(src.TDEnd || src.EndDateTime);
           if (sd) setStart(sd);
-          if (ed) { setEnd(ed); setEndTouched(true); } // نمایش پایانِ ذخیره‌شده؛ با دست‌زدن به شروع، همگام می‌شود
-        }
+          if (ed) { setEnd(ed); setEndDateTouched(true); setEndTimeTouched(true); } // نمایش پایانِ ذخیره‌شده؛ با دست‌زدن به تاریخ/ساعت شروع، مولفهٔ مربوطه همگام می‌شود        }
       } catch {}
     })();
     fetch('/api/load-data?type=fixed').then((r) => r.json()).then((d) => { if (d.success) setFixedRows(d.data || []); }).catch(() => {});
