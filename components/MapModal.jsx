@@ -191,7 +191,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       const l = g.getAttribute('data-layer');
       const isB = rules.some((r) => r.IsBase && likeTest(r.LayerLike, l));
       const r = ruleForLayer(rules, l);
-      g.style.display = isB || (r && deviceType && r.DeviceType === deviceType) ? '' : 'none';
+      g.style.display = isB || (r && (!deviceType || r.DeviceType === deviceType)) ? '' : 'none';
     });
     box.querySelectorAll('text[data-tag]').forEach((t) => {
       t.style.cursor = 'pointer'; t.setAttribute('fill', '#c0392b'); t.setAttribute('stroke', 'none');
@@ -377,11 +377,12 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </div>
 
           {/* لایهٔ قابل تبدیل (zoom + pan) */}
+          <style>{`.mapzoom-wrap{width:100%;height:100%;} .mapzoom-wrap svg{width:100%;height:100%;display:block;}`}</style>
           <div
+            className="mapzoom-wrap"
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: '0 0',
-              width: 'fit-content',
               willChange: 'transform',
             }}
             dangerouslySetInnerHTML={{ __html: svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }}
