@@ -1,0 +1,107 @@
+/* globals.css — سازگار با Tailwind v4 (Next.js 16) */
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
+@import "tailwindcss";
+
+* {
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+}
+
+body {
+  direction: rtl;
+  background-color: #CCE6DF;
+}
+
+/* ---------- جدول کارها ---------- */
+.task-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.task-table th {
+  background-color: #F7C4A5;
+  color: #000;
+  font-weight: bold;
+  padding: 8px;
+  border: 1px solid #000;
+  font-size: 14px;
+}
+
+.task-table td {
+  padding: 8px;
+  border: 1px solid #9ca3af;
+  font-size: 14px;
+}
+
+.task-table tbody tr:nth-child(even) { background-color: #CCDAD1; }
+.task-table tbody tr:nth-child(odd)  { background-color: #867B8A; }
+.task-table tbody tr:hover { background-color: #FC7470; cursor: pointer; }
+
+/* ---------- رنگ اولویت‌ها ---------- */
+.priority-0 { background-color: #ef4444; color: #000; }  /* آنی */
+.priority-1 { background-color: #facc15; color: #000; }  /* خیلی بالا */
+.priority-2 { background-color: #fb923c; color: #000; }  /* بالا */
+.priority-3 { background-color: #3b82f6; color: #fff; }  /* متوسط */
+.priority-4 { background-color: #86efac; color: #000; }  /* کم */
+.priority-5 { background-color: #6b8e23; color: #000; }  /* خیلی کم */
+
+/* ---------- دکمه‌ها ---------- */
+.btn-primary {
+  background-color: #F7C4A5;
+  color: #000;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgb(0 0 0 / 0.1);
+  transition: background-color 0.2s;
+}
+.btn-primary:hover { background-color: #F0A87A; }
+
+.btn-danger {
+  background-color: #ef4444;
+  color: #fff;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+.btn-danger:hover { background-color: #dc2626; }
+
+.btn-success {
+  background-color: #22c55e;
+  color: #fff;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+.btn-success:hover { background-color: #16a34a; }
+
+/* ---------- فیلدهای فرم ---------- */
+.input-field {
+  width: 100%;
+  padding: 8px;
+  border: 2px solid #F7C4A5;
+  border-radius: 4px;
+  background-color: #F7C4A5;
+}
+.input-field:focus {
+  background-color: #fff;
+  border-color: #0d9488;
+  outline: none;
+}
+
+.search-input {
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background-color: #C5D5C5;
+}
+.search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #14b8a6;
+}
+/* ---------- تقویم شمسی بالای مودال ---------- */
+.rmdp-container { z-index: 70; }
+
+/* جلوگیری از قرار گرفتن انتخابگر تاریخ روی مودال‌ها */
+.rmdp-container { z-index: 10 !important; }

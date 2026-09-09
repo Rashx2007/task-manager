@@ -83,6 +83,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [centerMode, setCenterMode] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [chosenDwg, setChosenDwg] = useState('');
+  const [statusMsg, setStatusMsg] = useState('');
 
   // ✅ state جمع‌شوندگی بخش‌ها
   const [open, setOpen] = useState({ unknown: true, newOnMap: true, orphan: true });
@@ -98,11 +99,13 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const boxRef = useRef(null);
 
   const fetchSvg = async (url) => {
-    const res = await fetch(url + '?v=' + Date.now());
-    const t = await res.text();
-    setSvgText(t);
-    setZoom(1); setPan({ x: 0, y: 0 });
-    zoomRef.current = 1; panRef.current = { x: 0, y: 0 };
+    try {
+      const res = await fetch(url + '?v=' + Date.now());
+      const t = await res.text();
+      setSvgText(t);
+      setZoom(1); setPan({ x: 0, y: 0 });
+      zoomRef.current = 1; panRef.current = { x: 0, y: 0 };
+    } catch {}
   };
 
   const load = async (b = building, bl = block, f = floor) => {
@@ -204,7 +207,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     alert('دستگاه‌های حذف‌شده از نقشه، «ناموجود» علامت‌گذاری شدند (سابقه حفظ شد).');
   };
 
-  // ✅ نمایش لایه‌ها + رسم نقطهٔ مرکز
+  // ✅ نمایش لایه‌ها + رسم نقطهٔ مرکز روی SVG
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     box.querySelectorAll('g[data-layer]').forEach((g) => {
@@ -214,11 +217,12 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       g.style.display = isB || (r && (!deviceType || r.DeviceType === deviceType)) ? '' : 'none';
     });
     box.querySelectorAll('text[data-tag]').forEach((t) => {
-      t.style.cursor = 'pointer'; t.setAttribute('fill', '#c0392b'); t.setAttribute('stroke', 'none');
+      t.style.cursor = 'pointer';
+      t.setAttribute('fill', '#c0392b');
+      t.setAttribute('stroke', 'none');
       t.setAttribute('pointer-events', 'all');
     });
 
-    // ✅ حذف مرکز قبلی و رسم مجدد (اگر مرکز و نقشه موجودند)
     const existing = box.querySelector('#map-center-marker');
     if (existing) existing.remove();
     if (center && map) {
@@ -227,37 +231,34 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         const ns = 'http://www.w3.org/2000/svg';
         const g = document.createElementNS(ns, 'g');
         g.id = 'map-center-marker';
-        g.setAttribute('style', 'pointer-events:none;opacity:0.6;');
+        g.setAttribute('style', 'pointer-events:none;opacity:0.7;');
         const circle = document.createElementNS(ns, 'circle');
         circle.setAttribute('cx', center.x);
         circle.setAttribute('cy', center.y);
-        circle.setAttribute('r', 12);
+        circle.setAttribute('r', 10);
         circle.setAttribute('fill', '#dc2626');
         circle.setAttribute('stroke', '#fff');
         circle.setAttribute('stroke-width', 2);
         g.appendChild(circle);
         const txt = document.createElementNS(ns, 'text');
         txt.setAttribute('x', center.x);
-        txt.setAttribute('y', center.y + 30);
+        txt.setAttribute('y', center.y + 28);
         txt.setAttribute('text-anchor', 'middle');
         txt.setAttribute('fill', '#dc2626');
         txt.setAttribute('font-size', '11');
         txt.setAttribute('font-weight', 'bold');
-        txt.textContent = 'مرکز نقشه';
+        txt.textContent = 'مرکز';
         g.appendChild(txt);
-        // اگر در حالت تعیین مرکز است، خطوط چهارگانه ناحیه‌ها هم نمایش داده شود
         if (centerMode) {
           const vb = svgEl.viewBox.baseVal;
-          const w = vb.width || svgEl.clientWidth || 1400;
-          const h = vb.height || svgEl.clientHeight || 900;
-          [['NW', '#0d9488'], ['NE', '#0891b2'], ['SW', '#ca8a04'], ['SE', '#7c3aed']].forEach(([, c]) => {
-            const line = document.createElementNS(ns, 'line');
-            line.setAttribute('x1', 0); line.setAttribute('y1', center.y);
-            line.setAttribute('x2', w); line.setAttribute('y2', center.y);
-            line.setAttribute('stroke', c); line.setAttribute('stroke-width', 1);
-            line.setAttribute('stroke-dasharray', '4,4');
-            g.appendChild(line);
-          });
+          const w = vb && vb.width ? vb.width : 1400;
+          const h = vb && vb.height ? vb.height : 900;
+          const hLine = document.createElementNS(ns, 'line');
+          hLine.setAttribute('x1', 0); hLine.setAttribute('y1', center.y);
+          hLine.setAttribute('x2', w); hLine.setAttribute('y2', center.y);
+          hLine.setAttribute('stroke', '#dc2626'); hLine.setAttribute('stroke-width', 1);
+          hLine.setAttribute('stroke-dasharray', '4,4');
+          g.appendChild(hLine);
           const vLine = document.createElementNS(ns, 'line');
           vLine.setAttribute('x1', center.x); vLine.setAttribute('y1', 0);
           vLine.setAttribute('x2', center.x); vLine.setAttribute('y2', h);
@@ -286,7 +287,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
             await fetch('/api/maps/center', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: map.MapID, x: p.x, y: p.y }) });
             setCenter({ x: p.x, y: p.y });
             setCenterMode(false);
-            alert('مرکز نقشه تنظیم شد.');
+            setStatusMsg('مرکز نقشه تنظیم شد.');
+            setTimeout(() => setStatusMsg(''), 2000);
             return;
           }
         }
@@ -294,12 +296,18 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       const el = e.target.closest('[data-tag]'); if (!el) return;
       const txt = el.getAttribute('data-tag');
       const tag = tags.find((t) => t.text === txt);
-      if (tag && tag.AssetID) { if (onPickAsset) onPickAsset(tag.AssetID); return; }
+      // ✅ اگر دستگاه از قبل روی این برچسب لینک شده است، انتخاب مستقیم
+      if (tag && tag.AssetID) {
+        if (onPickAsset) onPickAsset(tag.AssetID);
+        return;
+      }
       const layer = tag ? tag.Layer : '';
       const r = ruleForLayer(rules, layer);
       const inferredType = r ? r.DeviceType : (deviceType || '');
       const numMatch = txt.match(/^\s*-?\d+(?:\.\d+)?\s*$/);
       const deviceNumber = numMatch ? String(parseInt(txt, 10)) : '';
+
+      // چک تطابق کامل در دیتابیس
       try {
         const res = await fetch('/api/assets/match-or-prefill', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -309,16 +317,22 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           }),
         });
         const d = await res.json();
-        if (d.found) { if (onPickAsset) onPickAsset(d.assetId); }
-        else if (onOpenDefineDevice) { onOpenDefineDevice(d.preset); }
-        else { alert(`دستگاه «${txt}» در دیتابیس نیست و مودال دستگاه در دسترس نمی‌باشد.`); }
-      } catch (err) { alert('خطا در بررسی دستگاه: ' + err.message); }
+        if (d.found) {
+          if (onPickAsset) onPickAsset(d.assetId);
+        } else if (onOpenDefineDevice) {
+          onOpenDefineDevice(d.preset);
+        } else {
+          alert(`دستگاه «${txt}» در دیتابیس نیست و مودال دستگاه در دسترس نمی‌باشد.`);
+        }
+      } catch (err) {
+        alert('خطا در بررسی دستگاه: ' + err.message);
+      }
     };
     box.addEventListener('click', onClick);
     return () => box.removeEventListener('click', onClick);
   }, [tags, rules, building, block, floor, center, centerMode, map, deviceType, onPickAsset, onOpenDefineDevice]);
 
-  // ✅ کنترل زوم با wheel (با passive:false برای preventDefault واقعی)
+  // ✅ کنترل زوم با wheel (passive:false برای preventDefault واقعی)
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     const onWheel = (e) => {
@@ -334,7 +348,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     return () => box.removeEventListener('wheel', onWheel);
   }, []);
 
-  // ✅ کنترل drag/pan با pointer events
+  // ✅ کنترل drag/pan
   const onPointerDown = (e) => {
     if (e.button !== 0) return;
     dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
@@ -382,8 +396,10 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <button className="btn-success" onClick={() => setShowBrowse(true)}>📂 مرور فایل نقشه…</button>
           {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ همگام‌سازی</button>}
           {map && <button className="btn-primary" disabled={busy} onClick={convert} title="تبدیل مجدد">🔄</button>}
-          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز نقشه برای تشخیص ورودی‌ها (با کلیک)">🎯</button>}
+          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز نقشه برای تشخیص ورودی‌ها">🎯</button>}
         </div>
+
+        {statusMsg && <div className="mb-2 bg-teal-100 text-teal-900 rounded px-2 py-1 text-sm">{statusMsg}</div>}
 
         {/* ✅ بخش جمع‌شونده: لایه‌های ناشناخته */}
         {unknown.length > 0 && (
@@ -426,7 +442,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </Sec>
         )}
 
-        {/* ✅ کانتینر نقشه با زوم/pan (wheel listener از طریق useEffect با passive:false) */}
+        {/* ✅ کانتینر نقشه با زوم/pan */}
         <div ref={boxRef}
           className="relative bg-white rounded border border-gray-400 overflow-hidden select-none"
           style={{ height: '60vh', cursor: dragRef.current.active ? 'grabbing' : 'grab' }}
@@ -444,7 +460,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <div className="absolute top-2 right-2 z-20 bg-white/90 rounded shadow px-2 py-1 text-xs font-bold">
             زوم: {Math.round(zoom * 100)}٪
             {center && <span className="mr-2 text-red-600">🎯</span>}
-            {centerMode && <span className="mr-2 text-orange-600">🖱 کلیک روی نقشه</span>}
+            {centerMode && <span className="mr-2 text-orange-600">کلیک روی نقشه</span>}
           </div>
           <div className="mapzoom-wrap"
             style={{

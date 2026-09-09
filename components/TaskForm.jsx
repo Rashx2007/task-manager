@@ -1,248 +1,807 @@
-'use client';
-import { useState, useEffect, useRef } from 'react';
-import TimeDateModal from './TimeDateModal';
-import FollowModal from './FollowModal';
-import ApplicantFunctorModal from './ApplicantFunctorModal';
-import AssetsModal from './AssetsModal';
-import MapModal from './MapModal';
-import FolderModal from './FolderModal';
-import SupplierModal from './SupplierModal';
+## 📁 فایل کامل: `components/TaskForm.jsx` — نسخهٔ شما با دو تغییر کوچک
 
-const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم', 'زمان انجام ثابت'];
-const TASK_TYPES = ['اصلاحی', 'نگهداری', 'نصب', 'راه‌اندازی', 'بازسازی', 'سایر'];
+این همان کد شماست که دو تغییر کوچک در بلوک‌های `showAssetPicker` و `showMap` اعمال شده تا پس از انتخاب/ثبت دستگاه از نقشه، لیست دستگاه‌ها دوباره از سرور لود شود و `assetSpec` بتواند دستگاه جدید را نمایش دهد.
 
-const emptyForm = () => ({
-  TaskTtl: '', Descriptions: '', tskType: '', IsConsiderableAction: 'اقدام', Temporary: 0,
-  Priorities: '', Complited: 0, fixedDueTime: 0,
-  DueDateTime: '', EndDateTime: '', Durationtime: '',
-  AssetID: null, AssetDesc: '', ApplicantName: '', FunctorName: '',
-});
+```jsx
+"use client";
+import { useState, useEffect, useRef } from "react";
+import DatePicker, { DateObject } from "react-multi-date-picker";
+import persian from "react-date-object/calendars/persian";
+import persian_fa from "react-date-object/locales/persian_fa";
+import TimeDateModal from "./TimeDateModal";
+import ApplicantFunctorModal from "./ApplicantFunctorModal";
+import FollowModal from "./FollowModal";
+import SupplierModal from "./SupplierModal";
+import FolderModal from "./FolderModal";
+import AssetsModal from "./AssetsModal";
+import MapModal from "./MapModal";
+import useDraftGuard from "./useDraftGuard";
 
-const fmtFa = (v) => {
-  if (!v) return '';
-  try { return new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }); } catch { return String(v); }
+const PRIORITIES = [
+  "0.آنی",
+  "1.خیلی بالا",
+  "2.بالا",
+  "3.متوسط",
+  "4.کم",
+  "5.خیلی کم",
+];
+const TASK_TYPES = [
+  "خرید",
+  "اداری",
+  "BM تعمیراتی",
+  "CM اصلاحی",
+  "موتورخانه",
+  "PM نگهداری پیشگیرانه",
+  "پیشگیرانه",
+  "EM اضطراری",
+  "HSE",
+  "چک‌کردن فاکتورها",
+  "بهسازی سیستم‌ها",
+  "اقدامات",
+  "پروژه",
+  "بازسازی",
+  "اصلاح نقشه",
+  "آموزشی",
+  "رفاهی",
+  "پرسنلی (ورود و خروج)",
+  "پرسنلی (تشویق و تنبیه)",
+];
+const CONSIDERABLE = ["", "اقدام", "پروژه"];
+
+// ✅ رشتهٔ ساعت‌دیواری سرور → DateObject شمسی (زمان محلی — بدون شیفت ۳:۳۰)
+const toPicker = (wallStr) => {
+  if (!wallStr) return null;
+  const m = String(wallStr).match(
+    /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  if (isNaN(d.getTime())) return null;
+  return new DateObject({ date: d, calendar: persian, locale: persian_fa });
 };
 
-const buildAssetDesc = (d) => {
-  if (!d || !d.AssetID) return '';
-  const parts = [];
-  if (d.AssetName) parts.push(d.AssetName);
-  const loc = [d.Building, d.Block ? `بلوک: ${d.Block}` : '', d.Floor != null ? `طبقه: ${d.Floor}` : '', d.Entrance ? `ورودی: ${d.Entrance}` : ''].filter(Boolean).join('، ');
-  if (d.Location) parts.push(`قسمت: ${d.Location} (${loc})`);
-  else if (loc) parts.push(`(${loc})`);
-  if (d.AssetNumber != null) parts.push(`شماره دستگاه: ${d.AssetNumber}`);
-  return parts.join(' ');
+// ✅ DateObject شمسی → رشتهٔ ساعت‌دیواری (زمان محلی)
+const fromPicker = (d) => {
+  if (!d) return "";
+  const dt = d.toDate();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 };
 
-export default function TaskForm({ taskId, onClose, onSaved }) {
-  const [form, setForm] = useState(null);
-  const [editing, setEditing] = useState(!taskId);
+const assetSpec = (a) =>
+  `${a.AssetName}، قسمت: ${a.Location || "-"} (ساختمان ${a.Building || "-"}، بلوک: ${a.Block || "-"}، طبقه: ${a.Floor ?? "-"}، ورودی: ${a.Entrance || "-"}) شماره: ${a.AssetNumber ?? "-"} [کد:${a.AssetID}]`;
+
+export default function TaskForm({
+  initial = null,
+  defaultAssetId = null,
+  onClose,
+  onSaved,
+}) {
+  // ✅ TaskID داخل بدنهٔ کامپوننت — برای کار جدید پس از ذخیره ست می‌شود
+  const [currentTaskId, setCurrentTaskId] = useState(
+    initial ? initial.TaskID : null,
+  );
+  const isEdit = Boolean(currentTaskId);
+
+  const [assets, setAssets] = useState([]);
+  const [persons, setPersons] = useState([]);
   const [saving, setSaving] = useState(false);
   const [showTimeDate, setShowTimeDate] = useState(false);
-  const [showFollow, setShowFollow] = useState(false);
   const [showAFModal, setShowAFModal] = useState(false);
+  const [showFollow, setShowFollow] = useState(false);
   const [showSupplier, setShowSupplier] = useState(false);
   const [showFolder, setShowFolder] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [assetPreset, setAssetPreset] = useState(null);
-  const [completeAsk, setCompleteAsk] = useState(null);
-  const formRef = useRef(null);
+  const [completeAsk, setCompleteAsk] = useState(null); // دیالوگ «اتمام یافته؟» با پیش‌فرض انصراف
+  const askComplete = () =>
+    new Promise((resolve) => setCompleteAsk({ resolve }));
+  const [functorName, setFunctorName] = useState("");
+  const [assetQuery, setAssetQuery] = useState("");
+  const [form, setForm] = useState({
+    // ✅ مانند دسکتاپ: کار جدید با الویت «نامشخص» ثبت می‌شود
+    TaskTtl: "",
+    Descriptions: "",
+    Priorities: "نامشخص",
+    tskType: "",
+    IsConsiderableAction: "",
+    Complited: 0,
+    AssetID: "",
+    ApplicantName: "",
+    DueDateTime: "",
+    EndDateTime: "",
+    FixedDueTime: false,
+    RequestNumber: "",
+    RegisterNumber: "",
+    RequestDate: "",
+  });
 
-  const askComplete = () => new Promise((resolve) => setCompleteAsk({ resolve }));
+  const formRef = useRef(form);
+  formRef.current = form;
+  const timeDateClickedRef = useRef(false); // آیا کاربر در این دور خودش «الویت و زمان» را زده است؟
+  const autoTimeDateRef = useRef(false); // آیا مودال بعد از ویرایش خودکار باز شده است؟
+  const applicantClickedRef = useRef(false); // آیا کاربر در این دور خودش «درخواست‌کننده» را زده است؟
+  const pendingCloseAskRef = useRef(false); // پس از بسته‌شدن مودال خودکار، «بستن فرم؟» پرسیده شود؟
+  const { touch, markSaved } = useDraftGuard(
+    () => formRef.current.Descriptions || "",
+  );
 
-  const load = async () => {
-    if (!taskId) { setForm(emptyForm()); setEditing(true); return; }
+  useEffect(() => {
+    const p = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = p;
+    };
+  }, []);
+
+  // ✅ بستن فرم ویرایش با کلید Esc (فقط وقتی هیچ مودال فرزندی باز نیست)
+  useEffect(() => {
+    const anyChildOpen =
+      showTimeDate ||
+      showAFModal ||
+      showFollow ||
+      showSupplier ||
+      showFolder ||
+      showAssetPicker ||
+      showMap ||
+      !!completeAsk;
+    if (anyChildOpen) return;
+    const h = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [
+    onClose,
+    showTimeDate,
+    showAFModal,
+    showFollow,
+    showSupplier,
+    showFolder,
+    showAssetPicker,
+    showMap,
+  ]);
+
+  useEffect(() => {
+    fetch("/api/assets")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setAssets(d.data || []);
+      })
+      .catch(() => {});
+    fetch("/api/persons")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setPersons(d.data || []);
+      })
+      .catch(() => {});
+  }, []);
+
+  // ✅ بارگذاری رکورد کامل (فقط هنگام ویرایش کار موجود)
+  useEffect(() => {
+    if (!initial) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/tasks/${initial.TaskID}`);
+        const d = await res.json();
+        const src = d.success && d.data ? d.data : initial;
+        setForm({
+          TaskTtl: src.TaskTtl || "",
+          Descriptions: src.Descriptions || "",
+          Priorities: src.TDP || src.Priorities || "نامشخص",
+          tskType: src.tskType || "",
+          IsConsiderableAction: src.IsConsiderableAction || "",
+          Complited: Number(src.Complited) === 1 ? 1 : 0,
+          AssetID:
+            src.ResolvedAssetID || src.AssetID
+              ? String(src.ResolvedAssetID || src.AssetID)
+              : "",
+          ApplicantName: src.ApplicantName || "",
+          DueDateTime: src.TDDue || src.DueDateTime || "",
+          EndDateTime: src.TDEnd || src.EndDateTime || "",
+          FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
+          RequestNumber:
+            src.RequestNumber != null ? String(src.RequestNumber) : "",
+          RegisterNumber:
+            src.RegisterNumber != null ? String(src.RegisterNumber) : "",
+          RequestDate: src.RequestDate || "",
+        });
+      } catch {}
+      fetch(`/api/applicant-functor?taskId=${initial.TaskID}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.exists && d.data) {
+            setFunctorName(d.data.FunctorName || "");
+            setForm((f) => ({
+              ...f,
+              ApplicantName: d.data.ApplicantName || "",
+            }));
+          }
+        })
+        .catch(() => {});
+    })();
+  }, [initial]);
+
+  useEffect(() => {
+    if (!initial && defaultAssetId)
+      setForm((f) => ({ ...f, AssetID: String(defaultAssetId) }));
+  }, [initial, defaultAssetId]);
+  useEffect(() => {
+    if (form.AssetID) {
+      const a = assets.find((x) => String(x.AssetID) === String(form.AssetID));
+      if (a) setAssetQuery(assetSpec(a));
+    } else setAssetQuery("");
+  }, [form.AssetID, assets]);
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
+    if (name === "Descriptions") touch(value);
+  };
+
+  // ✅ بارگذاری مجدد اطلاعات زمان/الویت از دیتابیس (بعد از هر به‌روزرسانی در فرم الویت و زمان)
+  const reloadTimes = async () => {
+    if (!currentTaskId) return;
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
+      const res = await fetch(`/api/tasks/${currentTaskId}`);
       const d = await res.json();
       if (d.success && d.data) {
-        const s = d.data;
-        setForm({
-          ...emptyForm(),
-          TaskTtl: s.TaskTtl || '', Descriptions: s.Descriptions || '', tskType: s.tskType || '',
-          IsConsiderableAction: s.IsConsiderableAction || 'اقدام', Temporary: s.Temporary || 0,
-          Priorities: s.TDP || s.Priorities || '', Complited: Number(s.Complited || 0),
-          fixedDueTime: Number(s.fixedDueTime || s.FixedDueTime || 0),
-          DueDateTime: s.DueDateTime || '', EndDateTime: s.EndDateTime || '', Durationtime: s.Durationtime || '',
-          AssetID: s.AssetID || null, AssetDesc: s.AssetDesc || buildAssetDesc(s),
-          ApplicantName: s.ApplicantName || '', FunctorName: s.FunctorName || '',
-        });
+        const src = d.data;
+        setForm((f) => ({
+          ...f,
+          Priorities: src.TDP || src.Priorities || f.Priorities,
+          DueDateTime: src.TDDue || src.DueDateTime || "",
+          EndDateTime: src.TDEnd || src.EndDateTime || "",
+          FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
+        }));
       }
     } catch {}
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [taskId]);
+  // ✅ پس از ثبت پیگیری، شرح کار از دیتابیس بازخوانی شود تا متن کپی‌شده در فرم ویرایش دیده شود
+  const reloadDescription = async () => {
+    if (!currentTaskId) return;
+    try {
+      const res = await fetch(`/api/tasks/${currentTaskId}`);
+      const d = await res.json();
+      if (d.success && d.data)
+        setForm((f) => ({ ...f, Descriptions: d.data.Descriptions || "" }));
+    } catch {}
+  };
 
-  // ✅ Esc فقط وقتی هیچ مودال فرزندی باز نیست فرم را می‌بندد
-  useEffect(() => {
-    const anyChildOpen = showTimeDate || showAFModal || showFollow || showSupplier || showFolder || showAssetPicker || showMap || !!completeAsk;
-    if (anyChildOpen) return;
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose, showTimeDate, showAFModal, showFollow, showSupplier, showFolder, showAssetPicker, showMap, completeAsk]);
-
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-
-  const save = async () => {
-    if (!form.TaskTtl || !form.TaskTtl.trim()) { alert('موضوع کار را وارد کنید.'); return; }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.TaskTtl.trim()) {
+      alert("موضوع را وارد کنید!");
+      return;
+    }
     setSaving(true);
     try {
-      const body = {
-        TaskTtl: form.TaskTtl, Descriptions: form.Descriptions, tskType: form.tskType,
-        IsConsiderableAction: form.IsConsiderableAction, Temporary: Number(form.Temporary || 0),
-        AssetID: form.AssetID || null,
+      const payload = {
+        ...form,
+        Complited: Number(form.Complited),
+        AssetID: form.AssetID ? Number(form.AssetID) : null,
+        FixedDueTime: form.FixedDueTime ? 1 : 0,
+        RequestNumber: form.RequestNumber.trim()
+          ? Number(form.RequestNumber)
+          : null,
+        RegisterNumber: form.RegisterNumber.trim()
+          ? Number(form.RegisterNumber)
+          : null,
+        RequestDate: form.RequestDate || null,
       };
-      if (taskId) {
-        const res = await fetch(`/api/tasks/${taskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const d = await res.json();
-        if (!d.success) { alert('خطا: ' + d.error); setSaving(false); return; }
-        alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
-        if (onSaved) onSaved();
-        const done = await askComplete();
-        if (done) {
-          const r2 = await fetch(`/api/tasks/${taskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Complited: 1 }) });
-          const d2 = await r2.json();
-          if (d2.success) { alert('کار اتمام یافت.'); if (onSaved) onSaved(); onClose(); }
-          else alert('خطا در اتمام کار: ' + d2.error);
-        } else {
-          setEditing(false);
-          load();
+
+      const wasNew = !currentTaskId;
+      let taskId = currentTaskId;
+
+      if (!wasNew) {
+        // ویرایش کار موجود
+        const res = await fetch(`/api/tasks/${currentTaskId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, Complited: 0 }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert("خطا: " + (data.error || "نامشخص"));
+          setSaving(false);
+          return;
         }
       } else {
-        const res = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const d = await res.json();
-        if (d.success) { alert('کار جدید ثبت شد.'); if (onSaved) onSaved(); onClose(); }
-        else alert('خطا: ' + d.error);
+        // ایجاد کار جدید (مانند دسکتاپ: بدون زمان‌بندی خودکار)
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert("خطا: " + (data.error || "نامشخص"));
+          setSaving(false);
+          return;
+        }
+        taskId = data.TaskID;
+        setCurrentTaskId(taskId); // ✅ از این پس فرم در حالت ویرایش است و دکمه‌ها فعال می‌شوند
       }
-    } catch { alert('خطا در ارتباط با سرور'); }
+
+      markSaved();
+      if (wasNew) {
+        // ✅ مانند دسکتاپ: فرم باز می‌ماند و کد کار نمایش داده می‌شود
+        alert(
+          `کار جدید با کد ${taskId} ثبت شد.\nاکنون دکمه «الویت و زمان (...)» را بزنید تا الویت و زمان آن تنظیم شود.`,
+        );
+        if (onSaved) onSaved();
+      } else {
+        alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
+        if (onSaved) onSaved();
+        // ✅ معادل دسکتاپ: همیشه پس از ویرایش، سؤال اتمام پرسیده می‌شود (پیش‌فرض: انصراف)
+        const done = await askComplete();
+        if (done) {
+          // معادل EditTask(TaskId, 1)
+          try {
+            await fetch(`/api/tasks/${taskId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...payload, Complited: 1 }),
+            });
+          } catch {}
+          alert("کار موردنظر اتمام یافت!");
+          if (onSaved) onSaved();
+          // مسیر اتمام: مودال الویت و زمان باز نمی‌شود؛ درخواست‌کننده فقط اگر کلیک نشده؛ سپس «بستن فرم؟»
+          if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm("بستن فرم؟")) {
+            if (onClose) onClose();
+          }
+        } else {
+          // مسیر عدم اتمام: الویت و زمان → درخواست‌کننده → «بستن فرم؟» (هر کدام فقط اگر کلیک نشده)
+          if (!timeDateClickedRef.current) {
+            timeDateClickedRef.current = true;
+            autoTimeDateRef.current = true;
+            setShowTimeDate(true);
+          } else if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm("بستن فرم؟")) {
+            if (onClose) onClose();
+          }
+        }
+      }
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
     setSaving(false);
   };
 
-  const inp = 'search-input w-full';
-  const ro = !editing;
+  const inp = "search-input w-full";
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
-      <div ref={formRef} className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[980px] max-w-[96vw] max-h-[94vh] overflow-y-auto p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold">{taskId ? `ویرایش کار — کد: ${taskId}` : 'ثبت کار جدید'}</h3>
-          <button type="button" onClick={onClose} className="text-xl">✕</button>
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            if (!saving) handleSubmit(e);
+          }
+        }}
+        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[760px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-6"
+      >
+        <h3 className="text-lg font-bold mb-4">
+          {isEdit ? `ویرایش کار — کد: ${currentTaskId}` : "ثبت کار جدید"}
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold mb-1">موضوع *</label>
+            <input
+              name="TaskTtl"
+              value={form.TaskTtl}
+              onChange={handleChange}
+              className={inp}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-bold">شرح کار</label>
+              <button
+                type="button"
+                disabled={!isEdit}
+                onClick={() => setShowFollow(true)}
+                className="btn-primary px-3 py-1 text-xs"
+              >
+                جزئیات (پیگیری)
+              </button>
+            </div>
+            <textarea
+              name="Descriptions"
+              value={form.Descriptions}
+              onChange={handleChange}
+              rows={4}
+              className={inp}
+            />
+          </div>
+
+          {/* دستگاه تک‌خطی */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold mb-1">
+              دستگاه/مجموعه
+            </label>
+            <div className="flex gap-2">
+              <input
+                className={inp}
+                list="assets-list"
+                placeholder="تایپ کنید یا از لیست انتخاب کنید..."
+                value={assetQuery}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAssetQuery(v);
+                  const f = assets.find((a) => assetSpec(a) === v);
+                  if (f) setForm((x) => ({ ...x, AssetID: String(f.AssetID) }));
+                  else if (!v) setForm((x) => ({ ...x, AssetID: "" }));
+                }}
+              />
+              <button
+                type="button"
+                className="btn-primary px-3"
+                onClick={() => setShowAssetPicker(true)}
+              >
+                ...
+              </button>
+              <button
+                type="button"
+                className="btn-primary px-3"
+                title="نقشهٔ طبقه"
+                onClick={() => setShowMap(true)}
+              >
+                🗺
+              </button>
+            </div>
+            <datalist id="assets-list">
+              {assets.map((a) => (
+                <option key={a.AssetID} value={assetSpec(a)} />
+              ))}
+            </datalist>
+            {form.AssetID && (
+              <div className="text-xs text-gray-700 mt-1">
+                کد دستگاه: {form.AssetID}
+              </div>
+            )}
+          </div>
+
+          {/* وضعیت و درخواست‌کننده */}
+          <div>
+            <label className="block text-sm font-bold mb-1">وضعیت</label>
+            <select
+              name="Complited"
+              value={form.Complited}
+              onChange={handleChange}
+              className={inp}
+            >
+              <option value={0}>در حال انجام</option>
+              <option value={1}>اتمام‌یافته</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">
+              درخواست‌کننده
+            </label>
+            <div className="flex gap-2">
+              <input
+                name="ApplicantName"
+                value={form.ApplicantName}
+                onChange={handleChange}
+                list="persons-list"
+                className={inp}
+              />
+              <button
+                type="button"
+                disabled={!isEdit}
+                onClick={() => {
+                  applicantClickedRef.current = true;
+                  setShowAFModal(true);
+                }}
+                className="btn-primary px-3"
+              >
+                ...
+              </button>
+            </div>
+            <datalist id="persons-list">
+              {persons.map((p) => (
+                <option key={p.PersonID} value={p.PersonName} />
+              ))}
+            </datalist>
+            {functorName && (
+              <div className="text-xs text-gray-700 mt-1">
+                انجام‌دهنده: {functorName}
+              </div>
+            )}
+          </div>
+
+          {/* ✅ زمان‌بندی با چیدمان واکنش‌گرا */}
+          <div className="md:col-span-2 flex flex-wrap items-center gap-4 border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
+            <label className="flex items-center gap-2 cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                name="FixedDueTime"
+                checked={form.FixedDueTime}
+                onChange={handleChange}
+                disabled
+                className="w-4 h-4 accent-teal-600"
+              />
+              <span className="text-sm font-bold text-teal-800">
+                زمان انجام ثابت
+              </span>
+            </label>
+            <div className="flex flex-wrap items-end gap-3 flex-1">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-bold mb-1 text-gray-700">
+                  زمان شروع (سررسید)
+                </label>
+                <DatePicker
+                  value={toPicker(form.DueDateTime)}
+                  disabled
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD HH:mm"
+                  enableTimePicker
+                  inputClass={inp}
+                />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-bold mb-1 text-gray-700">
+                  زمان اتمام
+                </label>
+                <DatePicker
+                  value={toPicker(form.EndDateTime)}
+                  disabled
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD HH:mm"
+                  enableTimePicker
+                  inputClass={inp}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* الویت و دکمه زمان */}
+          <div>
+            <label className="block text-sm font-bold mb-1">اولویت</label>
+            <select
+              name="Priorities"
+              value={form.Priorities}
+              onChange={handleChange}
+              disabled
+              className={inp}
+            >
+              {!PRIORITIES.includes(form.Priorities) && (
+                <option value={form.Priorities}>{form.Priorities}</option>
+              )}
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={!isEdit}
+              onClick={() => {
+                timeDateClickedRef.current = true;
+                setShowTimeDate(true);
+              }}
+              className="btn-primary w-full"
+            >
+              الویت و زمان (...)
+            </button>
+          </div>
+          {/* نوع کار و ضمائم */}
+          <div>
+            <label className="block text-sm font-bold mb-1">نوع کار</label>
+            <select
+              name="tskType"
+              value={form.tskType}
+              onChange={handleChange}
+              className={inp}
+            >
+              <option value="">(انتخاب کنید)</option>
+              {TASK_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={!isEdit}
+              onClick={() => setShowFolder(true)}
+              className="btn-primary w-full"
+            >
+              ضمائم (...)
+            </button>
+          </div>
+
+          {/* پروژه/اقدام و تأمین‌کننده */}
+          <div>
+            <label className="block text-sm font-bold mb-1">پروژه/اقدام</label>
+            <select
+              name="IsConsiderableAction"
+              value={form.IsConsiderableAction}
+              onChange={handleChange}
+              className={inp}
+            >
+              {CONSIDERABLE.map((c) => (
+                <option key={c} value={c}>
+                  {c || "(بدون)"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={!isEdit}
+              onClick={() => setShowSupplier(true)}
+              className="btn-primary w-full"
+            >
+              تأمین‌کننده / خرید (...)
+            </button>
+          </div>
+
+          {/* بخش خرید */}
+          {form.tskType === "خرید" && (
+            <div className="md:col-span-2 bg-[#F7C4A5] rounded p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  شماره درخواست
+                </label>
+                <input
+                  type="number"
+                  name="RequestNumber"
+                  value={form.RequestNumber}
+                  onChange={handleChange}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  شماره ثبت
+                </label>
+                <input
+                  type="number"
+                  name="RegisterNumber"
+                  value={form.RegisterNumber}
+                  onChange={handleChange}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  تاریخ درخواست
+                </label>
+                <DatePicker
+                  value={toPicker(form.RequestDate)}
+                  onChange={(d) =>
+                    setForm((f) => ({ ...f, RequestDate: fromPicker(d) }))
+                  }
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD"
+                  inputClass={inp}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
-        {!form ? <div className="p-8 text-center">در حال بارگذاری…</div> : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="md:col-span-2">
-                <label className="text-sm font-bold">موضوع *</label>
-                <input className={inp} value={form.TaskTtl} onChange={set('TaskTtl')} readOnly={ro} />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-bold">شرح / توضیحات</label>
-                <textarea className={inp} rows={3} value={form.Descriptions} onChange={set('Descriptions')} readOnly={ro} />
-              </div>
+        <div className="flex gap-3 mt-6">
+          <button type="submit" disabled={saving} className="btn-success">
+            {saving ? "در حال ذخیره..." : isEdit ? "ویرایش" : "افزودن"}
+          </button>
+          <button type="button" onClick={onClose} className="btn-danger">
+            بستن
+          </button>
+        </div>
+      </form>
 
-              <div>
-                <label className="text-sm font-bold">دستگاه/مجموعه</label>
-                <textarea className={inp} rows={2} value={form.AssetDesc} readOnly />
-                {form.AssetID ? <div className="text-xs mt-1">کد دستگاه: {form.AssetID}</div> : null}
-                <div className="flex gap-2 mt-1">
-                  <button type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => setShowAssetPicker(true)}>… انتخاب دستگاه</button>
-                  <button type="button" className="btn-primary px-2 py-1 text-xs" title="انتخاب از روی نقشه" onClick={() => setShowMap(true)}>🗺</button>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-bold">وضعیت</label>
-                <select className={inp} value={form.Complited} onChange={set('Complited')} disabled>
-                  <option value={0}>در حال انجام</option>
-                  <option value={1}>اتمام</option>
-                </select>
-                <div className="mt-2">
-                  <label className="text-sm font-bold">درخواست‌کننده</label>
-                  <input className={inp} value={form.ApplicantName} readOnly />
-                  <div className="text-xs mt-1">انجام‌دهنده: {form.FunctorName || '—'}</div>
-                  <button type="button" className="btn-primary px-2 py-1 text-xs mt-1" onClick={() => setShowAFModal(true)}>ویرایش درخواست‌کننده/انجام‌دهنده</button>
-                </div>
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-bold">
-                  <input type="checkbox" checked={Number(form.fixedDueTime) === 1} readOnly />
-                  زمان انجام ثابت
-                </label>
-                {Number(form.fixedDueTime) === 1 && (
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <div><label className="text-xs">زمان شروع (سررسید)</label><input className={inp} value={fmtFa(form.DueDateTime)} readOnly /></div>
-                    <div><label className="text-xs">زمان اتمام</label><input className={inp} value={fmtFa(form.EndDateTime)} readOnly /></div>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-bold">الویت</label>
-                <select className={inp} value={form.Priorities} disabled>
-                  {!PRIORITIES.includes(form.Priorities) && form.Priorities !== '' && <option value={form.Priorities}>{form.Priorities}</option>}
-                  <option value="">(نامشخص)</option>
-                  {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-                <button type="button" className="btn-primary px-2 py-1 text-xs mt-1" onClick={() => setShowTimeDate(true)}>الویت و زمان (…)</button>
-              </div>
-
-              <div>
-                <label className="text-sm font-bold">نوع کار</label>
-                <select className={inp} value={form.tskType} onChange={set('tskType')} readOnly={ro} disabled={ro}>
-                  {!TASK_TYPES.includes(form.tskType) && form.tskType !== '' && <option value={form.tskType}>{form.tskType}</option>}
-                  <option value="">(انتخاب کنید)</option>
-                  {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-bold">پروژه/اقدام</label>
-                <select className={inp} value={form.IsConsiderableAction} onChange={set('IsConsiderableAction')} disabled={ro}>
-                  <option value="اقدام">اقدام</option>
-                  <option value="پروژه">پروژه</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mt-4">
-              <button type="button" className="btn-primary" onClick={() => setShowFollow(true)}>پیگیری (…)</button>
-              <button type="button" className="btn-primary" onClick={() => setShowFolder(true)}>ضمائم (…)</button>
-              <button type="button" className="btn-primary" onClick={() => setShowSupplier(true)}>تأمین‌کننده / خرید (…)</button>
-              {!editing && taskId && <button type="button" className="btn-primary" onClick={() => setEditing(true)}>ویرایش</button>}
-            </div>
-
-            <div className="flex gap-2 mt-4">
-              <button type="button" className="btn-success flex-1" disabled={saving || !editing} onClick={save}>{saving ? 'در حال ذخیره...' : 'ذخیره'}</button>
-              <button type="button" className="btn-danger" onClick={onClose}>بستن</button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {showTimeDate && taskId && (
-        <TimeDateModal taskId={taskId} onClose={() => setShowTimeDate(false)} onSaved={() => { load(); if (onSaved) onSaved(); }} />
+      {/* مودال‌ها — taskId از currentTaskId گرفته می‌شود */}
+      {showTimeDate && isEdit && (
+        <TimeDateModal
+          taskId={currentTaskId}
+          onClose={() => {
+            setShowTimeDate(false);
+            reloadTimes();
+            if (autoTimeDateRef.current) {
+              autoTimeDateRef.current = false;
+              // ✅ معادل دسکتاپ: پس از الویت و زمان، نوبت مودال درخواست‌کننده/انجام‌دهنده است
+              if (!applicantClickedRef.current) {
+                pendingCloseAskRef.current = true;
+                setShowAFModal(true);
+              } else if (confirm("بستن فرم؟")) {
+                if (onClose) onClose();
+              }
+            }
+          }}
+          onSaved={() => {
+            reloadTimes();
+            if (onSaved) onSaved();
+          }}
+        />
       )}
-      {showFollow && taskId && (
-        <FollowModal taskId={taskId} onClose={() => setShowFollow(false)} />
+      {showFollow && isEdit && (
+        <FollowModal
+          taskId={currentTaskId}
+          subject={form.TaskTtl}
+          onClose={() => setShowFollow(false)}
+          onSaved={() => {
+            reloadDescription();
+            if (onSaved) onSaved();
+          }}
+        />
       )}
-      {showAFModal && taskId && (
-        <ApplicantFunctorModal taskId={taskId} onClose={() => setShowAFModal(false)} onSaved={(a, f) => setForm((s) => ({ ...s, ApplicantName: a, FunctorName: f }))} />
+      {showAFModal && isEdit && (
+        <ApplicantFunctorModal
+          taskId={currentTaskId}
+          onClose={() => {
+            setShowAFModal(false);
+            if (pendingCloseAskRef.current) {
+              pendingCloseAskRef.current = false;
+              if (confirm("بستن فرم؟")) {
+                if (onClose) onClose();
+              }
+            }
+          }}
+          onSaved={(a, f) => {
+            setForm((x) => ({ ...x, ApplicantName: a }));
+            setFunctorName(f || "");
+          }}
+        />
       )}
-      {showSupplier && taskId && (
-        <SupplierModal taskId={taskId} onClose={() => setShowSupplier(false)} />
+      {showSupplier && isEdit && (
+        <SupplierModal
+          taskId={currentTaskId}
+          onClose={() => setShowSupplier(false)}
+          onSaved={onSaved}
+        />
       )}
-      {showFolder && taskId && (
-        <FolderModal taskId={taskId} onClose={() => setShowFolder(false)} />
+      {showFolder && isEdit && (
+        <FolderModal
+          taskId={currentTaskId}
+          onClose={() => setShowFolder(false)}
+          onSaved={onSaved}
+        />
       )}
-
+      {showAssetPicker && <AssetsModal
+        preset={assetPreset}
+        onClose={() => { setShowAssetPicker(false); setAssetPreset(null); }}
+        onSelectAsset={(id) => {
+          setForm((f) => ({ ...f, AssetID: String(id) }));
+          setShowAssetPicker(false);
+          setAssetPreset(null);
+          // ✅ بارگذاری مجدد لیست دستگاه‌ها تا assetSpec دستگاه جدید را پیدا کند
+          fetch('/api/assets').then((r) => r.json()).then((d) => {
+            if (d.success) setAssets(d.data || []);
+          }).catch(() => {});
+        }}
+      />}
       {showMap && (
         <MapModal
           onClose={() => setShowMap(false)}
           onPickAsset={(id) => {
-            setForm((s) => ({ ...s, AssetID: String(id) }));
+            setForm((f) => ({ ...f, AssetID: String(id) }));
             setShowMap(false);
-            load();
+            // ✅ بارگذاری مجدد لیست دستگاه‌ها
+            fetch('/api/assets').then((r) => r.json()).then((d) => {
+              if (d.success) setAssets(d.data || []);
+            }).catch(() => {});
           }}
           onOpenDefineDevice={(preset) => {
             setAssetPreset(preset);
@@ -251,31 +810,44 @@ export default function TaskForm({ taskId, onClose, onSaved }) {
           }}
         />
       )}
-
-      {showAssetPicker && (
-        <AssetsModal
-          preset={assetPreset}
-          onClose={() => {
-            setShowAssetPicker(false);
-            setAssetPreset(null);
-          }}
-          onSelectAsset={(id) => {
-            setForm((s) => ({ ...s, AssetID: String(id) }));
-            setShowAssetPicker(false);
-            setAssetPreset(null);
-            load();
-          }}
-        />
-      )}
-
       {completeAsk && (
-        <div className="fixed inset-0 bg-black/60 z-[10002] flex items-center justify-center p-4"
-          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); const r = completeAsk.resolve; setCompleteAsk(null); r(false); } }}>
+        <div
+          className="fixed inset-0 bg-black/60 z-[10002] flex items-center justify-center p-4"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              const r = completeAsk.resolve;
+              setCompleteAsk(null);
+              r(false);
+            }
+          }}
+        >
           <div className="bg-[#CCE6DF] rounded-lg shadow-2xl p-6 w-[380px] text-center">
             <div className="font-bold mb-5">آیا این کار اتمام یافته است؟</div>
             <div className="flex gap-3 justify-center">
-              <button type="button" className="btn-success px-6" onClick={() => { const r = completeAsk.resolve; setCompleteAsk(null); r(true); }}>OK</button>
-              <button type="button" autoFocus className="btn-danger px-6" onClick={() => { const r = completeAsk.resolve; setCompleteAsk(null); r(false); }}>Cancel</button>
+              <button
+                type="button"
+                className="btn-success px-6"
+                onClick={() => {
+                  const r = completeAsk.resolve;
+                  setCompleteAsk(null);
+                  r(true);
+                }}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                autoFocus
+                className="btn-danger px-6"
+                onClick={() => {
+                  const r = completeAsk.resolve;
+                  setCompleteAsk(null);
+                  r(false);
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -283,3 +855,21 @@ export default function TaskForm({ taskId, onClose, onSaved }) {
     </div>
   );
 }
+```
+
+## ✅ دو تغییری که اعمال شد
+
+**تغییر ۱ — بلوک `{showAssetPicker && ...}` (خط ۴۲۰ حدوداً):**
+افزودن `fetch('/api/assets')` در `onSelectAsset` تا پس از انتخاب دستگاه، لیست `assets` دوباره از سرور لود شود و `assetSpec` بتواند دستگاه جدید را پیدا کند.
+
+**تغییر ۲ — بلوک `{showMap && ...}` (بلافاصله بعد):**
+افزودن `fetch('/api/assets')` در `onPickAsset` تا پس از انتخاب دستگاه از روی نقشه، لیست `assets` دوباره از سرور لود شود.
+
+## 📝 پیام Commit:
+
+```text
+fix(task-form): بارگذاری مجدد لیست دستگاه‌ها پس از انتخاب از مودال/نقشه
+
+- افزودن fetch('/api/assets') در onSelectAsset و onPickAsset
+- رفع مشکل عدم نمایش assetSpec برای دستگاه‌های جدید ثبت‌شده از نقشه
+```

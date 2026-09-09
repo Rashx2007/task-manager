@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+body {
+  font-family: 'Vazirmatn', Tahoma, 'Segoe UI', sans-serif;
+  direction: rtl;
+}
+
+.search-input {
+  background: #c5d5c5;
+  border: 1px solid #9ca3af;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+}
+.search-input:focus { outline: none; box-shadow: 0 0 0 2px #14b8a6; }
+
+.btn-primary { background: #f7c4a5; color: #1d1a31; font-weight: 700; border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+.btn-primary:hover { background: #f0b28c; }
+.btn-success { background: #16a34a; color: #fff; font-weight: 700; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+.btn-success:hover { background: #15803d; }
+.btn-danger { background: #ef4444; color: #fff; font-weight: 700; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+.btn-danger:hover { background: #dc2626; }
+
+/* ✅ جدول کارها — رنگ‌بندی مطابق دسکتاپ */
+.task-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+.task-table th {
+  position: sticky; top: 0; z-index: 20;
+  background: #F7C4A5;
+  color: #000;
+  font-weight: bold;
+  padding: 8px;
+  border: 1px solid #000;
+  font-size: 14px;
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, .25);
+}
+.task-table td {
+  padding: 8px;
+  border: 1px solid #9ca3af;
+  font-size: 14px;
+  text-align: right;
+}
+.task-table tbody tr:nth-child(odd) { background: #867B8A; }
+.task-table tbody tr:nth-child(even) { background: #CCDAD1; }
+.task-table tbody tr:hover { background: #fbbf24; cursor: pointer; }
+
+/* ✅ سطر انتخاب‌شده (قرمز) — با !important برای override کردن nth-child */
+.task-row-selected {
+  background: #FC7470 !important;
+}
+
+.app-tooltip {
+  position: fixed; z-index: 10000; transform: translate(-50%, -100%);
+  max-width: 360px; background: #1d1a31; color: #fdf3e7;
+  border: 1px solid #f7c4a5; border-radius: 10px; padding: 8px 12px;
+  font-size: 12px; font-weight: 600; line-height: 1.9;
+  white-space: pre-line; text-align: right; direction: rtl;
+  box-shadow: 0 8px 20px rgba(29, 26, 49, .35);
+  pointer-events: none; animation: app-tooltip-in .15s ease-out;
+}
+.app-tooltip::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #1d1a31;
+}
+.app-tooltip-below { transform: translate(-50%, 0); }
+.app-tooltip-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #1d1a31; }
+@keyframes app-tooltip-in { from { opacity: 0; } to { opacity: 1; } }
