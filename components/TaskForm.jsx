@@ -1,8 +1,3 @@
-## 📁 فایل کامل: `components/TaskForm.jsx` — نسخهٔ شما با دو تغییر کوچک
-
-این همان کد شماست که دو تغییر کوچک در بلوک‌های `showAssetPicker` و `showMap` اعمال شده تا پس از انتخاب/ثبت دستگاه از نقشه، لیست دستگاه‌ها دوباره از سرور لود شود و `assetSpec` بتواند دستگاه جدید را نمایش دهد.
-
-```jsx
 "use client";
 import { useState, useEffect, useRef } from "react";
 import DatePicker, { DateObject } from "react-multi-date-picker";
@@ -855,21 +850,3 @@ export default function TaskForm({
     </div>
   );
 }
-```
-
-## ✅ دو تغییری که اعمال شد
-
-**تغییر ۱ — بلوک `{showAssetPicker && ...}` (خط ۴۲۰ حدوداً):**
-افزودن `fetch('/api/assets')` در `onSelectAsset` تا پس از انتخاب دستگاه، لیست `assets` دوباره از سرور لود شود و `assetSpec` بتواند دستگاه جدید را پیدا کند.
-
-**تغییر ۲ — بلوک `{showMap && ...}` (بلافاصله بعد):**
-افزودن `fetch('/api/assets')` در `onPickAsset` تا پس از انتخاب دستگاه از روی نقشه، لیست `assets` دوباره از سرور لود شود.
-
-## 📝 پیام Commit:
-
-```text
-fix(task-form): بارگذاری مجدد لیست دستگاه‌ها پس از انتخاب از مودال/نقشه
-
-- افزودن fetch('/api/assets') در onSelectAsset و onPickAsset
-- رفع مشکل عدم نمایش assetSpec برای دستگاه‌های جدید ثبت‌شده از نقشه
-```
