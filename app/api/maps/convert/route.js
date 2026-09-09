@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
+import {
+  dirname as pDirname,
+  basename as pBasename,
+  join as pJoin,
+} from "path";
 import { query } from "@/lib/db";
 import {
   hashFile,
@@ -8,7 +12,6 @@ import {
   dxfToSvg,
   likeToRegex,
 } from "@/lib/map-converter";
-import path from "path";
 
 const normName = (s) =>
   String(s || "")
@@ -22,33 +25,23 @@ const normName = (s) =>
 function fuzzyFindDwg(savedPath) {
   try {
     if (!savedPath) return null;
-    const dir = path.dirname(savedPath);
-    const base = normName(path.basename(savedPath));
-    const scan = (d) =>
-      fs.existsSync(d)
-        ? fs
-            .readdirSync(d)
-            .find(
-              (f) =>
-                f.toLowerCase().endsWith(".dwg") &&
-                !/_recover\.dwg$/i.test(f) &&
-                normName(f) === base,
-            )
-        : undefined;
+    const dir = pDirname(savedPath);
+    const base = normName(pBasename(savedPath));
+    const scan = (d) => fs.existsSync(d)
+      ? fs.readdirSync(d).find((f) => f.toLowerCase().endsWith('.dwg') && !/_recover\.dwg$/i.test(f) && normName(f) === base)
+      : undefined;
     const hit = scan(dir);
-    if (hit) return path.join(dir, hit);
-    const parent = path.dirname(dir);
+    if (hit) return pJoin(dir, hit);
+    const parent = pDirname(dir);
     if (fs.existsSync(parent)) {
       for (const sub of fs.readdirSync(parent, { withFileTypes: true })) {
         if (!sub.isDirectory()) continue;
-        const h2 = scan(path.join(parent, sub.name));
-        if (h2) return path.join(parent, sub.name, h2);
+        const h2 = scan(pJoin(parent, sub.name));
+        if (h2) return pJoin(parent, sub.name, h2);
       }
     }
     return null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export async function POST(request) {
@@ -63,13 +56,20 @@ export async function POST(request) {
         { status: 404 },
       );
     const map = maps[0];
-        let dwgPath = map.DwgPath;
-    if (!dwgPath || !fs.existsSync(dwgPath)) dwgPath = fuzzyFindDwg(map.DwgPath);
+    let dwgPath = map.DwgPath;
+    if (!dwgPath || !fs.existsSync(dwgPath))
+      dwgPath = fuzzyFindDwg(map.DwgPath);
     if (!dwgPath || !fs.existsSync(dwgPath)) {
-      return NextResponse.json({ success: false, error: 'فایل DWG پیدا نشد: ' + map.DwgPath }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "فایل DWG پیدا نشد: " + map.DwgPath },
+        { status: 404 },
+      );
     }
     if (dwgPath !== map.DwgPath) {
-      await query('UPDATE Map_tbl SET DwgPath = ? WHERE MapID = ?', [dwgPath, map.MapID]);
+      await query("UPDATE Map_tbl SET DwgPath = ? WHERE MapID = ?", [
+        dwgPath,
+        map.MapID,
+      ]);
     }
 
     const hash = hashFile(map.DwgPath);
