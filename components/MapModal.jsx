@@ -48,6 +48,19 @@ const ruleForLayer = (rules, L) => {
   }) || null;
 };
 
+// ✅ کامپوننت جمع‌شونده در سطح ماژول (بدون remount → بدون پرش فوکوس)
+function Sec({ k, title, badge, open, onToggle, children, color = 'bg-[#F7C4A5]' }) {
+  return (
+    <div className={`mb-2 ${color} rounded`}>
+      <button type="button" onClick={() => onToggle(k)} className="w-full flex items-center justify-between px-2 py-1 font-bold text-sm">
+        <span>{title}{badge ? <span className="mr-2 bg-white/70 rounded px-1 text-xs">{badge}</span> : null}</span>
+        <span className="text-xs">{open ? '−' : '+'}</span>
+      </button>
+      {open ? <div className="px-2 pb-2">{children}</div> : null}
+    </div>
+  );
+}
+
 export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, defaults = {} }) {
   const [building, setBuilding] = useState(defaults.building || '');
   const [block, setBlock] = useState(defaults.block || '');
@@ -71,10 +84,16 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [showBrowse, setShowBrowse] = useState(false);
   const [chosenDwg, setChosenDwg] = useState('');
 
-  // ✅ زوم و pan
+  // ✅ state جمع‌شوندگی بخش‌ها
+  const [open, setOpen] = useState({ unknown: true, newOnMap: true, orphan: true });
+  const toggleSec = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+
+  // ✅ state زوم و pan
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
 
   const boxRef = useRef(null);
 
@@ -83,6 +102,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     const t = await res.text();
     setSvgText(t);
     setZoom(1); setPan({ x: 0, y: 0 });
+    zoomRef.current = 1; panRef.current = { x: 0, y: 0 };
   };
 
   const load = async (b = building, bl = block, f = floor) => {
@@ -184,7 +204,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     alert('دستگاه‌های حذف‌شده از نقشه، «ناموجود» علامت‌گذاری شدند (سابقه حفظ شد).');
   };
 
-  // نمایش لایه‌ها
+  // ✅ نمایش لایه‌ها + رسم نقطهٔ مرکز
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     box.querySelectorAll('g[data-layer]').forEach((g) => {
@@ -197,13 +217,63 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       t.style.cursor = 'pointer'; t.setAttribute('fill', '#c0392b'); t.setAttribute('stroke', 'none');
       t.setAttribute('pointer-events', 'all');
     });
-  }, [svgText, rules, deviceType]);
 
-  // ✅ کلیک روی برچسب: چک تطابق کامل → انتخاب یا باز کردن مودال دستگاه‌ها با فیلدهای پیش‌پر
+    // ✅ حذف مرکز قبلی و رسم مجدد (اگر مرکز و نقشه موجودند)
+    const existing = box.querySelector('#map-center-marker');
+    if (existing) existing.remove();
+    if (center && map) {
+      const svgEl = box.querySelector('svg');
+      if (svgEl) {
+        const ns = 'http://www.w3.org/2000/svg';
+        const g = document.createElementNS(ns, 'g');
+        g.id = 'map-center-marker';
+        g.setAttribute('style', 'pointer-events:none;opacity:0.6;');
+        const circle = document.createElementNS(ns, 'circle');
+        circle.setAttribute('cx', center.x);
+        circle.setAttribute('cy', center.y);
+        circle.setAttribute('r', 12);
+        circle.setAttribute('fill', '#dc2626');
+        circle.setAttribute('stroke', '#fff');
+        circle.setAttribute('stroke-width', 2);
+        g.appendChild(circle);
+        const txt = document.createElementNS(ns, 'text');
+        txt.setAttribute('x', center.x);
+        txt.setAttribute('y', center.y + 30);
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('fill', '#dc2626');
+        txt.setAttribute('font-size', '11');
+        txt.setAttribute('font-weight', 'bold');
+        txt.textContent = 'مرکز نقشه';
+        g.appendChild(txt);
+        // اگر در حالت تعیین مرکز است، خطوط چهارگانه ناحیه‌ها هم نمایش داده شود
+        if (centerMode) {
+          const vb = svgEl.viewBox.baseVal;
+          const w = vb.width || svgEl.clientWidth || 1400;
+          const h = vb.height || svgEl.clientHeight || 900;
+          [['NW', '#0d9488'], ['NE', '#0891b2'], ['SW', '#ca8a04'], ['SE', '#7c3aed']].forEach(([, c]) => {
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', 0); line.setAttribute('y1', center.y);
+            line.setAttribute('x2', w); line.setAttribute('y2', center.y);
+            line.setAttribute('stroke', c); line.setAttribute('stroke-width', 1);
+            line.setAttribute('stroke-dasharray', '4,4');
+            g.appendChild(line);
+          });
+          const vLine = document.createElementNS(ns, 'line');
+          vLine.setAttribute('x1', center.x); vLine.setAttribute('y1', 0);
+          vLine.setAttribute('x2', center.x); vLine.setAttribute('y2', h);
+          vLine.setAttribute('stroke', '#dc2626'); vLine.setAttribute('stroke-width', 1);
+          vLine.setAttribute('stroke-dasharray', '4,4');
+          g.appendChild(vLine);
+        }
+        svgEl.appendChild(g);
+      }
+    }
+  }, [svgText, rules, deviceType, center, map, centerMode]);
+
+  // ✅ کلیک روی برچسب: چک تطابق کامل → انتخاب یا باز کردن AssetsModal با preset
   useEffect(() => {
     const box = boxRef.current; if (!box) return;
     const onClick = async (e) => {
-      // اگر کاربر درگ کرده، این کلیک را نادیده بگیر
       if (dragRef.current.moved) { dragRef.current.moved = false; return; }
       // حالت تعیین مرکز
       if (centerMode && map) {
@@ -224,49 +294,47 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       const el = e.target.closest('[data-tag]'); if (!el) return;
       const txt = el.getAttribute('data-tag');
       const tag = tags.find((t) => t.text === txt);
+      if (tag && tag.AssetID) { if (onPickAsset) onPickAsset(tag.AssetID); return; }
       const layer = tag ? tag.Layer : '';
       const r = ruleForLayer(rules, layer);
       const inferredType = r ? r.DeviceType : (deviceType || '');
       const numMatch = txt.match(/^\s*-?\d+(?:\.\d+)?\s*$/);
       const deviceNumber = numMatch ? String(parseInt(txt, 10)) : '';
-
-      // چک تطابق کامل در دیتابیس
       try {
         const res = await fetch('/api/assets/match-or-prefill', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            deviceType: inferredType,
-            deviceNumber,
-            building, block, floor,
-            entrance: detectEntrance(tag),
-            location: '',
-            mechSystem: '',
-            mapTag: txt,
+            deviceType: inferredType, deviceNumber, building, block, floor,
+            entrance: detectEntrance(tag), location: '', mechSystem: '', mapTag: txt,
           }),
         });
         const d = await res.json();
-        if (d.found) {
-          if (onPickAsset) onPickAsset(d.assetId);
-        } else if (onOpenDefineDevice) {
-          onOpenDefineDevice(d.preset);
-        } else {
-          alert(`دستگاه «${txt}» در دیتابیس نیست و مودال دستگاه در دسترس نمی‌باشد.`);
-        }
-      } catch (err) {
-        alert('خطا در بررسی دستگاه: ' + err.message);
-      }
+        if (d.found) { if (onPickAsset) onPickAsset(d.assetId); }
+        else if (onOpenDefineDevice) { onOpenDefineDevice(d.preset); }
+        else { alert(`دستگاه «${txt}» در دیتابیس نیست و مودال دستگاه در دسترس نمی‌باشد.`); }
+      } catch (err) { alert('خطا در بررسی دستگاه: ' + err.message); }
     };
     box.addEventListener('click', onClick);
     return () => box.removeEventListener('click', onClick);
   }, [tags, rules, building, block, floor, center, centerMode, map, deviceType, onPickAsset, onOpenDefineDevice]);
 
-  // ✅ کنترل‌های زوم و pan
-  const onWheel = (e) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    setZoom((z) => Math.min(8, Math.max(0.2, z * factor)));
-  };
+  // ✅ کنترل زوم با wheel (با passive:false برای preventDefault واقعی)
+  useEffect(() => {
+    const box = boxRef.current; if (!box) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setZoom((z) => {
+        const nz = Math.min(8, Math.max(0.2, z * factor));
+        zoomRef.current = nz;
+        return nz;
+      });
+    };
+    box.addEventListener('wheel', onWheel, { passive: false });
+    return () => box.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // ✅ کنترل drag/pan با pointer events
   const onPointerDown = (e) => {
     if (e.button !== 0) return;
     dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
@@ -280,15 +348,15 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     const totalDy = Math.abs(e.clientY - dragRef.current.startY);
     if (totalDx > 4 || totalDy > 4) dragRef.current.moved = true;
     dragRef.current.lastX = e.clientX; dragRef.current.lastY = e.clientY;
-    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+    setPan((p) => { const np = { x: p.x + dx, y: p.y + dy }; panRef.current = np; return np; });
   };
   const onPointerUp = (e) => {
     dragRef.current.active = false;
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
   };
-  const zoomIn = () => setZoom((z) => Math.min(8, z * 1.25));
-  const zoomOut = () => setZoom((z) => Math.max(0.2, z / 1.25));
-  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+  const zoomIn = () => setZoom((z) => { const nz = Math.min(8, z * 1.25); zoomRef.current = nz; return nz; });
+  const zoomOut = () => setZoom((z) => { const nz = Math.max(0.2, z / 1.25); zoomRef.current = nz; return nz; });
+  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; };
 
   const inp = 'search-input';
 
@@ -314,12 +382,12 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <button className="btn-success" onClick={() => setShowBrowse(true)}>📂 مرور فایل نقشه…</button>
           {map && hashChanged && <button className="btn-danger" disabled={busy} onClick={convert}>⚠ همگام‌سازی</button>}
           {map && <button className="btn-primary" disabled={busy} onClick={convert} title="تبدیل مجدد">🔄</button>}
-          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز">🎯</button>}
+          {map && <button className={centerMode ? 'btn-danger' : 'btn-primary'} onClick={() => setCenterMode((v) => !v)} title="تعیین مرکز نقشه برای تشخیص ورودی‌ها (با کلیک)">🎯</button>}
         </div>
 
+        {/* ✅ بخش جمع‌شونده: لایه‌های ناشناخته */}
         {unknown.length > 0 && (
-          <div className="bg-[#F7C4A5] rounded p-3 mb-2">
-            <b>لایه‌های ناشناخته:</b>
+          <Sec k="unknown" open={open.unknown} onToggle={toggleSec} title="⚠ لایه‌های ناشناخته" badge={unknown.length}>
             {unknown.map((l) => (
               <div key={l} className="flex gap-2 items-center mt-2">
                 <span className="text-sm font-bold w-40">{l}</span>
@@ -332,41 +400,42 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
               </div>
             ))}
             <button className="btn-success mt-2" onClick={applyLayerAnswers}>ذخیرهٔ نگاشت و تبدیل مجدد</button>
-          </div>
+          </Sec>
         )}
 
+        {/* ✅ بخش جمع‌شونده: دستگاه‌های روی نقشه که در دیتابیس نیستند */}
         {newOnMap.length > 0 && (
-          <div className="bg-[#e6f3ef] border border-teal-600 rounded p-3 mb-2 max-h-40 overflow-auto">
-            <b>دستگاه‌های روی نقشه که در دیتابیس نیستند:</b>
-            {newOnMap.map((t) => (
-              <label key={t.text} className="block text-sm mt-1">
-                <input type="checkbox" className="ml-2" checked={!!checked[t.text]} onChange={(e) => setChecked({ ...checked, [t.text]: e.target.checked })} />
-                {t.text} <span className="text-xs text-gray-500">(لایه: {t.layer})</span>
-              </label>
-            ))}
+          <Sec k="newOnMap" open={open.newOnMap} onToggle={toggleSec} title="🆕 دستگاه‌های جدید روی نقشه (بدون ثبت)" badge={newOnMap.length}>
+            <div className="max-h-40 overflow-auto">
+              {newOnMap.map((t) => (
+                <label key={t.text} className="block text-sm mt-1">
+                  <input type="checkbox" className="ml-2" checked={!!checked[t.text]} onChange={(e) => setChecked({ ...checked, [t.text]: e.target.checked })} />
+                  {t.text} <span className="text-xs text-gray-500">(لایه: {t.layer})</span>
+                </label>
+              ))}
+            </div>
             <button className="btn-success mt-2" onClick={registerChecked}>ثبت دستگاه‌های انتخاب‌شده</button>
-          </div>
+          </Sec>
         )}
 
+        {/* ✅ بخش جمع‌شونده: یتیم‌ها */}
         {orphan.length > 0 && (
-          <div className="bg-[#FC7470]/30 border border-red-500 rounded p-3 mb-2">
-            <b>در دیتابیس هستند ولی روی نقشهٔ جدید نیستند:</b>
+          <Sec k="orphan" open={open.orphan} onToggle={toggleSec} title="⚠ در دیتابیس هستند ولی روی نقشه نیستند" badge={orphan.length} color="bg-[#FC7470]/30">
             {orphan.map((o) => <div key={o.assetId} className="text-sm">کد {o.assetId} — {o.tag}</div>)}
             <button className="btn-danger mt-2" onClick={deactivateOrphans}>علامت «ناموجود» (حفظ سابقه)</button>
-          </div>
+          </Sec>
         )}
 
-        {/* ✅ کانتینر نقشه با زوم و pan */}
+        {/* ✅ کانتینر نقشه با زوم/pan (wheel listener از طریق useEffect با passive:false) */}
         <div ref={boxRef}
           className="relative bg-white rounded border border-gray-400 overflow-hidden select-none"
           style={{ height: '60vh', cursor: dragRef.current.active ? 'grabbing' : 'grab' }}
-          onWheel={onWheel}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          {/* دکمه‌های زوم */}
+          <style>{`.mapzoom-wrap{width:100%;height:100%;} .mapzoom-wrap svg{width:100%;height:100%;display:block;}`}</style>
           <div className="absolute top-2 left-2 z-20 flex flex-col gap-1 bg-white/90 rounded shadow p-1" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="btn-primary px-2 py-1 text-sm" onClick={zoomIn} title="بزرگ‌نمایی">+</button>
             <button type="button" className="btn-primary px-2 py-1 text-sm" onClick={zoomOut} title="کوچک‌نمایی">−</button>
@@ -374,12 +443,10 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </div>
           <div className="absolute top-2 right-2 z-20 bg-white/90 rounded shadow px-2 py-1 text-xs font-bold">
             زوم: {Math.round(zoom * 100)}٪
+            {center && <span className="mr-2 text-red-600">🎯</span>}
+            {centerMode && <span className="mr-2 text-orange-600">🖱 کلیک روی نقشه</span>}
           </div>
-
-          {/* لایهٔ قابل تبدیل (zoom + pan) */}
-          <style>{`.mapzoom-wrap{width:100%;height:100%;} .mapzoom-wrap svg{width:100%;height:100%;display:block;}`}</style>
-          <div
-            className="mapzoom-wrap"
+          <div className="mapzoom-wrap"
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: '0 0',
@@ -389,10 +456,9 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           />
         </div>
         <div className="text-[11px] text-gray-600 mt-1">
-          چرخ ماوس = زوم | کشیدن = جابه‌جایی | کلیک روی برچسب قرمز = انتخاب یا باز شدن فرم دستگاه
+          چرخ ماوس = زوم | کشیدن = جابه‌جایی | کلیک روی برچسب قرمز = انتخاب/ثبت | 🎯 نقطهٔ قرمز = مرکز نقشه برای تشخیص ورودی‌ها
         </div>
       </div>
-
       {showBrowse && <DwgBrowser defaultPath="D:\\(فنی)" onClose={() => setShowBrowse(false)} onSelect={selectDwg} />}
     </div>
   );

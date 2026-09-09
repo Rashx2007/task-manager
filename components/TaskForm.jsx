@@ -774,18 +774,20 @@ export default function TaskForm({
           onSaved={onSaved}
         />
       )}
-            {showAssetPicker && <AssetsModal
-        preset={assetPreset}
-        onClose={() => { setShowAssetPicker(false); setAssetPreset(null); }}
-        onSelectAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowAssetPicker(false); setAssetPreset(null); }}
-      />}
+           {showAssetPicker && (
+  <AssetsModal
+    preset={assetPreset}
+    onClose={() => { setShowAssetPicker(false); setAssetPreset(null); }}
+    onSelectAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowAssetPicker(false); setAssetPreset(null); }}
+  />
+)}
       {showMap && (
-        <MapModal
-          onClose={() => setShowMap(false)}
-          onPickAsset={(id) => {
-            setForm((f) => ({ ...f, AssetID: String(id) }));
-            setShowMap(false);
-          }}
+  <MapModal
+    onClose={() => setShowMap(false)}
+    onPickAsset={(id) => { setForm((f) => ({ ...f, AssetID: String(id) })); setShowMap(false); }}
+    onOpenDefineDevice={(preset) => { setAssetPreset(preset); setShowMap(false); setShowAssetPicker(true); }}
+  />
+)}
           onOpenDefineDevice={(preset) => {
             setAssetPreset(preset);
             setShowMap(false);
