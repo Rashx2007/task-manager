@@ -15,9 +15,26 @@ const BUILDING_ALIASES = {
   'سردخانه': 'سردخانه', 'sardkhaneh': 'سردخانه', 'sard': 'سردخانه',
 };
 
+const decodeFloor = (t) => {
+  let s = String(t);
+  let neg = false;
+  if (/^M/i.test(s)) { neg = true; s = s.slice(1); }
+  if (s.includes('-')) s = s.replace('-', '.');
+  const v = Number(s);
+  return isNaN(v) ? '' : String(neg ? -v : v);
+};
+
 const parseMapName = (name) => {
   let base = toEn(String(name)).replace(/\.dwg$/i, '').replace(/[ـ‌‍‎‏‪‫]/g, '').trim();
   const out = { building: '', block: '', floor: '' };
+    // ✅ الگوی استاندارد جدید: ساختمان_بلوک_طبقه
+  const m3 = base.match(/^(.+?)_([A-CX])_(M?\d+(?:-\d+)?)$/i);
+  if (m3) {
+    out.building = BUILDING_ALIASES[m3[1]] || BUILDING_ALIASES[m3[1].toLowerCase()] || m3[1];
+    out.block = m3[2].toUpperCase() === 'X' ? '' : m3[2].toUpperCase();
+    out.floor = decodeFloor(m3[3]);
+    return out;
+  }
   const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
   if (mFloor) { out.floor = String(Number(mFloor[1])); base = base.slice(0, mFloor.index); }
   base = base.replace(/[_\-\s]+$/g, '');
@@ -138,6 +155,11 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const fetchSvg = async (url) => {
     try {
       const res = await fetch(url + '?v=' + Date.now());
+      if (!res.ok || !(res.headers.get('content-type') || '').includes('svg')) {
+        setSvgText('');
+        say('فایل SVG نقشه یافت نشد (404)؛ ابتدا «🔄 تبدیل مجدد» یا «⚠ همگام‌سازی» را بزنید.', 8000);
+        return;
+      }
       const t = await res.text();
       setSvgText(t);
       setZoom(1); setPan({ x: 0, y: 0 });
