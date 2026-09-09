@@ -13,12 +13,24 @@ export default function TaskTable({ tasks, onRowClick, onComplete, onEdit, onFol
   return (
     <div className="flex-1 min-h-0 overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#D8C9B4]">
       <table className="task-table w-full min-w-[1300px]">
-        <thead>
-          <tr>
-            <th>ردیف</th> <th>کد کار</th> <th>دستگاه/مجموعه</th> <th>شماره</th> <th>ساختمان</th> <th>قسمت</th>
-            <th>موضوع</th> <th>توضیحات</th> <th>اولویت</th> <th>وضعیت</th> <th>زمان شروع</th> <th>زمان پایان</th> <th>ضمائم</th> <th>عملیات</th>
-          </tr>
-        </thead>
+              <thead>
+        <tr>
+          <th>ردیف</th>
+          <th>کد کار</th>
+          <th>دستگاه/مجموعه</th>
+          <th>شماره</th>
+          <th>ساختمان</th>
+          <th>قسمت</th>
+          <th>موضوع</th>
+          <th>توضیحات</th>
+          <th>اولویت</th>
+          <th>وضعیت</th>
+          <th>زمان شروع</th>
+          <th>زمان پایان</th>
+          <th>ضمائم</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
         <tbody>
           {tasks.map((t, i) => (
             <tr key={t.TaskID} onClick={() => onRowClick(t)} onDoubleClick={() => onEdit && onEdit(t)}
