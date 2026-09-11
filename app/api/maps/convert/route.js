@@ -22,23 +22,76 @@ const normName = (s) =>
     .replace(/\s+/g, " ")
     .trim();
 
-function fuzzyFindDwg(savedPath) {
+// ✅ تجزیهٔ نام فایل نقشه (قرارداد جدید + قدیمی)
+function parseDwgName(name) {
+  let base = String(name || '').replace(/\.dwg$/i, '').replace(/[ـ‌‍‎‏‪‫]/g, '').trim();
+  const out = { building: '', block: '', floor: '' };
+  const m3 = base.match(/^(.+?)_([A-CX])_(M?\d+(?:-\d+)?)$/i);
+  if (m3) {
+    out.building = m3[1];
+    out.block = m3[2].toUpperCase() === 'X' ? '' : m3[2].toUpperCase();
+    let s = m3[3]; let neg = false;
+    if (/^M/i.test(s)) { neg = true; s = s.slice(1); }
+    if (s.includes('-')) s = s.replace('-', '.');
+    out.floor = String(Number(s));
+    return out;
+  }
+  const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
+  if (mFloor) { out.floor = String(Number(mFloor[1])); base = base.slice(0, mFloor.index); }
+  base = base.replace(/[_\-\s]+$/g, '');
+  const mBlock = base.match(/([A-Ca-c])$/);
+  if (mBlock) { out.block = mBlock[1].toUpperCase(); base = base.slice(0, mBlock.index); }
+  out.building = base.replace(/[_\-\s]+$/g, '').trim();
+  return out;
+}
+
+const normFa = (s) => String(s || '').replace(/[\u200c\u200e\u200f\u064b-\u0652]/g, '').replace(/\s+/g, ' ').trim();
+
+// ✅ جست‌وجوی DWG: ۱) نزدیک مسیر قدیمی بر اساس نام ۲) زیر ریشه‌ها بر اساس ساختمان/بلوک/طبقه
+function fuzzyFindDwg(savedPath, map) {
   try {
-    if (!savedPath) return null;
-    const dir = pDirname(savedPath);
-    const base = normName(pBasename(savedPath));
-    const scan = (d) => fs.existsSync(d)
-      ? fs.readdirSync(d).find((f) => f.toLowerCase().endsWith('.dwg') && !/_recover\.dwg$/i.test(f) && normName(f) === base)
-      : undefined;
-    const hit = scan(dir);
-    if (hit) return pJoin(dir, hit);
-    const parent = pDirname(dir);
-    if (fs.existsSync(parent)) {
-      for (const sub of fs.readdirSync(parent, { withFileTypes: true })) {
-        if (!sub.isDirectory()) continue;
-        const h2 = scan(pJoin(parent, sub.name));
-        if (h2) return pJoin(parent, sub.name, h2);
+    const isDwg = (f) => f.toLowerCase().endsWith('.dwg') && !/_recover\.dwg$/i.test(f);
+    const base = normName(pBasename(savedPath || ''));
+    if (savedPath) {
+      const dirs = [pDirname(savedPath), pDirname(pDirname(savedPath))];
+      for (const d of dirs) {
+        if (!fs.existsSync(d)) continue;
+        const hit = fs.readdirSync(d).find((f) => isDwg(f) && normName(f) === base);
+        if (hit) return pJoin(d, hit);
       }
+    }
+    const roots = String(process.env.MAP_DWG_ROOTS || 'E:\\(Work)\\نقشه فن‌کویل‌ها\\C\\DWG')
+      .split(',').map((s) => s.trim()).filter(Boolean);
+    const want = {
+      building: normFa(map?.Building || ''),
+      block: String(map?.Block || '').toUpperCase(),
+      floor: String(Number(map?.Floor ?? NaN)),
+    };
+    const walk = (dir, depth) => {
+      if (depth > 5 || !fs.existsSync(dir)) return null;
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return null; }
+      for (const en of entries) {
+        if (en.isFile() && isDwg(en.name)) {
+          if (base && normName(en.name) === base) return pJoin(dir, en.name);
+          const pn = parseDwgName(en.name);
+          if (
+            normFa(pn.building) === want.building &&
+            (pn.block || '') === (want.block || '') &&
+            String(Number(pn.floor)) === want.floor
+          ) return pJoin(dir, en.name);
+        }
+      }
+      for (const en of entries) {
+        if (!en.isDirectory()) continue;
+        const r = walk(pJoin(dir, en.name), depth + 1);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const root of roots) {
+      const r = walk(root, 0);
+      if (r) return r;
     }
     return null;
   } catch { return null; }
@@ -57,8 +110,7 @@ export async function POST(request) {
       );
     const map = maps[0];
     let dwgPath = map.DwgPath;
-    if (!dwgPath || !fs.existsSync(dwgPath))
-      dwgPath = fuzzyFindDwg(map.DwgPath);
+        if (!dwgPath || !fs.existsSync(dwgPath)) dwgPath = fuzzyFindDwg(map.DwgPath, map);
     if (!dwgPath || !fs.existsSync(dwgPath)) {
       return NextResponse.json(
         { success: false, error: "فایل DWG پیدا نشد: " + map.DwgPath },

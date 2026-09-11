@@ -316,16 +316,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </div>
 
-      <Sec k="quick" open={open.quick} onToggle={toggleSec} title="🔍 جستجوی سریع (همه‌جا)" badge={quick ? 'فعال' : ''}>
-        <div className="bg-white p-2 rounded">
-          <input className={inp} value={quick}
-            onChange={(e) => setQuick(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-            placeholder="هر چیزی: موضوع، توضیحات، دستگاه، ساختمان، برچسب، درخواست‌کننده… و Enter" />
-        </div>
-      </Sec>
-
-      <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
+ <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
         <div className="flex flex-wrap gap-2 items-center">
           <button type="button" onClick={() => applyPreset('today')} className="btn-primary px-3 py-1 text-xs">امروز</button>
           <button type="button" onClick={() => applyPreset('thisWeek')} className="btn-primary px-3 py-1 text-xs">این هفته</button>
@@ -337,32 +328,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      {(facetFilters.building || facetFilters.deviceType || facetFilters.priority) && (
-        <div className="mb-2 bg-yellow-100 p-2 rounded flex flex-wrap gap-2 items-center">
-          <span className="text-sm font-bold">فیلترهای فعال:</span>
-          {facetFilters.building && <button type="button" onClick={() => toggleFacet('building', facetFilters.building)} className="px-2 py-1 bg-yellow-300 rounded text-xs">ساختمان: {facetFilters.building} ✕</button>}
-          {facetFilters.deviceType && <button type="button" onClick={() => toggleFacet('deviceType', facetFilters.deviceType)} className="px-2 py-1 bg-yellow-300 rounded text-xs">دستگاه: {facetFilters.deviceType} ✕</button>}
-          {facetFilters.priority && <button type="button" onClick={() => toggleFacet('priority', facetFilters.priority)} className="px-2 py-1 bg-yellow-300 rounded text-xs">الویت: {facetFilters.priority} ✕</button>}
-        </div>
-      )}
-
-      <Sec k="smart" open={open.smart} onToggle={toggleSec} title="🩺 جستجوی هوشمند دستگاه" badge={smartText ? 'فعال' : ''}>
-        <div className="relative bg-white p-2 rounded">
-          <div className="flex items-center gap-2">
-            <input value={smartText} onChange={(e) => onSmartChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-              className="search-input flex-1" placeholder="مثلاً: ط14 ، د فن‌کویل ، م موضوع ، ت توضیحات" />
-            <span className="font-bold text-sm whitespace-nowrap">{deviceStatus}</span>
-          </div>
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 bg-white border border-gray-300 rounded shadow-lg max-h-56 overflow-auto w-1/2 mt-1">
-              {suggestions.map((s, i) => (
-                <li key={i} onClick={() => onSuggestionClick(s)} className="px-3 py-2 hover:bg-teal-100 cursor-pointer text-sm">{s}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Sec>
 
       <Sec k="statusDate" open={open.statusDate} onToggle={toggleSec} title="📅 وضعیت و بازهٔ تاریخ" badge={statusBadge}>
         <div className="bg-white p-2 rounded flex flex-col gap-2">
@@ -397,27 +362,17 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-      <Sec k="form" open={open.form} onToggle={toggleSec} title="🧾 فرم فیلترها" badge={formBadge}>
-        <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-2 rounded">
-          <div><label className="text-sm">موضوع</label><input className={inp} value={f.subject} onChange={set('subject')} /></div>
-          <div><label className="text-sm">توضیحات</label><input className={inp} value={f.description} onChange={set('description')} /></div>
-          <div><label className="text-sm">بلوک</label><input className={inp} value={f.block} onChange={set('block')} /></div>
-          <div><label className="text-sm">ورودی</label><input className={inp} value={f.entrance} onChange={set('entrance')} /></div>
-          <div><label className="text-sm">دستگاه</label><input className={inp} value={f.assetName} onChange={set('assetName')} /></div>
-          <div><label className="text-sm">ساختمان</label><input className={inp} value={f.building} onChange={set('building')} /></div>
-          <div><label className="text-sm">طبقه</label><input className={inp} value={f.floor} onChange={set('floor')} /></div>
-          <div><label className="text-sm">قسمت</label><input className={inp} value={f.location} onChange={set('location')} /></div>
-          <div><label className="text-sm">شماره دستگاه</label><input className={inp} value={f.assetNumber} onChange={set('assetNumber')} /></div>
-          <div><label className="text-sm">سیستم</label><input className={inp} value={f.mechSystem} onChange={set('mechSystem')} /></div>
-          <div><label className="text-sm">مشخصات</label><input className={inp} value={f.specifications} onChange={set('specifications')} /></div>
-          <div className="hidden md:block" />
-          <div className="col-span-full flex gap-2">
-            <button type="submit" className="btn-success flex-1">جستجو</button>
-            <button type="button" onClick={clear} className="btn-danger">پاک کردن</button>
-          </div>
-        </form>
+
+      <Sec k="quick" open={open.quick} onToggle={toggleSec} title="🔍 جستجوی سریع (همه‌جا)" badge={quick ? 'فعال' : ''}>
+        <div className="bg-white p-2 rounded">
+          <input className={inp} value={quick}
+            onChange={(e) => setQuick(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+            placeholder="هر چیزی: موضوع، توضیحات، دستگاه، ساختمان، برچسب، درخواست‌کننده… و Enter" />
+        </div>
       </Sec>
 
+     
       <Sec k="facets" open={open.facets} onToggle={toggleSec} title="🎯 باریک‌کردن نتیجه (کلیکی)">
         <div className="bg-white p-2 rounded">
           {(!facets || (facets.buildings.length === 0 && facets.deviceTypes.length === 0 && facets.priorities.length === 0)) ? (
@@ -460,6 +415,55 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
             </>
           )}
         </div>
+      </Sec>
+
+      {(facetFilters.building || facetFilters.deviceType || facetFilters.priority) && (
+        <div className="mb-2 bg-yellow-100 p-2 rounded flex flex-wrap gap-2 items-center">
+          <span className="text-sm font-bold">فیلترهای فعال:</span>
+          {facetFilters.building && <button type="button" onClick={() => toggleFacet('building', facetFilters.building)} className="px-2 py-1 bg-yellow-300 rounded text-xs">ساختمان: {facetFilters.building} ✕</button>}
+          {facetFilters.deviceType && <button type="button" onClick={() => toggleFacet('deviceType', facetFilters.deviceType)} className="px-2 py-1 bg-yellow-300 rounded text-xs">دستگاه: {facetFilters.deviceType} ✕</button>}
+          {facetFilters.priority && <button type="button" onClick={() => toggleFacet('priority', facetFilters.priority)} className="px-2 py-1 bg-yellow-300 rounded text-xs">الویت: {facetFilters.priority} ✕</button>}
+        </div>
+      )}
+
+      <Sec k="smart" open={open.smart} onToggle={toggleSec} title="🩺 جستجوی هوشمند دستگاه" badge={smartText ? 'فعال' : ''}>
+        <div className="relative bg-white p-2 rounded">
+          <div className="flex items-center gap-2">
+            <input value={smartText} onChange={(e) => onSmartChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+              className="search-input flex-1" placeholder="مثلاً: ط14 ، د فن‌کویل ، م موضوع ، ت توضیحات" />
+            <span className="font-bold text-sm whitespace-nowrap">{deviceStatus}</span>
+          </div>
+          {suggestions.length > 0 && (
+            <ul className="absolute z-50 bg-white border border-gray-300 rounded shadow-lg max-h-56 overflow-auto w-1/2 mt-1">
+              {suggestions.map((s, i) => (
+                <li key={i} onClick={() => onSuggestionClick(s)} className="px-3 py-2 hover:bg-teal-100 cursor-pointer text-sm">{s}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Sec>
+
+
+      <Sec k="form" open={open.form} onToggle={toggleSec} title="🧾 فرم فیلترها" badge={formBadge}>
+        <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-2 rounded">
+          <div><label className="text-sm">موضوع</label><input className={inp} value={f.subject} onChange={set('subject')} /></div>
+          <div><label className="text-sm">توضیحات</label><input className={inp} value={f.description} onChange={set('description')} /></div>
+          <div><label className="text-sm">بلوک</label><input className={inp} value={f.block} onChange={set('block')} /></div>
+          <div><label className="text-sm">ورودی</label><input className={inp} value={f.entrance} onChange={set('entrance')} /></div>
+          <div><label className="text-sm">دستگاه</label><input className={inp} value={f.assetName} onChange={set('assetName')} /></div>
+          <div><label className="text-sm">ساختمان</label><input className={inp} value={f.building} onChange={set('building')} /></div>
+          <div><label className="text-sm">طبقه</label><input className={inp} value={f.floor} onChange={set('floor')} /></div>
+          <div><label className="text-sm">قسمت</label><input className={inp} value={f.location} onChange={set('location')} /></div>
+          <div><label className="text-sm">شماره دستگاه</label><input className={inp} value={f.assetNumber} onChange={set('assetNumber')} /></div>
+          <div><label className="text-sm">سیستم</label><input className={inp} value={f.mechSystem} onChange={set('mechSystem')} /></div>
+          <div><label className="text-sm">مشخصات</label><input className={inp} value={f.specifications} onChange={set('specifications')} /></div>
+          <div className="hidden md:block" />
+          <div className="col-span-full flex gap-2">
+            <button type="submit" className="btn-success flex-1">جستجو</button>
+            <button type="button" onClick={clear} className="btn-danger">پاک کردن</button>
+          </div>
+        </form>
       </Sec>
 
       {total != null && (
