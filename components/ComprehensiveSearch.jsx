@@ -52,8 +52,8 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
 
   const [quick, setQuick] = useState('');
   const [counts, setCounts] = useState(null);
-  const [facets, setFacets] = useState({ buildings: [], deviceTypes: [], priorities: [] });
-  const [facetFilters, setFacetFilters] = useState({ building: '', deviceType: '', priority: '' });
+  const [facets, setFacets] = useState({ buildings: [], deviceTypes: [], priorities: [], systems: [] });
+  const [facetFilters, setFacetFilters] = useState({ building: '', deviceType: '', priority: '', system: '' });
 
   const [open, setOpen] = useState({ ...DEFAULT_OPEN });
   const [total, setTotal] = useState(null);
@@ -159,6 +159,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
       facetBuilding: facetsToUse.building || '',
       facetDeviceType: facetsToUse.deviceType || '',
       facetPriority: facetsToUse.priority || '',
+      facetSystem: facetsToUse.system || '',
       withCounts: true,
       withTotal: true,
       limit: PAGE,
@@ -177,7 +178,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         setTotal(d.total != null ? Number(d.total) : null);
         if (onResult) onResult(accRef.current);
         setCounts(d.counts || null);
-        setFacets(d.facets || { buildings: [], deviceTypes: [], priorities: [] });
+        setFacets(d.facets || { buildings: [], deviceTypes: [], priorities: [], systems: [] });
         setOpen((o) => ({ ...o, form: false, statusDate: false }));
       } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
@@ -246,7 +247,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     resetSel();
     setSuggestions([]);
     setDeviceStatus('انتخاب دستگاه');
-    setFacetFilters({ building: '', deviceType: '', priority: '' });
+    setFacetFilters({ building: '', deviceType: '', priority: '', system: '' });
   };
 
   const clear = () => {
@@ -375,7 +376,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
      
       <Sec k="facets" open={open.facets} onToggle={toggleSec} title="🎯 باریک‌کردن نتیجه (کلیکی)">
         <div className="bg-white p-2 rounded">
-          {(!facets || (facets.buildings.length === 0 && facets.deviceTypes.length === 0 && facets.priorities.length === 0)) ? (
+          {(!facets || (facets.buildings.length === 0 && facets.deviceTypes.length === 0 && facets.priorities.length === 0 && facets.systems.length === 0)) ? (
             <div className="text-xs text-gray-500">پس از اولین جستجو، گزینه‌های باریک‌کردن اینجا ظاهر می‌شوند.</div>
           ) : (
             <>
@@ -412,17 +413,29 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
                   ))}
                 </div>
               )}
+              {facets.systems.length > 0 && (
+                <div className="mb-2">
+                  <span className="text-xs font-bold ml-1">سیستم:</span>
+                  {facets.systems.slice(0, 10).map((b) => (
+                    <button key={b.name} type="button" onClick={() => toggleFacet('system', b.name)}
+                      className={`inline-block px-2 py-1 mx-1 my-1 rounded text-xs ${facetFilters.system === b.name ? 'bg-teal-600 text-white' : 'bg-gray-100 hover:bg-teal-100'}`}>
+                      {b.name} ({b.count})
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
       </Sec>
 
-      {(facetFilters.building || facetFilters.deviceType || facetFilters.priority) && (
+      {(facetFilters.building || facetFilters.deviceType || facetFilters.priority || facetFilters.system) && (
         <div className="mb-2 bg-yellow-100 p-2 rounded flex flex-wrap gap-2 items-center">
           <span className="text-sm font-bold">فیلترهای فعال:</span>
           {facetFilters.building && <button type="button" onClick={() => toggleFacet('building', facetFilters.building)} className="px-2 py-1 bg-yellow-300 rounded text-xs">ساختمان: {facetFilters.building} ✕</button>}
           {facetFilters.deviceType && <button type="button" onClick={() => toggleFacet('deviceType', facetFilters.deviceType)} className="px-2 py-1 bg-yellow-300 rounded text-xs">دستگاه: {facetFilters.deviceType} ✕</button>}
           {facetFilters.priority && <button type="button" onClick={() => toggleFacet('priority', facetFilters.priority)} className="px-2 py-1 bg-yellow-300 rounded text-xs">الویت: {facetFilters.priority} ✕</button>}
+          {facetFilters.system && <button type="button" onClick={() => toggleFacet('system', facetFilters.system)} className="px-2 py-1 bg-yellow-300 rounded text-xs">سیستم: {facetFilters.system} ✕</button>}
         </div>
       )}
 
