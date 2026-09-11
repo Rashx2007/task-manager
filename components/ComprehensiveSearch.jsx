@@ -29,7 +29,7 @@ const normalizeBlock = (b) => {
 const DEFAULT_START = () => new Date('2018-03-21');
 const DEFAULT_END = () => { const d = new Date(); d.setFullYear(d.getFullYear() + 10); return d; };
 const EMPTY_F = { subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' };
-const DEFAULT_OPEN = { quick: true, presets: true, smart: true, statusDate: false, form: false, facets: true };
+const DEFAULT_OPEN = { quick: true, presets: true, smart: false, statusDate: false, form: false, facets: true };
 
 // ✅ تعریف در سطح ماژول (هویت ثابت) → بدون remount → بدون پریدن فوکوس
 function Sec({ k, title, badge, open, onToggle, children }) {
@@ -100,7 +100,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   const allOpen = open.quick && open.presets && open.smart && open.statusDate && open.form && open.facets;
   const toggleAll = () => setOpen(allOpen
     ? { quick: false, presets: false, smart: false, statusDate: false, form: false, facets: false }
-    : { quick: true, presets: true, smart: true, statusDate: true, form: true, facets: true });
+    : { quick: true, presets: true, smart: false, statusDate: true, form: true, facets: true });
 
   const filteredDevices = () => devices.filter((d) =>
     (!sel.current.subject || d.Subject === sel.current.subject) &&
