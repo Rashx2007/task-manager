@@ -97,10 +97,10 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   const resetSel = () => { sel.current = { subject: '', description: '', type: '', building: '', block: '', floor: '', entrance: '', location: '' }; };
 
   const toggleSec = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
-  const allOpen = open.quick && open.presets && open.smart && open.statusDate && open.form && open.facets;
+  const allOpen = open.quick && open.presets && open.statusDate && open.form && open.facets;
   const toggleAll = () => setOpen(allOpen
-    ? { quick: false, presets: false, smart: false, statusDate: false, form: false, facets: false }
-    : { quick: true, presets: true, smart: false, statusDate: true, form: true, facets: true });
+    ? { quick: false, presets: false, statusDate: false, form: false, facets: false }
+    : { quick: true, presets: true, statusDate: true, form: true, facets: true });
 
   const filteredDevices = () => devices.filter((d) =>
     (!sel.current.subject || d.Subject === sel.current.subject) &&
