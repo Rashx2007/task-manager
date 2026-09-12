@@ -68,9 +68,10 @@ body {
 /* ✅ پر کردن ارتفاع صفحه توسط جدول نتیجه */
 .full-height-wrap {
   overflow: auto;
-  background: #b4a9b0; /* همان رنگ زمینهٔ ردیف‌های جدول خودتان */
+  background: #b4a9b0;
   border: 1px solid #8d8389;
   border-top: none;
+  margin-bottom: 10px;
 }
 .full-height-wrap > * { height: 100%; }
 .full-height-wrap table { height: 100%; }

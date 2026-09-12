@@ -22,7 +22,7 @@ function FullHeight({ children, footerSel = "footer" }) {
       const top = el.getBoundingClientRect().top;
       const footerH =
         document.querySelector(footerSel)?.getBoundingClientRect().height || 0;
-      const h = Math.max(160, window.innerHeight - top - footerH - 4);
+      const h = Math.max(160, window.innerHeight - top - footerH - 35);
       const px = h + "px";
       if (el.style.height !== px) el.style.height = px;
     };
