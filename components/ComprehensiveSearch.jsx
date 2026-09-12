@@ -8,9 +8,24 @@ import TodayPlugin from './TodayPlugin';
 const STORAGE_KEY = 'comprehensive_search_last';
 const PAGE = 200;
 
+// ✅ تعریف facetها: ترتیب نمایش = ترتیب وابستگی آبشاری
+const FACET_DEFS = [
+  { key: 'building', field: 'buildings', label: 'ساختمان' },
+  { key: 'block', field: 'blocks', label: 'بلوک' },
+  { key: 'floor', field: 'floors', label: 'طبقه' },
+  { key: 'entrance', field: 'entrances', label: 'ورودی' },
+  { key: 'location', field: 'locations', label: 'قسمت' },
+  { key: 'deviceType', field: 'deviceTypes', label: 'نوع دستگاه' },
+  { key: 'system', field: 'systems', label: 'سیستم' },
+  { key: 'priority', field: 'priorities', label: 'الویت' },
+];
+// ✅ نگاشت facet → کلید داخلی جستجوی هوشمند (sel.current)
+const FACET_TO_SEL = { building: 'building', block: 'block', floor: 'floor', entrance: 'entrance', location: 'location', deviceType: 'type' };
+const emptyFacetFilters = () => Object.fromEntries(FACET_DEFS.map((d) => [d.key, '']));
+
 const toEn = (s) => String(s)
   .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-  .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+  .replace(/[٠-٩]/g, (d) => String('٠١٣٤٥٦٧٨٩'.indexOf(d)))
   .replace(/−/g, '-');
 
 const normalizeFa = (s) => String(s == null ? '' : s)
@@ -31,7 +46,6 @@ const DEFAULT_END = () => { const d = new Date(); d.setFullYear(d.getFullYear() 
 const EMPTY_F = { subject: '', description: '', mechSystem: '', assetName: '', assetNumber: '', building: '', block: '', floor: '', entrance: '', location: '', specifications: '' };
 const DEFAULT_OPEN = { quick: true, presets: true, smart: false, statusDate: false, form: false, facets: true };
 
-// ✅ تعریف در سطح ماژول (هویت ثابت) → بدون remount → بدون پریدن فوکوس
 function Sec({ k, title, badge, open, onToggle, children }) {
   return (
     <div className="mb-2 bg-[#F7C4A5] rounded">
@@ -52,8 +66,8 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
 
   const [quick, setQuick] = useState('');
   const [counts, setCounts] = useState(null);
-  const [facets, setFacets] = useState({ buildings: [], deviceTypes: [], priorities: [], systems: [] });
-  const [facetFilters, setFacetFilters] = useState({ building: '', deviceType: '', priority: '', system: '' });
+  const [facets, setFacets] = useState({ buildings: [], blocks: [], floors: [], entrances: [], locations: [], deviceTypes: [], systems: [], priorities: [] });
+  const [facetFilters, setFacetFilters] = useState(emptyFacetFilters());
 
   const [open, setOpen] = useState({ ...DEFAULT_OPEN });
   const [total, setTotal] = useState(null);
@@ -79,7 +93,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
       if (saved.end) { const d = new Date(saved.end); if (!isNaN(d.getTime())) setEnd(d); }
       if (saved.smartText) setSmartText(saved.smartText);
       if (saved.quick) setQuick(saved.quick);
-      if (saved.facetFilters) setFacetFilters(saved.facetFilters);
+      if (saved.facetFilters) setFacetFilters({ ...emptyFacetFilters(), ...saved.facetFilters });
       if (saved.open) setOpen({ ...DEFAULT_OPEN, ...saved.open });
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,6 +147,17 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   };
   const showDeviceTypesFor = () => show(distinct(filteredDevices().map((d) => d.DeviceType)).sort(), 'انواع دستگاه برای انتخاب شما:');
 
+  // ✅ همگام‌سازی انتخاب‌های جستجوی هوشمند → چیپ‌های باریک‌کردن
+  const syncFacetsFromSel = () => setFacetFilters((prev) => ({
+    ...prev,
+    building: sel.current.building || '',
+    block: sel.current.block || '',
+    floor: sel.current.floor || '',
+    entrance: sel.current.entrance || '',
+    location: sel.current.location || '',
+    deviceType: sel.current.type || '',
+  }));
+
   const doSearchWith = async (extra = {}, facetOverride = null) => {
     const p = (n) => String(n).padStart(2, '0');
     const wall = (d) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -157,9 +182,13 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
       onlyTemp: extra.onlyTemp === true,
       quick: normalizeFa(quick),
       facetBuilding: facetsToUse.building || '',
+      facetBlock: facetsToUse.block || '',
+      facetFloor: facetsToUse.floor || '',
+      facetEntrance: facetsToUse.entrance || '',
+      facetLocation: facetsToUse.location || '',
       facetDeviceType: facetsToUse.deviceType || '',
-      facetPriority: facetsToUse.priority || '',
       facetSystem: facetsToUse.system || '',
+      facetPriority: facetsToUse.priority || '',
       withCounts: true,
       withTotal: true,
       limit: PAGE,
@@ -178,7 +207,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         setTotal(d.total != null ? Number(d.total) : null);
         if (onResult) onResult(accRef.current);
         setCounts(d.counts || null);
-        setFacets(d.facets || { buildings: [], deviceTypes: [], priorities: [], systems: [] });
+        setFacets(d.facets || { buildings: [], blocks: [], floors: [], entrances: [], locations: [], deviceTypes: [], systems: [], priorities: [] });
         setOpen((o) => ({ ...o, form: false, statusDate: false }));
       } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
@@ -207,15 +236,16 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     setSuggestions([]); setDeviceStatus('انتخاب دستگاه');
     setSmartText(`${device.DeviceType} (شماره: ${device.DeviceNumber})`);
     setF({ ...f, ...extra });
+    setFacetFilters((prev) => ({ ...prev, building: extra.building, block: extra.block, floor: extra.floor, entrance: extra.entrance, location: extra.location, deviceType: extra.assetName }));
     doSearchWith(extra);
   };
 
   const onSmartChange = (raw) => {
     setSmartText(raw);
     const input = toEn(raw).trim();
-    if (!input) { resetSel(); setSuggestions([]); setDeviceStatus('انتخاب دستگاه'); return; }
+    if (!input) { resetSel(); syncFacetsFromSel(); setSuggestions([]); setDeviceStatus('انتخاب دستگاه'); return; }
     const m = input.match(/^[طxX](?<floor>-[1-3]|0.5|[1-9]|1[0-8])(?<block>[a-cA-Cآابس])?$/);
-    if (m) { resetSel(); sel.current.floor = m.groups.floor; sel.current.block = normalizeBlock(m.groups.block) || ''; showBuildings(); return; }
+    if (m) { resetSel(); sel.current.floor = m.groups.floor; sel.current.block = normalizeBlock(m.groups.block) || ''; syncFacetsFromSel(); showBuildings(); return; }
     if (input.startsWith('د ')) { resetSel(); loadDeviceTypes(input.slice(2).trim()); return; }
     if (input.startsWith('م ')) { resetSel(); loadSubjects(input.slice(2).trim()); return; }
     if (input.startsWith('ت ')) { resetSel(); loadDescriptions(input.slice(2).trim()); return; }
@@ -226,12 +256,12 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     const st = deviceStatus.trim();
     if (st === 'لطفاً موضوع مورد نظر را انتخاب کنید:') { sel.current.subject = value; showDeviceTypesFor(); return; }
     if (st === 'لطفاً توضیحات مورد نظر را انتخاب کنید:') { sel.current.description = value; showDeviceTypesFor(); return; }
-    if (st === 'لطفاً نوع دستگاه را انتخاب کنید:' || st.startsWith('انواع دستگاه برای')) { sel.current.type = value; showBuildings(); return; }
-    if (st.startsWith('لطفاً ساختمان مورد نظر را انتخاب کنید')) { sel.current.building = value; showBlocks(); return; }
-    if (st.startsWith('بلوک ساختمان')) { sel.current.block = value; showFloors(); return; }
-    if (st.startsWith('طبقه مورد نظر را انتخاب کنید')) { sel.current.floor = value; showEntrances(); return; }
-    if (st.startsWith('ورودی مورد نظر را انتخاب کنید')) { sel.current.entrance = value; showLocations(); return; }
-    if (st.startsWith('محل مورد نظر را انتخاب کنید')) { sel.current.location = value; showNumbers(); return; }
+    if (st === 'لطفاً نوع دستگاه را انتخاب کنید:' || st.startsWith('انواع دستگاه برای')) { sel.current.type = value; syncFacetsFromSel(); showBuildings(); return; }
+    if (st.startsWith('لطفاً ساختمان مورد نظر را انتخاب کنید')) { sel.current.building = value; syncFacetsFromSel(); showBlocks(); return; }
+    if (st.startsWith('بلوک ساختمان')) { sel.current.block = value; syncFacetsFromSel(); showFloors(); return; }
+    if (st.startsWith('طبقه مورد نظر را انتخاب کنید')) { sel.current.floor = value; syncFacetsFromSel(); showEntrances(); return; }
+    if (st.startsWith('ورودی مورد نظر را انتخاب کنید')) { sel.current.entrance = value; syncFacetsFromSel(); showLocations(); return; }
+    if (st.startsWith('محل مورد نظر را انتخاب کنید')) { sel.current.location = value; syncFacetsFromSel(); showNumbers(); return; }
     if (st.startsWith('شماره دستگاه را انتخاب کنید')) { const dev = filteredDevices().find((d) => String(d.DeviceNumber) === value); if (dev) finalize(dev); }
   };
 
@@ -247,7 +277,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     resetSel();
     setSuggestions([]);
     setDeviceStatus('انتخاب دستگاه');
-    setFacetFilters({ building: '', deviceType: '', priority: '', system: '' });
+    setFacetFilters(emptyFacetFilters());
   };
 
   const clear = () => {
@@ -295,10 +325,16 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     if (preset === 'temp') { setTimeout(() => doSearchWith({ onlyTemp: true }), 0); return; }
   };
 
+  // ✅ کلیک روی چیپ: هم سرور را فیلتر می‌کند هم جستجوی هوشمند را همگام
   const toggleFacet = (kind, value) => {
     setFacetFilters((prev) => {
       const next = { ...prev, [kind]: prev[kind] === value ? '' : value };
-      setTimeout(() => doSearchWith({}, next), 0);
+      const sk = FACET_TO_SEL[kind];
+      if (sk) sel.current[sk] = next[kind] || '';
+      setTimeout(() => {
+        doSearchWith({}, next);
+        if (sk && open.smart) showDeviceTypesFor();
+      }, 0);
       return next;
     });
   };
@@ -306,6 +342,8 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
   const inp = 'search-input w-full';
   const formBadge = Object.values(f).filter((v) => String(v || '').trim()).length || '';
   const statusBadge = status === 'current' ? '' : (status === 'completed' ? 'اتمام' : 'همه');
+  const anyFacetData = FACET_DEFS.some((d) => (facets[d.field] || []).length > 0);
+  const anyFacetActive = FACET_DEFS.some((d) => facetFilters[d.key]);
 
   return (
     <div className="bg-[#5F7470] p-4 mx-4 mt-2 rounded-lg shadow-lg" dir="rtl">
@@ -317,7 +355,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </div>
 
- <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
+      <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
         <div className="flex flex-wrap gap-2 items-center">
           <button type="button" onClick={() => applyPreset('today')} className="btn-primary px-3 py-1 text-xs">امروز</button>
           <button type="button" onClick={() => applyPreset('thisWeek')} className="btn-primary px-3 py-1 text-xs">این هفته</button>
@@ -328,7 +366,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
           <button type="button" onClick={clear} className="btn-danger px-3 py-1 text-xs mr-auto">پاک کردن حافظه</button>
         </div>
       </Sec>
-
 
       <Sec k="statusDate" open={open.statusDate} onToggle={toggleSec} title="📅 وضعیت و بازهٔ تاریخ" badge={statusBadge}>
         <div className="bg-white p-2 rounded flex flex-col gap-2">
@@ -363,7 +400,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-
       <Sec k="quick" open={open.quick} onToggle={toggleSec} title="🔍 جستجوی سریع (همه‌جا)" badge={quick ? 'فعال' : ''}>
         <div className="bg-white p-2 rounded">
           <input className={inp} value={quick}
@@ -373,69 +409,40 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
         </div>
       </Sec>
 
-     
       <Sec k="facets" open={open.facets} onToggle={toggleSec} title="🎯 باریک‌کردن نتیجه (کلیکی)">
         <div className="bg-white p-2 rounded">
-          {(!facets || (facets.buildings.length === 0 && facets.deviceTypes.length === 0 && facets.priorities.length === 0 && facets.systems.length === 0)) ? (
+          {!anyFacetData ? (
             <div className="text-xs text-gray-500">پس از اولین جستجو، گزینه‌های باریک‌کردن اینجا ظاهر می‌شوند.</div>
           ) : (
             <>
-              {facets.buildings.length > 0 && (
-                <div className="mb-2">
-                  <span className="text-xs font-bold ml-1">ساختمان:</span>
-                  {facets.buildings.slice(0, 10).map((b) => (
-                    <button key={b.name} type="button" onClick={() => toggleFacet('building', b.name)}
-                      className={`inline-block px-2 py-1 mx-1 my-1 rounded text-xs ${facetFilters.building === b.name ? 'bg-teal-600 text-white' : 'bg-gray-100 hover:bg-teal-100'}`}>
-                      {b.name} ({b.count})
-                    </button>
-                  ))}
-                </div>
-              )}
-              {facets.deviceTypes.length > 0 && (
-                <div className="mb-2">
-                  <span className="text-xs font-bold ml-1">نوع دستگاه:</span>
-                  {facets.deviceTypes.slice(0, 10).map((b) => (
-                    <button key={b.name} type="button" onClick={() => toggleFacet('deviceType', b.name)}
-                      className={`inline-block px-2 py-1 mx-1 my-1 rounded text-xs ${facetFilters.deviceType === b.name ? 'bg-teal-600 text-white' : 'bg-gray-100 hover:bg-teal-100'}`}>
-                      {b.name} ({b.count})
-                    </button>
-                  ))}
-                </div>
-              )}
-              {facets.priorities.length > 0 && (
-                <div className="mb-2">
-                  <span className="text-xs font-bold ml-1">الویت:</span>
-                  {facets.priorities.slice(0, 10).map((b) => (
-                    <button key={b.name} type="button" onClick={() => toggleFacet('priority', b.name)}
-                      className={`inline-block px-2 py-1 mx-1 my-1 rounded text-xs ${facetFilters.priority === b.name ? 'bg-teal-600 text-white' : 'bg-gray-100 hover:bg-teal-100'}`}>
-                      {b.name} ({b.count})
-                    </button>
-                  ))}
-                </div>
-              )}
-              {facets.systems.length > 0 && (
-                <div className="mb-2">
-                  <span className="text-xs font-bold ml-1">سیستم:</span>
-                  {facets.systems.slice(0, 10).map((b) => (
-                    <button key={b.name} type="button" onClick={() => toggleFacet('system', b.name)}
-                      className={`inline-block px-2 py-1 mx-1 my-1 rounded text-xs ${facetFilters.system === b.name ? 'bg-teal-600 text-white' : 'bg-gray-100 hover:bg-teal-100'}`}>
-                      {b.name} ({b.count})
-                    </button>
-                  ))}
-                </div>
-              )}
+              {FACET_DEFS.map((d) => {
+                const items = facets[d.field] || [];
+                if (!items.length) return null;
+                return (
+                  <div key={d.key} className="mb-2">
+                    <span className="text-xs font-bold ml-1">{d.label}:</span>
+                    {items.slice(0, 12).map((it) => (
+                      <button key={it.name} type="button" onClick={() => toggleFacet(d.key, it.name)}
+                        className={`inline-block px-2 py-1 mx-1 my-1 rounded text-xs ${facetFilters[d.key] === it.name ? 'bg-teal-600 text-white' : 'bg-gray-100 hover:bg-teal-100'}`}>
+                        {it.name} ({it.count})
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
       </Sec>
 
-      {(facetFilters.building || facetFilters.deviceType || facetFilters.priority || facetFilters.system) && (
+      {anyFacetActive && (
         <div className="mb-2 bg-yellow-100 p-2 rounded flex flex-wrap gap-2 items-center">
           <span className="text-sm font-bold">فیلترهای فعال:</span>
-          {facetFilters.building && <button type="button" onClick={() => toggleFacet('building', facetFilters.building)} className="px-2 py-1 bg-yellow-300 rounded text-xs">ساختمان: {facetFilters.building} ✕</button>}
-          {facetFilters.deviceType && <button type="button" onClick={() => toggleFacet('deviceType', facetFilters.deviceType)} className="px-2 py-1 bg-yellow-300 rounded text-xs">دستگاه: {facetFilters.deviceType} ✕</button>}
-          {facetFilters.priority && <button type="button" onClick={() => toggleFacet('priority', facetFilters.priority)} className="px-2 py-1 bg-yellow-300 rounded text-xs">الویت: {facetFilters.priority} ✕</button>}
-          {facetFilters.system && <button type="button" onClick={() => toggleFacet('system', facetFilters.system)} className="px-2 py-1 bg-yellow-300 rounded text-xs">سیستم: {facetFilters.system} ✕</button>}
+          {FACET_DEFS.map((d) => facetFilters[d.key] ? (
+            <button key={d.key} type="button" onClick={() => toggleFacet(d.key, facetFilters[d.key])} className="px-2 py-1 bg-yellow-300 rounded text-xs">
+              {d.label}: {facetFilters[d.key]} ✕
+            </button>
+          ) : null)}
         </div>
       )}
 
@@ -456,7 +463,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
           )}
         </div>
       </Sec>
-
 
       <Sec k="form" open={open.form} onToggle={toggleSec} title="🧾 فرم فیلترها" badge={formBadge}>
         <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-2 rounded">

@@ -55,6 +55,10 @@ export async function POST(request) {
     if (String(b.facetDeviceType || '').trim()) like('asset.AssetName', b.facetDeviceType);
     if (String(b.facetPriority || '').trim()) { conds.push('(TD.Priorities = ?)'); params.push(String(b.facetPriority)); }
     if (String(b.facetSystem || '').trim()) like('asset.MechSystem', b.facetSystem);
+    if (String(b.facetBlock || '').trim()) { conds.push('(asset.Block = ?)'); params.push(String(b.facetBlock)); }
+    if (String(b.facetFloor || '').trim()) { conds.push('(asset.Floor = ?)'); params.push(Number(b.facetFloor)); }
+    if (String(b.facetEntrance || '').trim()) like('asset.Entrance', b.facetEntrance);
+    if (String(b.facetLocation || '').trim()) like('asset.Location', b.facetLocation);
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
@@ -99,17 +103,30 @@ export async function POST(request) {
         resp.counts = counts[0] || { currentCount: 0, completedCount: 0, allCount: 0 };
       } catch { resp.counts = { currentCount: 0, completedCount: 0, allCount: 0 }; }
       try {
-        const facetRows = await query(`SELECT asset.Building, asset.AssetName AS DeviceType, asset.MechSystem, TD.Priorities ${BASE_FROM} ${baseClause}`, params);
-        const bmap = {}, dmap = {}, pmap = {}, smap = {};
+        const facetRows = await query(`SELECT asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location, asset.AssetName AS DeviceType, asset.MechSystem, TD.Priorities ${BASE_FROM} ${baseClause}`, params);
+        const bmap = {}, blmap = {}, flmap = {}, emap = {}, lmap = {}, dmap = {}, smap = {}, pmap = {};
         for (const r of facetRows) {
           if (r.Building) bmap[r.Building] = (bmap[r.Building] || 0) + 1;
+          if (r.Block) blmap[r.Block] = (blmap[r.Block] || 0) + 1;
+          if (r.Floor != null && String(r.Floor) !== '') flmap[String(r.Floor)] = (flmap[String(r.Floor)] || 0) + 1;
+          if (r.Entrance) emap[r.Entrance] = (emap[r.Entrance] || 0) + 1;
+          if (r.Location) lmap[r.Location] = (lmap[r.Location] || 0) + 1;
           if (r.DeviceType) dmap[r.DeviceType] = (dmap[r.DeviceType] || 0) + 1;
-          if (r.Priorities) pmap[r.Priorities] = (pmap[r.Priorities] || 0) + 1;
           if (r.MechSystem) smap[r.MechSystem] = (smap[r.MechSystem] || 0) + 1;
+          if (r.Priorities) pmap[r.Priorities] = (pmap[r.Priorities] || 0) + 1;
         }
         const toArr = (m) => Object.entries(m).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-        resp.facets = { buildings: toArr(bmap), deviceTypes: toArr(dmap), priorities: toArr(pmap), systems: toArr(smap) };
-      } catch { resp.facets = { buildings: [], deviceTypes: [], priorities: [], systems: [] }; }
+        resp.facets = {
+          buildings: toArr(bmap),
+          blocks: toArr(blmap),
+          floors: toArr(flmap).sort((a, b) => Number(a.name) - Number(b.name)),
+          entrances: toArr(emap),
+          locations: toArr(lmap),
+          deviceTypes: toArr(dmap),
+          systems: toArr(smap),
+          priorities: toArr(pmap),
+        };
+      } catch { resp.facets = { buildings: [], blocks: [], floors: [], entrances: [], locations: [], deviceTypes: [], systems: [], priorities: [] }; }
     }
 
     return NextResponse.json(resp);
