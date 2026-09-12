@@ -21,11 +21,13 @@ const FACET_DEFS = [
 ];
 // ✅ نگاشت facet → کلید داخلی جستجوی هوشمند (sel.current)
 const FACET_TO_SEL = { building: 'building', block: 'block', floor: 'floor', entrance: 'entrance', location: 'location', deviceType: 'type' };
+// ✅ نگاشت facet → کلید معادل در فرم فیلترها
+const FACET_TO_FORM = { building: 'building', block: 'block', floor: 'floor', entrance: 'entrance', location: 'location', deviceType: 'assetName', system: 'mechSystem' };
 const emptyFacetFilters = () => Object.fromEntries(FACET_DEFS.map((d) => [d.key, '']));
 
 const toEn = (s) => String(s)
   .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-  .replace(/[٠-٩]/g, (d) => String('٠١٣٤٥٦٧٨٩'.indexOf(d)))
+  .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
   .replace(/−/g, '-');
 
 const normalizeFa = (s) => String(s == null ? '' : s)
@@ -106,7 +108,18 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
 
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  // ✅ ویرایش فرم → همگام‌سازی facetها و جستجوی هوشمند
+  const set = (k) => (e) => {
+    const v = e.target.value;
+    setF({ ...f, [k]: v });
+    const facetKey = Object.keys(FACET_TO_FORM).find((fk) => FACET_TO_FORM[fk] === k);
+    if (facetKey) {
+      setFacetFilters((prev) => ({ ...prev, [facetKey]: v }));
+      const sk = FACET_TO_SEL[facetKey];
+      if (sk) sel.current[sk] = v;
+    }
+  };
+
   const distinct = (arr) => [...new Set(arr.filter((x) => x !== null && String(x) !== ''))];
   const resetSel = () => { sel.current = { subject: '', description: '', type: '', building: '', block: '', floor: '', entrance: '', location: '' }; };
 
@@ -325,18 +338,18 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     if (preset === 'temp') { setTimeout(() => doSearchWith({ onlyTemp: true }), 0); return; }
   };
 
-  // ✅ کلیک روی چیپ: هم سرور را فیلتر می‌کند هم جستجوی هوشمند را همگام
+  // ✅ کلیک روی چیپ: هم سرور، هم جستجوی هوشمند، هم فرم فیلترها همگام می‌شوند
   const toggleFacet = (kind, value) => {
-    setFacetFilters((prev) => {
-      const next = { ...prev, [kind]: prev[kind] === value ? '' : value };
-      const sk = FACET_TO_SEL[kind];
-      if (sk) sel.current[sk] = next[kind] || '';
-      setTimeout(() => {
-        doSearchWith({}, next);
-        if (sk && open.smart) showDeviceTypesFor();
-      }, 0);
-      return next;
-    });
+    const next = { ...facetFilters, [kind]: facetFilters[kind] === value ? '' : value };
+    const sk = FACET_TO_SEL[kind];
+    if (sk) sel.current[sk] = next[kind] || '';
+    const fk = FACET_TO_FORM[kind];
+    if (fk) setF((pf) => ({ ...pf, [fk]: next[kind] || '' }));
+    setFacetFilters(next);
+    setTimeout(() => {
+      doSearchWith({}, next);
+      if (sk && open.smart) showDeviceTypesFor();
+    }, 0);
   };
 
   const inp = 'search-input w-full';
@@ -466,6 +479,11 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
 
       <Sec k="form" open={open.form} onToggle={toggleSec} title="🧾 فرم فیلترها" badge={formBadge}>
         <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-2 rounded">
+          <div className="col-span-full">
+            <label className="text-sm">جستجوی سریع (همه‌جا)</label>
+            <input className={inp} value={quick} onChange={(e) => setQuick(e.target.value)}
+              placeholder="همان کادر جستجوی سریع بالا؛ اینجا هم قابل مشاهده و ویرایش است" />
+          </div>
           <div><label className="text-sm">موضوع</label><input className={inp} value={f.subject} onChange={set('subject')} /></div>
           <div><label className="text-sm">توضیحات</label><input className={inp} value={f.description} onChange={set('description')} /></div>
           <div><label className="text-sm">بلوک</label><input className={inp} value={f.block} onChange={set('block')} /></div>
