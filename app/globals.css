@@ -64,3 +64,13 @@ body {
 .app-tooltip-below { transform: translate(-50%, 0); }
 .app-tooltip-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #1d1a31; }
 @keyframes app-tooltip-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ✅ پر کردن ارتفاع صفحه توسط جدول نتیجه */
+.full-height-wrap {
+  overflow: auto;
+  background: #b4a9b0; /* همان رنگ زمینهٔ ردیف‌های جدول خودتان */
+  border: 1px solid #8d8389;
+  border-top: none;
+}
+.full-height-wrap > * { height: 100%; }
+.full-height-wrap table { height: 100%; }
