@@ -23,10 +23,9 @@ function FullHeight({ children, footerSel = 'footer' }) {
       const footerH = document.querySelector(footerSel)?.getBoundingClientRect().height || 0;
       const ideal = window.innerHeight - topDoc - footerH - 18;
 
-      let h;
       if (ideal >= 240) {
-        // حالت پُرکننده: جدول تا پایین پنجره، بدون اسکرول صفحه
-        h = ideal;
+        // ✅ حالت پُرکننده: جدول تا پایین پنجره، بدون اسکرول صفحه
+        const h = Math.max(160, ideal);
         if (el.style.height !== h + 'px') el.style.height = h + 'px';
         requestAnimationFrame(() => {
           const over = document.documentElement.scrollHeight - window.innerHeight;
@@ -36,9 +35,8 @@ function FullHeight({ children, footerSel = 'footer' }) {
           }
         });
       } else {
-        // حالت اسکرول: محتوای بالایی بلند است؛ جدول ارتفاع راحت ثابت می‌گیرد
-        h = 420;
-        if (el.style.height !== h + 'px') el.style.height = h + 'px';
+        // ✅ حالت اسکرول: ارتفاع طبیعی جدول؛ صفحه اسکرول می‌شود و همهٔ بخش‌ها قابل دیدن‌اند
+        if (el.style.height !== 'auto') el.style.height = 'auto';
       }
     };
     fit();
@@ -53,7 +51,6 @@ function FullHeight({ children, footerSel = 'footer' }) {
     </div>
   );
 }
-
 export default function Home() {
   const [tasks, setTasks] = useState([]);
   const [loadType, setLoadType] = useState("daily");
