@@ -13,27 +13,39 @@ import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
 
-function FullHeight({ children, footerSel = "footer" }) {
+function FullHeight({ children, footerSel = 'footer' }) {
   const ref = useRef(null);
   useEffect(() => {
     const fit = () => {
-      const el = ref.current;
-      if (!el) return;
-      const top = el.getBoundingClientRect().top;
-      const footerH =
-        document.querySelector(footerSel)?.getBoundingClientRect().height || 0;
-      const h = Math.max(160, window.innerHeight - top - footerH - 35);
-      const px = h + "px";
-      if (el.style.height !== px) el.style.height = px;
+      const el = ref.current; if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const topDoc = rect.top + window.scrollY; // مختصات سندی؛ مستقل از اسکرول فعلی
+      const footerH = document.querySelector(footerSel)?.getBoundingClientRect().height || 0;
+      const ideal = window.innerHeight - topDoc - footerH - 18;
+
+      let h;
+      if (ideal >= 240) {
+        // حالت پُرکننده: جدول تا پایین پنجره، بدون اسکرول صفحه
+        h = ideal;
+        if (el.style.height !== h + 'px') el.style.height = h + 'px';
+        requestAnimationFrame(() => {
+          const over = document.documentElement.scrollHeight - window.innerHeight;
+          if (over > 0) {
+            const nh = Math.max(160, h - over - 2);
+            if (el.style.height !== nh + 'px') el.style.height = nh + 'px';
+          }
+        });
+      } else {
+        // حالت اسکرول: محتوای بالایی بلند است؛ جدول ارتفاع راحت ثابت می‌گیرد
+        h = 420;
+        if (el.style.height !== h + 'px') el.style.height = h + 'px';
+      }
     };
     fit();
     const mo = new MutationObserver(fit);
     mo.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", fit);
-    return () => {
-      mo.disconnect();
-      window.removeEventListener("resize", fit);
-    };
+    window.addEventListener('resize', fit);
+    return () => { mo.disconnect(); window.removeEventListener('resize', fit); };
   }, [footerSel]);
   return (
     <div ref={ref} className="full-height-wrap">

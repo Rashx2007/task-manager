@@ -75,3 +75,5 @@ body {
 }
 .full-height-wrap > * { height: 100%; }
 .full-height-wrap table { height: 100%; }
+
+html, body { overflow-y: auto }
