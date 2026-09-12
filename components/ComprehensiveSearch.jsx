@@ -350,6 +350,7 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-white font-bold text-lg">جستجوی جامع کارها</h3>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={clear} className="btn-danger px-3 py-1 text-xs">پاک کردن حافظه</button>
           <button type="button" onClick={toggleAll} className="btn-primary px-3 py-1 text-xs">{allOpen ? 'جمع کردن همه' : 'باز کردن همه'}</button>
           <button onClick={onClose} className="text-white text-xl">✕</button>
         </div>
@@ -363,7 +364,6 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
           <button type="button" onClick={() => applyPreset('completedThisMonth')} className="btn-primary px-3 py-1 text-xs">اتمام‌یافتهٔ این ماه</button>
           <button type="button" onClick={() => applyPreset('fixed')} className="btn-primary px-3 py-1 text-xs">زمان ثابت</button>
           <button type="button" onClick={() => applyPreset('temp')} className="btn-primary px-3 py-1 text-xs">موقتی/نامشخص‌ها</button>
-          <button type="button" onClick={clear} className="btn-danger px-3 py-1 text-xs mr-auto">پاک کردن حافظه</button>
         </div>
       </Sec>
 
