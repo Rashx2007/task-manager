@@ -12,45 +12,12 @@ import AssetsModal from "@/components/AssetsModal";
 import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
+const PAGE_SIZE = 10; // ✅ حداکثر ۱۰ کار در هر صفحه
 
-function FullHeight({ children, footerSel = 'footer' }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const fit = () => {
-      const el = ref.current; if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const topDoc = rect.top + window.scrollY; // مختصات سندی؛ مستقل از اسکرول فعلی
-      const footerH = document.querySelector(footerSel)?.getBoundingClientRect().height || 0;
-      const ideal = window.innerHeight - topDoc - footerH - 18;
-
-      if (ideal >= 240) {
-        // ✅ حالت پُرکننده: جدول تا پایین پنجره، بدون اسکرول صفحه
-        const h = Math.max(160, ideal);
-        if (el.style.height !== h + 'px') el.style.height = h + 'px';
-        requestAnimationFrame(() => {
-          const over = document.documentElement.scrollHeight - window.innerHeight;
-          if (over > 0) {
-            const nh = Math.max(160, h - over - 2);
-            if (el.style.height !== nh + 'px') el.style.height = nh + 'px';
-          }
-        });
-      } else {
-        // ✅ حالت اسکرول: ارتفاع طبیعی جدول؛ صفحه اسکرول می‌شود و همهٔ بخش‌ها قابل دیدن‌اند
-        if (el.style.height !== 'auto') el.style.height = 'auto';
-      }
-    };
-    fit();
-    const mo = new MutationObserver(fit);
-    mo.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', fit);
-    return () => { mo.disconnect(); window.removeEventListener('resize', fit); };
-  }, [footerSel]);
-  return (
-    <div ref={ref} className="full-height-wrap">
-      {children}
-    </div>
-  );
+function FullHeight({ children }) {
+  return <div className="table-host">{children}</div>;
 }
+
 export default function Home() {
   const [tasks, setTasks] = useState([]);
   const [loadType, setLoadType] = useState("daily");
@@ -67,6 +34,11 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
   const [status, setStatus] = useState({ count: 0, today: "" });
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
+  const pageTasks = tasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => { setPage(1); }, [tasks]);          // با هر جستجوی جدید، برگشت به صفحهٔ ۱
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]); // جلوگیری از صفحهٔ خارج از محدوده
 
   const loadTasks = useCallback(async (type = "daily") => {
     try {
@@ -266,17 +238,25 @@ export default function Home() {
       )}
 
       <div className="p-3 flex-1 min-h-0 flex flex-col">
-        <FullHeight>
-          <TaskTable
-            tasks={tasks}
-            onRowClick={setSelectedTask}
-            onComplete={handleComplete}
-            onEdit={openEdit}
-            onFolder={setFolderTask}
-            selectedTask={selectedTask}
-          />
-        </FullHeight>
-      </div>
+             <FullHeight>
+       <TaskTable
+         tasks={pageTasks}
+         startNumber={(page - 1) * PAGE_SIZE}
+         onRowClick={setSelectedTask}
+         onComplete={handleComplete}
+         onEdit={openEdit}
+         onFolder={setFolderTask}
+         selectedTask={selectedTask}
+       />
+     </FullHeight>
+     <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2">
+       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage(1)}>اولین</button>
+       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>قبلی</button>
+       <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">صفحهٔ {page} از {totalPages} — {tasks.length} کار</span>
+       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>بعدی</button>
+       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>آخرین</button>
+     </div>
+   </div>
 
       <div className="shrink-0">
         <StatusBar count={status.count} today={status.today} />

@@ -73,7 +73,51 @@ body {
   border-top: none;
   margin-bottom: 10px;
 }
-.full-height-wrap > * { height: 100%; }
-.full-height-wrap table { height: 100%; }
+
+
+/* ✅ ارتفاع ثابت سطرهای جدول در همهٔ حالت‌ها؛ بدون کش‌شدن برای پر کردن صفحه */
+.table-host > * { min-height: 0; height: auto; }
+.table-host table { height: auto; width: 100%; }
+.table-host thead th {
+  height: 44px;
+  max-height: 44px;
+  padding: 6px 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.table-host tbody tr { height: 56px; }
+.table-host tbody td {
+  height: 56px;
+  max-height: 56px;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✅ میزبان جدول: فضای باقی‌ماندهٔ صفحه را می‌گیرد؛ اسکرول داخل خود جدول است */
+.table-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ✅ ارتفاع ثابت سطرها؛ جدول هرگز برای پر کردن صفحه کش نمی‌آید */
+.table-host table { height: auto; width: 100%; }
+.table-host thead th {
+  height: 44px;
+  max-height: 44px;
+  padding: 6px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.table-host tbody td {
+  height: 56px;
+  max-height: 56px;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 html, body { overflow-y: auto }
+
+
