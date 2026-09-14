@@ -68,20 +68,60 @@ export default function Home() {
       if (raw) setDraft(JSON.parse(raw));
     } catch { }
   }, []);
+  
   const startDraft = () => setDraft((d) => d || {});
   const changeDraft = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const assignDraft = (colKey, value) => setDraft((d) => (d ? { ...d, [colKey]: value } : d));
-  const saveDraft = () => {
-    try {
-      localStorage.setItem("task_draft", JSON.stringify(draft));
-      alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-    } catch { }
+  
+  // ✅ تابع saveDraft اصلاح‌شده: بررسی وجود دستگاه قبل از ذخیره موقت
+  const saveDraft = async () => {
+    if (!draft) return;
+    
+    // اگر نام دستگاه و ساختمان مشخص شده‌اند، بررسی وجود در دیتابیس
+    if (draft.AssetName && draft.Building) {
+      try {
+        const checkRes = await fetch('/api/asset-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            AssetName: draft.AssetName,
+            AssetNumber: draft.AssetNumber,
+            Building: draft.Building,
+            Block: draft.Block,
+            Floor: draft.Floor,
+            Entrance: draft.Entrance,
+            Location: draft.Location,
+          }),
+        });
+        const checkData = await checkRes.json();
+        
+        if (!checkData.found) {
+          // دستگاه با این مشخصات کامل وجود ندارد → فراخوانی handleDraftDeviceMissing
+          handleDraftDeviceMissing(draft);
+          return;
+        }
+        
+        // دستگاه وجود دارد → ذخیره موقت
+        localStorage.setItem("task_draft", JSON.stringify(draft));
+        alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
+      } catch (e) {
+        alert("خطا در بررسی دستگاه: " + e.message);
+      }
+    } else {
+      // اطلاعات ناقص → فقط ذخیره موقت
+      try {
+        localStorage.setItem("task_draft", JSON.stringify(draft));
+        alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
+      } catch { }
+    }
   };
+  
   const finishDraft = () => {
     finishingDraftRef.current = true;
     setEditTask({ ...draft });
     setShowTaskForm(true);
   };
+  
   const cancelDraft = () => {
     setDraft(null);
     try {
@@ -91,23 +131,25 @@ export default function Home() {
 
   // ✅ جریان «دستگاه یافت نشد → مودال پیش‌پر → بازگشت به سطر»
   const [assetPreset, setAssetPreset] = useState(null);
+  
   const handleDraftDeviceMissing = (draftData) => {
-  const spec = `${draftData.AssetName} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building}, بلوک: ${draftData.Block || '-'}, طبقه: ${draftData.Floor || '-'}, ورودی: ${draftData.Entrance || '-'}, محل: ${draftData.Location || '-'}`;
+    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}, بلوک: ${draftData.Block || '-'}, طبقه: ${draftData.Floor || '-'}, ورودی: ${draftData.Entrance || '-'}, محل: ${draftData.Location || '-'}`;
+    
+    if (!confirm(`دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`)) return;
+    
+    setAssetPreset({
+      AssetName: draftData.AssetName || '',
+      AssetNumber: draftData.AssetNumber || '',
+      Building: draftData.Building || '',
+      Block: draftData.Block || '-',
+      Floor: draftData.Floor || '',
+      Entrance: draftData.Entrance || '',
+      Location: draftData.Location || '',
+      MechSystem: draftData.MechSystem || '',
+    });
+    setShowAssets(true);
+  };
   
-  if (!confirm(`دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`)) return;
-  
-  setAssetPreset({
-    AssetName: draftData.AssetName || '',
-    AssetNumber: draftData.AssetNumber || '',
-    Building: draftData.Building || '',
-    Block: draftData.Block || '-',
-    Floor: draftData.Floor || '',
-    Entrance: draftData.Entrance || '',
-    Location: draftData.Location || '',
-    MechSystem: draftData.MechSystem || '',
-  });
-  setShowAssets(true);
-};
   const handleAssetSavedFromDraft = (newId, form) => {
     // پس از ثبت دستگاه، به همان سطر پیش‌نویس برمی‌گردیم
     setDraft((d) => (d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d));
@@ -268,7 +310,6 @@ export default function Home() {
             onDraftSave={saveDraft}
             onDraftFinish={finishDraft}
             onDraftCancel={cancelDraft}
-            onDraftDeviceMissing={handleDraftDeviceMissing}
           />
         </FullHeight>
         <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">

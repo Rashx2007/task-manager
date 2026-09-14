@@ -7,7 +7,7 @@ export async function POST(request) {
     const { AssetName, AssetNumber, Building, Block, Floor, Entrance, Location } = b || {};
     
     if (!AssetName || !Building) {
-      return NextResponse.json({ success: false, error: 'نام دستگاه و ساختمان الزامی است' }, { status: 400 });
+      return NextResponse.json({ found: false });
     }
     
     const num = (v) => (v !== null && v !== undefined && String(v).trim() !== '' ? Number(v) : null);
