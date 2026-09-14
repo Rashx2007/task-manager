@@ -20,7 +20,7 @@ export default function TaskTable({ tasks, startNumber = 0, onRowClick, onComple
     <div className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
       <table className="task-table w-full min-w-[1300px]">
         <thead>
-          <tr className="h-11">
+          <tr>
             <th>ردیف</th>
             <th>کد کار</th>
             <th>دستگاه/مجموعه</th>
@@ -43,7 +43,7 @@ export default function TaskTable({ tasks, startNumber = 0, onRowClick, onComple
               key={t.TaskID}
               onClick={() => onRowClick(t)}
               onDoubleClick={() => onEdit && onEdit(t)}
-              className={`h-14 ${selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''}`}
+              className={selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''}
               style={{ cursor: 'pointer' }}
             >
               <td>{startNumber + i + 1}</td>

@@ -15,7 +15,27 @@ import FolderModal from "@/components/FolderModal";
 const PAGE_SIZE = 10; // ✅ حداکثر ۱۰ کار در هر صفحه
 
 function FullHeight({ children }) {
-  return <div className="table-host">{children}</div>;
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    const apply = () => {
+      if (!el) return;
+      const H = el.clientHeight || 0;
+      const row = Math.max(40, H / 10.5);   // ۱۰ سطر + ۰٫۵ سرستون = کل ارتفاع
+      el.style.setProperty('--row-h', row + 'px');
+      el.style.setProperty('--head-h', row * 0.5 + 'px');
+    };
+    apply();
+    const mo = new MutationObserver(apply); // با باز/بسته‌شدن پنل‌ها دوباره محاسبه شود
+    mo.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', apply);
+    return () => { mo.disconnect(); window.removeEventListener('resize', apply); };
+  }, []);
+  return (
+    <div ref={ref} className="table-host">
+      {children}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -217,6 +237,8 @@ export default function Home() {
         />
       </div>
 
+        {(showSearch || showComprehensive) && (
+    <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
       {showSearch && (
         <SearchPanel
           onResult={(rows) => {
@@ -226,7 +248,6 @@ export default function Home() {
           onClose={() => setShowSearch(false)}
         />
       )}
-
       {showComprehensive && (
         <ComprehensiveSearch
           onResult={(rows) => {
@@ -236,6 +257,8 @@ export default function Home() {
           onClose={() => setShowComprehensive(false)}
         />
       )}
+    </div>
+  )}
 
       <div className="p-3 flex-1 min-h-0 flex flex-col">
              <FullHeight>
@@ -249,7 +272,7 @@ export default function Home() {
          selectedTask={selectedTask}
        />
      </FullHeight>
-     <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2">
+     <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
        <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage(1)}>اولین</button>
        <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>قبلی</button>
        <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">صفحهٔ {page} از {totalPages} — {tasks.length} کار</span>

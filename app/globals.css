@@ -28,13 +28,11 @@ body {
   background: #F7C4A5;
   color: #000;
   font-weight: bold;
-  padding: 8px;
   border: 1px solid #000;
   font-size: 14px;
   box-shadow: 0 1px 0 0 rgba(0, 0, 0, .25);
 }
 .task-table td {
-  padding: 8px;
   border: 1px solid #9ca3af;
   font-size: 14px;
   text-align: right;
@@ -43,10 +41,8 @@ body {
 .task-table tbody tr:nth-child(even) { background: #CCDAD1; }
 .task-table tbody tr:hover { background: #fbbf24; cursor: pointer; }
 
-/* ✅ سطر انتخاب‌شده (قرمز) — با !important برای override کردن nth-child */
-.task-row-selected {
-  background: #FC7470 !important;
-}
+/* ✅ سطر انتخاب‌شده (قرمز) */
+.task-row-selected { background: #FC7470 !important; }
 
 .app-tooltip {
   position: fixed; z-index: 10000; transform: translate(-50%, -100%);
@@ -65,59 +61,37 @@ body {
 .app-tooltip-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #1d1a31; }
 @keyframes app-tooltip-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* ✅ پر کردن ارتفاع صفحه توسط جدول نتیجه */
-.full-height-wrap {
-  overflow: auto;
-  background: #b4a9b0;
-  border: 1px solid #8d8389;
-  border-top: none;
-  margin-bottom: 10px;
-}
-
-
-/* ✅ ارتفاع ثابت سطرهای جدول در همهٔ حالت‌ها؛ بدون کش‌شدن برای پر کردن صفحه */
-.table-host > * { min-height: 0; height: auto; }
-.table-host table { height: auto; width: 100%; }
-.table-host thead th {
-  height: 44px;
-  max-height: 44px;
-  padding: 6px 8px;
+/* ✅ قفل اسکرول صفحه: هیچ ناحیهٔ خالی/سفید بیرون layout دیده نمی‌شود */
+html, body {
+  height: 100%;
   overflow: hidden;
-  white-space: nowrap;
-}
-.table-host tbody tr { height: 56px; }
-.table-host tbody td {
-  height: 56px;
-  max-height: 56px;
-  padding: 6px 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: #D8C9B4;
 }
 
-/* ✅ میزبان جدول: فضای باقی‌ماندهٔ صفحه را می‌گیرد؛ اسکرول داخل خود جدول است */
+/* ✅ میزبان جدول: فضای باقی‌مانده را می‌گیرد؛ اسکرول داخل خود جدول است */
 .table-host {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  background: #b4a9b0;
+  border: 1px solid #8d8389;
+  border-top: none;
 }
 
-/* ✅ ارتفاع ثابت سطرها؛ جدول هرگز برای پر کردن صفحه کش نمی‌آید */
+/* ✅ تقسیم ارتفاع به ۱۰٫۵ قسمت (۱۰ سطر + سرستون نیم‌قسمت) با متغیرهایی که page.js ست می‌کند */
 .table-host table { height: auto; width: 100%; }
 .table-host thead th {
-  height: 44px;
-  max-height: 44px;
-  padding: 6px 8px;
+  height: var(--head-h, 26px);
+  max-height: var(--head-h, 26px);
+  padding: 2px 8px;
   white-space: nowrap;
   overflow: hidden;
 }
+.table-host tbody tr { height: var(--row-h, 52px); }
 .table-host tbody td {
-  height: 56px;
-  max-height: 56px;
-  padding: 6px 8px;
+  height: var(--row-h, 52px);
+  max-height: var(--row-h, 52px);
+  padding: 4px 8px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-html, body { overflow-y: auto }
-
-
