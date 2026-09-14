@@ -56,7 +56,7 @@ export default function TaskTable({
     return [...set].sort((a, b) => a.localeCompare(b, 'fa', { numeric: true }));
   };
 
-  // ✅ وقتی Draft فعال است، فیلترهای عادی غیرفعال‌اند
+  // ✅ وقتی پیش‌نویس فعال است، فیلترهای عادی غیرفعال‌اند
   const filtered = draftActive
     ? (tasks || [])
     : (tasks || []).filter((t) => {
@@ -84,7 +84,8 @@ export default function TaskTable({
   const openMenu = (e, key) => {
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
-    setMenu((m) => (m && m.key === key ? null : { key, y: r.bottom + 2, right: window.innerWidth - r.right }));
+    const y = Math.min(r.bottom + 2, window.innerHeight - 340); // ✅ مهار داخل پنجره
+    setMenu((m) => (m && m.key === key ? null : { key, y, right: window.innerWidth - r.right }));
   };
 
   const toggleSort = (key) => {
@@ -222,7 +223,7 @@ export default function TaskTable({
         </div>
       )}
 
-      {/* ✅ منوی سرستون با Portal روی body — دیگر توسط overflow بریده نمی‌شود */}
+      {/* ✅ منوی سرستون با Portal روی body — توسط overflow بریده نمی‌شود */}
       {menu && menuCol && createPortal(
         <div className="col-menu" style={{ top: menu.y, right: menu.right }} onClick={(e) => e.stopPropagation()}>
           {draftActive ? (

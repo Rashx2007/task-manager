@@ -2,7 +2,7 @@
 import { useState } from 'react';
 
 export default function Toolbar({
-  onNewTask, onEdit, onDelete, onComplete, onSearch, onComprehensiveSearch,
+  onNewTask, onQuickCreate, onEdit, onDelete, onComplete, onSearch, onComprehensiveSearch,
   onRefresh, onReport, onBackup, onAssets, onPersons, onSettings,
   onReschedule, onMoveFixed, onUpdateFolders, onCorrectPrio, onPriorityIncrease, disableNew = false,
 }) {
@@ -10,6 +10,7 @@ export default function Toolbar({
   const [updOpen, setUpdOpen] = useState(false);
   const buttons = [
     { label: 'جدید', icon: '➕', action: onNewTask, color: 'bg-teal-500 hover:bg-teal-600', disabled: disableNew },
+    { label: 'ایجاد از فیلتر', icon: '📋', action: onQuickCreate, color: 'bg-amber-500 hover:bg-amber-600' },
     { label: 'ویرایش', icon: '✏️', action: onEdit, color: 'bg-blue-500 hover:bg-blue-600' },
     { label: 'حذف', icon: '🗑️', action: onDelete, color: 'bg-red-500 hover:bg-red-600' },
     { label: 'اتمام کار', icon: '✅', action: onComplete, color: 'bg-green-500 hover:bg-green-600' },
@@ -23,7 +24,6 @@ export default function Toolbar({
   ];
   const item = 'w-full text-right px-3 py-2 hover:bg-teal-100 text-sm font-bold';
   const head = 'px-3 py-1 text-xs font-bold bg-gray-100 text-gray-500';
-
   return (
     <div className="bg-[#D8C9B4] shadow-md p-2">
       <div className="bg-[#F7C4A5] rounded-t px-4 py-2 mb-2">
@@ -33,10 +33,9 @@ export default function Toolbar({
         {buttons.map((b) => (
           <button key={b.label} onClick={b.action} disabled={b.disabled}
             className={`${b.color} text-white font-bold py-2 px-4 rounded-lg shadow-md hover:shadow-lg flex items-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed`}>
-            <span>{b.icon}</span><span>{b.label}</span>
+            <span>{b.icon}</span> <span>{b.label}</span>
           </button>
         ))}
-
         <div className="relative">
           <button onClick={() => { setPrioOpen((o) => !o); setUpdOpen(false); }}
             className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold py-2 px-4 rounded-lg shadow-md text-sm">🎯 الویت ▾</button>
@@ -47,7 +46,6 @@ export default function Toolbar({
             </div>
           )}
         </div>
-
         <div className="relative">
           <button onClick={() => { setUpdOpen((o) => !o); setPrioOpen(false); }}
             className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg shadow-md text-sm">🔄 بروزرسانی ▾</button>

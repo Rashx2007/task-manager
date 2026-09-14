@@ -12,8 +12,10 @@ import AssetsModal from "@/components/AssetsModal";
 import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
+
 const PAGE_SIZE = 10; // ✅ حداکثر ۱۰ کار در هر صفحه
 
+// ✅ میزبان جدول: ارتفاع را می‌سنجد و متغیرهای --row-h/--head-h را ست می‌کند
 function FullHeight({ children }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -26,7 +28,7 @@ function FullHeight({ children }) {
       el.style.setProperty("--head-h", row * 0.5 + "px");
     };
     apply();
-    const mo = new MutationObserver(apply); // با باز/بسته‌شدن پنل‌ها دوباره محاسبه شود
+    const mo = new MutationObserver(apply);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", apply);
     return () => {
@@ -57,7 +59,10 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
   const [status, setStatus] = useState({ count: 0, today: "" });
+
+  // ✅ پیش‌نویس (ایجاد از فیلتر)
   const [draft, setDraft] = useState(null);
+  const finishingDraftRef = useRef(false);
   useEffect(() => {
     try {
       const raw = localStorage.getItem("task_draft");
@@ -66,8 +71,7 @@ export default function Home() {
   }, []);
   const startDraft = () => setDraft((d) => d || {});
   const changeDraft = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
-  const assignDraft = (colKey, value) =>
-    setDraft((d) => (d ? { ...d, [colKey]: value } : d));
+  const assignDraft = (colKey, value) => setDraft((d) => (d ? { ...d, [colKey]: value } : d));
   const saveDraft = () => {
     try {
       localStorage.setItem("task_draft", JSON.stringify(draft));
@@ -75,7 +79,8 @@ export default function Home() {
     } catch {}
   };
   const finishDraft = () => {
-    setEditTask({ ...draft }); // فرم کار جدید با مقادیر پیش‌نویس باز می‌شود
+    finishingDraftRef.current = true;
+    setEditTask({ ...draft });
     setShowTaskForm(true);
   };
   const cancelDraft = () => {
@@ -84,15 +89,17 @@ export default function Home() {
       localStorage.removeItem("task_draft");
     } catch {}
   };
+
+  // ✅ صفحه‌بندی
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
   const pageTasks = tasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   useEffect(() => {
     setPage(1);
-  }, [tasks]); // با هر جستجوی جدید، برگشت به صفحهٔ ۱
+  }, [tasks]);
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]); // جلوگیری از صفحهٔ خارج از محدوده
+  }, [page, totalPages]);
 
   const loadTasks = useCallback(async (type = "daily") => {
     try {
@@ -152,6 +159,7 @@ export default function Home() {
     if (selectedTask) openEdit(selectedTask);
     else alert("ابتدا یک کار را انتخاب کنید.");
   };
+
   const handleRefresh = () => loadTasks(loadType);
 
   const handleReschedule = async () => {
@@ -198,8 +206,7 @@ export default function Home() {
   };
 
   const handlePriorityIncrease = async () => {
-    if (!confirm("ویرایش الویت (افزایش خودکار الویت کارهای متأخر) انجام شود؟"))
-      return;
+    if (!confirm("ویرایش الویت (افزایش خودکار الویت کارهای متأخر) انجام شود؟")) return;
     try {
       const res = await fetch("/api/priority-increase", { method: "POST" });
       const d = await res.json();
@@ -213,12 +220,9 @@ export default function Home() {
   };
 
   const handleUpdateFolders = async () => {
-    if (!confirm("پوشهٔ پیش‌فرض دستگاه‌ها از «اطلاعات پایه» به‌روزرسانی شود؟"))
-      return;
+    if (!confirm("پوشهٔ پیش‌فرض دستگاه‌ها از «اطلاعات پایه» به‌روزرسانی شود؟")) return;
     try {
-      const res = await fetch("/api/update-default-folders", {
-        method: "POST",
-      });
+      const res = await fetch("/api/update-default-folders", { method: "POST" });
       const d = await res.json();
       if (d.success) alert(d.updated + " دستگاه به‌روزرسانی شد.");
       else alert("خطا: " + d.error);
@@ -232,12 +236,14 @@ export default function Home() {
     setNewTaskAssetId(null);
     setShowTaskForm(true);
   };
+
   const openNewWithAsset = (assetId) => {
     setEditTask(null);
     setNewTaskAssetId(assetId);
     setShowAssets(false);
     setShowTaskForm(true);
   };
+
   const openEdit = (t) => {
     setEditTask(t);
     setShowTaskForm(true);
@@ -300,53 +306,33 @@ export default function Home() {
           <TaskTable
             tasks={pageTasks}
             startNumber={(page - 1) * PAGE_SIZE}
-           }
-         onComplete={handleComplete}
-         onEdit={openEdit}
-         onFolder={setFolderTask}
-         selectedTask={selectedTask}
-         draft={draft}
-         onDraftChange={changeDraft}
-         onDraftAssign={assignDraft}
-         onDraftSave={saveDraft}
-         onDraftFinish={finishDraft}
-         onDraftCancel={cancelDraft}
+            onRowClick={setSelectedTask}
+            onComplete={handleComplete}
+            onEdit={openEdit}
+            onFolder={setFolderTask}
+            selectedTask={selectedTask}
+            draft={draft}
+            onDraftChange={changeDraft}
+            onDraftAssign={assignDraft}
+            onDraftSave={saveDraft}
+            onDraftFinish={finishDraft}
+            onDraftCancel={cancelDraft}
           />
         </FullHeight>
         <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
-          <button
-            type="button"
-            className="btn-primary px-3 py-1 text-xs"
-            disabled={page <= 1}
-            onClick={() => setPage(1)}
-          >
+          <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage(1)}>
             اولین
           </button>
-          <button
-            type="button"
-            className="btn-primary px-3 py-1 text-xs"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
+          <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
             قبلی
           </button>
           <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">
             صفحهٔ {page} از {totalPages} — {tasks.length} کار
           </span>
-          <button
-            type="button"
-            className="btn-primary px-3 py-1 text-xs"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
+          <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
             بعدی
           </button>
-          <button
-            type="button"
-            className="btn-primary px-3 py-1 text-xs"
-            disabled={page >= totalPages}
-            onClick={() => setPage(totalPages)}
-          >
+          <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>
             آخرین
           </button>
         </div>
@@ -363,32 +349,28 @@ export default function Home() {
           onClose={() => {
             setShowTaskForm(false);
             setNewTaskAssetId(null);
+            finishingDraftRef.current = false; // انصراف: پیش‌نویس حفظ می‌شود
           }}
-          onSaved={() => loadTasks(loadType)}
+          onSaved={() => {
+            loadTasks(loadType);
+            if (finishingDraftRef.current) {
+              cancelDraft(); // فقط پس از ذخیرهٔ موفق، پیش‌نویس پاک می‌شود
+              finishingDraftRef.current = false;
+            }
+          }}
         />
       )}
-
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
       {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
       {showAssets && (
-        <AssetsModal
-          onClose={() => setShowAssets(false)}
-          onNewTaskWithAsset={openNewWithAsset}
-        />
+        <AssetsModal onClose={() => setShowAssets(false)} onNewTaskWithAsset={openNewWithAsset} />
       )}
       {showPersons && <PersonsModal onClose={() => setShowPersons(false)} />}
       {showSettings && (
-        <SettingsModal
-          onClose={() => setShowSettings(false)}
-          onSaved={() => loadTasks(loadType)}
-        />
+        <SettingsModal onClose={() => setShowSettings(false)} onSaved={() => loadTasks(loadType)} />
       )}
       {folderTask && (
-        <FolderModal
-          taskId={folderTask.TaskID}
-          onClose={() => setFolderTask(null)}
-          onSaved={() => loadTasks(loadType)}
-        />
+        <FolderModal taskId={folderTask.TaskID} onClose={() => setFolderTask(null)} onSaved={() => loadTasks(loadType)} />
       )}
     </main>
   );
