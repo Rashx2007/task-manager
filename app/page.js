@@ -31,16 +31,9 @@ function FullHeight({ children }) {
     const mo = new MutationObserver(apply);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", apply);
-    return () => {
-      mo.disconnect();
-      window.removeEventListener("resize", apply);
-    };
+    return () => { mo.disconnect(); window.removeEventListener("resize", apply); };
   }, []);
-  return (
-    <div ref={ref} className="table-host">
-      {children}
-    </div>
-  );
+  return <div ref={ref} className="table-host">{children}</div>;
 }
 
 export default function Home() {
@@ -69,94 +62,84 @@ export default function Home() {
       if (raw) setDraft(JSON.parse(raw));
     } catch { }
   }, []);
-  
+
   const startDraft = () => setDraft((d) => d || {});
-    const applyPlace = (d) => {
+  const applyPlace = (d) => {
     if (!d || !d.Building) return d;
     const r = placeRules(d.Building, d.Block, d.Floor, d.Entrance);
-    if (!r.central) return { ...d, Block: r.block, Floor: String(r.floor), Entrance: r.entrance };
+    if (!r.central) return { ...d, Block: '-', Entrance: '-', Floor: d.Floor };
     return d;
   };
   const changeDraft = (k, v) => setDraft((d) => applyPlace({ ...d, [k]: v }));
   const assignDraft = (colKey, value) => setDraft((d) => (d ? applyPlace({ ...d, [colKey]: value }) : d));
-  
-  // ✅ تابع saveDraft اصلاح‌شده: بررسی وجود دستگاه قبل از ذخیره موقت
-    const saveDraft = async () => {
+
+  const saveDraft = async () => {
     if (!draft) return;
     const d = applyPlace(draft);
     setDraft(d);
-
-    // اگر نام دستگاه و ساختمان مشخص شده‌اند، بررسی وجود در دیتابیس
     if (d.AssetName && d.Building) {
       try {
-        const checkRes = await fetch('/api/asset-check', {
+        const res = await fetch('/api/asset-check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(d),
         });
-        const checkData = await checkRes.json();
-        
-        if (!checkData.found) {
-          // دستگاه با این مشخصات کامل وجود ندارد → فراخوانی handleDraftDeviceMissing
-          handleDraftDeviceMissing(d);
+        const cd = await res.json();
+        if (cd.needFloor) {
+          alert('برای تعیین دقیق دستگاه، لطفاً «طبقه» را در ردیف «مشخصات مکانی دستگاه» مشخص کنید.');
           return;
         }
-        
-        // دستگاه وجود دارد → ذخیره موقت
-        localStorage.setItem("task_draft", JSON.stringify(d));
-        alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-      } catch (e) {
-        alert("خطا در بررسی دستگاه: " + e.message);
-      }
+        if (!cd.found) { handleDraftDeviceMissing(d); return; }
+        if (cd.ambiguous && cd.matches && cd.matches.length > 1) {
+          const list = cd.matches
+            .map((m, i) => `${i + 1}) کد ${m.AssetID}: بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}، سیستم ${m.MechSystem || '-'}`)
+            .join('\n');
+          const pick = prompt(`چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف دستگاه مورد نظر را وارد کنید:\n${list}`, '1');
+          if (pick === null) return;
+          const m = cd.matches[Number(pick) - 1];
+          if (!m) { alert('انتخاب نامعتبر بود.'); return; }
+          localStorage.setItem('task_draft', JSON.stringify({ ...d, AssetID: m.AssetID }));
+          alert(`پیش‌نویس ذخیره شد (دستگاه کد ${m.AssetID}).`);
+          return;
+        }
+        localStorage.setItem('task_draft', JSON.stringify({ ...d, AssetID: cd.AssetID || null }));
+        alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
+      } catch (e) { alert('خطا در بررسی دستگاه: ' + e.message); }
     } else {
-      // اطلاعات ناقص → فقط ذخیره موقت
       try {
-        localStorage.setItem("task_draft", JSON.stringify(d));
-        alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
+        localStorage.setItem('task_draft', JSON.stringify(d));
+        alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
       } catch { }
     }
   };
-  
+
   const finishDraft = () => {
     finishingDraftRef.current = true;
     setEditTask({ ...draft });
     setShowTaskForm(true);
   };
-  
   const cancelDraft = () => {
     setDraft(null);
-    try {
-      localStorage.removeItem("task_draft");
-    } catch { }
+    try { localStorage.removeItem('task_draft'); } catch { }
   };
 
-  // ✅ جریان «دستگاه یافت نشد → مودال پیش‌پر → بازگشت به سطر»
   const [assetPreset, setAssetPreset] = useState(null);
-  
-    const handleDraftDeviceMissing = (draftData) => {
-    const r = placeRules(draftData.Building, draftData.Block, draftData.Floor, draftData.Entrance);
-    const blockV = r.central ? (r.block || '؟') : r.block;
-    const floorV = r.central ? (r.floor != null ? r.floor : '؟') : r.floor;
-    const entV = r.central ? (r.entrance || '؟') : r.entrance;
-    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}، بلوک: ${blockV}، طبقه: ${floorV}، ورودی: ${entV}، محل: ${draftData.Location || '-'}`;
-    
+  const handleDraftDeviceMissing = (draftData) => {
+    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}، طبقه: ${draftData.Floor ?? '-'}، قسمت: ${draftData.Location || '-'}`;
     if (!confirm(`دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`)) return;
-    
     setAssetPreset({
       AssetName: draftData.AssetName || '',
       AssetNumber: draftData.AssetNumber || '',
       Building: draftData.Building || '',
       Block: draftData.Block || '-',
-      Floor: draftData.Floor || '',
+      Floor: draftData.Floor != null ? String(draftData.Floor) : '',
       Entrance: draftData.Entrance || '',
       Location: draftData.Location || '',
       MechSystem: draftData.MechSystem || '',
     });
     setShowAssets(true);
   };
-  
   const handleAssetSavedFromDraft = (newId, form) => {
-    // پس از ثبت دستگاه، به همان سطر پیش‌نویس برمی‌گردیم
     setDraft((d) => (d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d));
   };
 
@@ -182,10 +165,7 @@ export default function Home() {
   const handleComplete = async (taskId) => {
     if (!confirm("آیا این کار اتمام یافته است؟")) return;
     try {
-      const res = await fetch("/api/complete", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId }),
-      });
+      const res = await fetch("/api/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId }) });
       const d = await res.json();
       if (d.success) loadTasks(loadType);
       else alert("خطا: " + d.error);
@@ -203,10 +183,7 @@ export default function Home() {
     } catch { alert("خطا در ارتباط با سرور"); }
   };
 
-  const handleEdit = () => {
-    if (selectedTask) openEdit(selectedTask);
-    else alert("ابتدا یک کار را انتخاب کنید.");
-  };
+  const handleEdit = () => { if (selectedTask) openEdit(selectedTask); else alert("ابتدا یک کار را انتخاب کنید."); };
   const handleRefresh = () => loadTasks(loadType);
 
   const handleReschedule = async () => {
@@ -219,10 +196,7 @@ export default function Home() {
     const m = prompt("چند دقیقه جلو برده شود؟", "60");
     if (m === null) return;
     try {
-      const res = await fetch("/api/move-fixed", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minutes: Number(m) }),
-      });
+      const res = await fetch("/api/move-fixed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: Number(m) }) });
       const d = await res.json();
       if (d.success) { alert("انجام شد."); loadTasks(loadType); }
       else alert("خطا: " + d.error);
@@ -315,6 +289,7 @@ export default function Home() {
             onDraftSave={saveDraft}
             onDraftFinish={finishDraft}
             onDraftCancel={cancelDraft}
+            onDraftDeviceMissing={handleDraftDeviceMissing}
           />
         </FullHeight>
         <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
