@@ -8,7 +8,7 @@ const distinct = (arr) =>
   [...new Set(arr.map((x) => (x == null ? '' : String(x))).filter((x) => x !== '' && x !== '-'))]
     .sort((a, b) => a.localeCompare(b, 'fa'));
 
-export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null }) {
+export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null, onAssetSaved = null }) {
   const [tab, setTab] = useState('devices');
   const [all, setAll] = useState([]);
   const [search, setSearch] = useState('');
@@ -78,7 +78,7 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     setForm({ ...a, FolderPath: a.FolderPath || '' });
   };
 
-  const save = async () => {
+    const save = async () => {
     if (!form.AssetName || !form.Building) { alert('نام دستگاه و ساختمان الزامی است.'); return; }
     setSaving(true);
     try {
@@ -88,9 +88,9 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
       const d = await res.json();
       if (d.success) {
         alert('ذخیره شد.');
+        const newId = d.AssetID || d.assetId || d.id || null;
         // ✅ لینک برچسب نقشه (MapTag) به دستگاه جدیدِ ساخته‌شده از نقشه
         try {
-          const newId = d.AssetID || d.assetId || d.id || null;
           if (!editingId && preset && preset.MapTag && newId) {
             await fetch('/api/maps/register', {
               method: 'POST',
@@ -99,6 +99,8 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
             });
           }
         } catch {}
+        // ✅ اطلاع‌رسانی به page.js برای به‌روزرسانی سطر پیش‌نویس (جدا از MapTag)
+        if (onAssetSaved) onAssetSaved(newId, form);
         setForm(null); setEditingId(null); loadAll();
       } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
@@ -200,8 +202,7 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[700px]">
               {preset && !editingId && (
                 <div className="md:col-span-4 bg-yellow-100 rounded p-2 text-sm font-bold">
-                  🗺 این دستگاه از نقشه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
-                </div>
+              📋 این دستگاه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.                </div>
               )}
               <div>
                 <label className="text-sm font-bold">نام دستگاه *</label>

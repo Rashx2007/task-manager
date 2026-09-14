@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Tip from './Tip';
 
@@ -34,13 +34,14 @@ export default function TaskTable({
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [filters, setFilters] = useState({});
-  const [menu, setMenu] = useState(null);          // { key, y, right }
+  const [menu, setMenu] = useState(null); // { key, y, right }
   const [menuValues, setMenuValues] = useState(null);
   const [menuLoading, setMenuLoading] = useState(false);
+  const assetNamesRef = useRef(null);
 
   useEffect(() => {
     const handler = (e) => {
-      if (!e.target.closest('.col-menu') && !e.target.closest('.col-menu-btn') && !e.target.closest('.draft-input')) setMenu(null);
+      if (!e.target.closest('.col-menu') && !e.target.closest('.col-menu-btn')) setMenu(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -49,7 +50,7 @@ export default function TaskTable({
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
   const draftActive = draft != null;
 
-  // ✅ خواندن گزینه‌ها از کل دیتابیس (با فیلتر آبشاری در حالت پیش‌نویس)
+  // ✅ خواندن گزینه‌ها از کل دیتابیس؛ در حالت پیش‌نویس با فیلتر آبشاری از انتخاب‌های فعلی
   const loadMenuValues = async (col) => {
     setMenuLoading(true);
     setMenuValues(null);
@@ -57,8 +58,8 @@ export default function TaskTable({
     let constraints = {};
     if (draftActive) {
       constraints = {
-        AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
-        Location: draft.Location, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
+        AssetName: draft.AssetName, Building: draft.Building, Location: draft.Location,
+        TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
       };
       delete constraints[col.key];
       constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => norm(v) !== ''));
@@ -83,19 +84,17 @@ export default function TaskTable({
     if (next && col.filterable) loadMenuValues(col);
   };
 
-  // ✅ بررسی وجود دستگاه در دیتابیس هنگام خروج از خانهٔ دستگاه
+  // ✅ معادل CheckRecordDuplication دسکتاپ: اگر نام دستگاه در Asset_2_tbl نبود → پیشنهاد ثبت دستگاه جدید
   const checkDeviceExists = async () => {
     const name = norm(draft?.AssetName);
-    if (!name) return;
+    if (!name || !onDraftDeviceMissing) return;
     try {
-      const res = await fetch('/api/options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field: 'AssetName', source: 'asset', constraints: {} }),
-      });
-      const d = await res.json();
-      const list = d.success ? d.values : [];
-      if (!list.some((v) => norm(v) === name)) onDraftDeviceMissing && onDraftDeviceMissing(name);
+      if (!assetNamesRef.current) {
+        const r = await fetch('/api/assets');
+        const d = await r.json();
+        assetNamesRef.current = (d.success ? (d.data || []) : []).map((a) => norm(a.AssetName));
+      }
+      if (!assetNamesRef.current.includes(name)) onDraftDeviceMissing(name);
     } catch {}
   };
 
@@ -142,7 +141,7 @@ export default function TaskTable({
   const clearAllFilters = () => setFilters({});
   const hasAnyFilter = !draftActive && Object.keys(filters).some((k) => filters[k] && filters[k].size > 0);
 
-  // ✅ خانهٔ قابل‌کلیک سطر پیش‌نویس (placeholder هم‌نام سرستون)
+  // ✅ خانهٔ پیش‌نویس: کلیک روی input یا ▾ = گزینه‌ها از کل دیتابیس؛ placeholder هم‌نام سرستون
   const draftCell = (key, ph) => (
     <td className="draft-cell">
       <div className="draft-cell-wrap">
@@ -289,11 +288,11 @@ export default function TaskTable({
           {draftActive ? (
             <div className="col-menu-section">
               <div className="col-menu-title">
-                {menuCol.assignable || menuCol.filterable ? `انتخاب «${menuCol.label}» از کل دیتابیس` : 'این ستون برای پیش‌نویس قابل انتخاب نیست'}
+                {menuCol.assignable ? `انتخاب «${menuCol.label}» از کل دیتابیس` : 'این ستون برای پیش‌نویس قابل انتخاب نیست'}
               </div>
-              {menuLoading && <div className="col-menu-empty">در حال خواندن گزینه‌ها…</div>}
-              {!menuLoading && menuValues && menuValues.length === 0 && <div className="col-menu-empty">گزینه‌ای یافت نشد</div>}
-              {!menuLoading && menuValues && menuValues.length > 0 && (
+              {menuCol.assignable && menuLoading && <div className="col-menu-empty">در حال خواندن گزینه‌ها…</div>}
+              {menuCol.assignable && !menuLoading && menuValues && menuValues.length === 0 && <div className="col-menu-empty">گزینه‌ای یافت نشد</div>}
+              {menuCol.assignable && !menuLoading && menuValues && menuValues.length > 0 && (
                 <div className="col-menu-list">
                   {menuValues.map((v) => (
                     <button key={v} type="button" onClick={() => { onDraftAssign(menuCol.key, v); setMenu(null); }}>

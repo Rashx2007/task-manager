@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
-// ستون‌های جدول دستگاه‌ها
+// ستون‌های جدول دستگاه‌ها (معادل Asset_2_tbl در دسکتاپ)
 const ASSET_COLS = {
   AssetName: 'AssetName',
   AssetNumber: 'AssetNumber',
   Building: 'Building',
-  Location: 'Location',
   Block: 'Block',
   Floor: 'Floor',
   Entrance: 'Entrance',
+  Location: 'Location',
   MechSystem: 'MechSystem',
 };
 
@@ -38,7 +38,7 @@ export async function POST(request) {
       if (!col) return NextResponse.json({ success: false, error: 'field نامعتبر' }, { status: 400 });
       for (const [k, v] of Object.entries(constraints)) {
         if (v == null || String(v).trim() === '') continue;
-        if (ASSET_COLS[k]) push(ASSET_COLS[k], k === 'AssetNumber' ? Number(v) : String(v));
+        if (ASSET_COLS[k]) push(ASSET_COLS[k], k === 'AssetNumber' || k === 'Floor' ? Number(v) : String(v));
       }
       const where =
         `WHERE ${col} IS NOT NULL AND LTRIM(RTRIM(CAST(${col} AS nvarchar(60)))) <> N''` +
@@ -50,7 +50,7 @@ export async function POST(request) {
       for (const [k, v] of Object.entries(constraints)) {
         if (v == null || String(v).trim() === '') continue;
         if (TASK_COLS[k]) push(TASK_COLS[k], String(v));
-        else if (ASSET_COLS[k]) push(`asset.${ASSET_COLS[k]}`, k === 'AssetNumber' ? Number(v) : String(v));
+        else if (ASSET_COLS[k]) push(`asset.${ASSET_COLS[k]}`, k === 'AssetNumber' || k === 'Floor' ? Number(v) : String(v));
       }
       const join = `LEFT JOIN Asset_Task_tbl atk ON atk.TaskID = tsk.TaskID LEFT JOIN Asset_2_tbl asset ON asset.AssetID = atk.AssetID`;
       const where =
@@ -60,8 +60,7 @@ export async function POST(request) {
     }
 
     const rows = await query(sql, params);
-    const values = rows.map((r) => String(r.v));
-    return NextResponse.json({ success: true, values });
+    return NextResponse.json({ success: true, values: rows.map((r) => String(r.v)) });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
