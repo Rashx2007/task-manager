@@ -67,7 +67,7 @@ export default function Home() {
     try {
       const raw = localStorage.getItem("task_draft");
       if (raw) setDraft(JSON.parse(raw));
-    } catch {}
+    } catch { }
   }, []);
   const startDraft = () => setDraft((d) => d || {});
   const changeDraft = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
@@ -76,7 +76,7 @@ export default function Home() {
     try {
       localStorage.setItem("task_draft", JSON.stringify(draft));
       alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-    } catch {}
+    } catch { }
   };
   const finishDraft = () => {
     finishingDraftRef.current = true;
@@ -87,7 +87,19 @@ export default function Home() {
     setDraft(null);
     try {
       localStorage.removeItem("task_draft");
-    } catch {}
+    } catch { }
+  };
+
+  const [assetInitial, setAssetInitial] = useState(null);
+  const handleDraftDeviceMissing = (name) => {
+    if (!confirm(`دستگاه «${name}» در دیتابیس یافت نشد.\nآیا مایل به ثبت دستگاه جدید با این مشخصات هستید؟`)) return;
+    setAssetInitial({
+      AssetName: name,
+      Building: draft?.Building || '',
+      Location: draft?.Location || '',
+      AssetNumber: draft?.AssetNumber || '',
+    });
+    setShowAssets(true);
   };
 
   // ✅ صفحه‌بندی
@@ -112,7 +124,7 @@ export default function Home() {
           today: new Date().toLocaleDateString("fa-IR"),
         });
       }
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -317,6 +329,7 @@ export default function Home() {
             onDraftSave={saveDraft}
             onDraftFinish={finishDraft}
             onDraftCancel={cancelDraft}
+            onDraftDeviceMissing={handleDraftDeviceMissing}
           />
         </FullHeight>
         <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
@@ -363,7 +376,12 @@ export default function Home() {
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
       {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
       {showAssets && (
-        <AssetsModal onClose={() => setShowAssets(false)} onNewTaskWithAsset={openNewWithAsset} />
+        <AssetsModal
+          initial={assetInitial}
+          onClose={() => { setShowAssets(false); setAssetInitial(null); }}
+          onNewTaskWithAsset={openNewWithAsset}
+          onSaved={() => { setAssetInitial(null); }}
+        />
       )}
       {showPersons && <PersonsModal onClose={() => setShowPersons(false)} />}
       {showSettings && (

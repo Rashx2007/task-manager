@@ -232,3 +232,33 @@ html, body {
   font-size: 13px;
   background: #fff;
 }
+
+/* ✅ خانهٔ پیش‌نویس: input + دکمهٔ گزینه‌ها کنار هم */
+.draft-cell-wrap { display: flex; align-items: center; gap: 2px; }
+.draft-cell-wrap .draft-input { flex: 1 1 auto; min-width: 60px; }
+.draft-cell-wrap .col-menu-btn { flex: 0 0 auto; opacity: .8; }
+
+/* ✅ دکمه‌های سطر پیش‌نویس: فاصله‌دار و متناسب */
+.draft-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  padding: 2px 0;
+  white-space: nowrap;
+}
+.draft-actions .btn-success,
+.draft-actions .btn-primary,
+.draft-actions .btn-danger {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+/* ✅ متن خالی منوها */
+.col-menu-empty {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}

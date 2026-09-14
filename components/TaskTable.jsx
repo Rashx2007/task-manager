@@ -8,16 +8,18 @@ const assetSpec = (t) =>
     ? `${t.AssetName}، قسمت: ${t.Location || '-'} (ساختمان ${t.Building || '-'}، بلوک: ${t.Block || '-'}، طبقه: ${t.Floor ?? '-'}، ورودی: ${t.Entrance || '-'}) شماره: ${t.AssetNumber ?? '-'} [کد:${t.AssetID}]`
     : '';
 
+const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
 const COLUMNS = [
   { key: 'row',          label: 'ردیف',          sortable: false, filterable: false },
   { key: 'TaskID',       label: 'کد کار',        sortable: true,  filterable: true  },
-  { key: 'AssetName',    label: 'دستگاه/مجموعه', sortable: true,  filterable: true,  assignable: true },
-  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true  },
-  { key: 'Building',     label: 'ساختمان',       sortable: true,  filterable: true,  assignable: true },
-  { key: 'Location',     label: 'قسمت',          sortable: true,  filterable: true,  assignable: true },
-  { key: 'TaskTtl',      label: 'موضوع',         sortable: true,  filterable: true,  assignable: true },
-  { key: 'Descriptions', label: 'توضیحات',       sortable: false, filterable: false },
-  { key: 'Priorities',   label: 'اولویت',        sortable: true,  filterable: true,  assignable: true },
+  { key: 'AssetName',    label: 'دستگاه/مجموعه', sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  source: 'asset' },
+  { key: 'Building',     label: 'ساختمان',       sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'Location',     label: 'قسمت',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'TaskTtl',      label: 'موضوع',         sortable: true,  filterable: true,  assignable: true, source: 'task' },
+  { key: 'Descriptions', label: 'توضیحات',       sortable: false, filterable: false, source: 'task' },
+  { key: 'Priorities',   label: 'اولویت',        sortable: true,  filterable: true,  assignable: true, source: 'task' },
   { key: 'status',       label: 'وضعیت',         sortable: true,  filterable: true  },
   { key: 'DueDateTime',  label: 'زمان شروع',     sortable: true,  filterable: false },
   { key: 'EndDateTime',  label: 'زمان پایان',    sortable: true,  filterable: false },
@@ -27,16 +29,18 @@ const COLUMNS = [
 
 export default function TaskTable({
   tasks, startNumber = 0, onRowClick, onComplete, onEdit, onFolder, selectedTask,
-  draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel,
+  draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel, onDraftDeviceMissing,
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [filters, setFilters] = useState({});
-  const [menu, setMenu] = useState(null); // { key, y, right }
+  const [menu, setMenu] = useState(null);          // { key, y, right }
+  const [menuValues, setMenuValues] = useState(null);
+  const [menuLoading, setMenuLoading] = useState(false);
 
   useEffect(() => {
     const handler = (e) => {
-      if (!e.target.closest('.col-menu') && !e.target.closest('.col-menu-btn')) setMenu(null);
+      if (!e.target.closest('.col-menu') && !e.target.closest('.col-menu-btn') && !e.target.closest('.draft-input')) setMenu(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -45,18 +49,56 @@ export default function TaskTable({
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
   const draftActive = draft != null;
 
-  const uniqueValues = (key) => {
-    const set = new Set();
-    (tasks || []).forEach((t) => {
-      let v;
-      if (key === 'status') v = Number(t.Complited) === 1 ? 'اتمام' : 'جاری';
-      else v = t[key];
-      if (v != null && String(v).trim() !== '') set.add(String(v));
-    });
-    return [...set].sort((a, b) => a.localeCompare(b, 'fa', { numeric: true }));
+  // ✅ خواندن گزینه‌ها از کل دیتابیس (با فیلتر آبشاری در حالت پیش‌نویس)
+  const loadMenuValues = async (col) => {
+    setMenuLoading(true);
+    setMenuValues(null);
+    if (col.key === 'status') { setMenuValues(['جاری', 'اتمام']); setMenuLoading(false); return; }
+    let constraints = {};
+    if (draftActive) {
+      constraints = {
+        AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
+        Location: draft.Location, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
+      };
+      delete constraints[col.key];
+      constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => norm(v) !== ''));
+    }
+    try {
+      const res = await fetch('/api/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: col.key, source: col.source || 'task', constraints }),
+      });
+      const d = await res.json();
+      setMenuValues(d.success ? d.values : []);
+    } catch { setMenuValues([]); }
+    setMenuLoading(false);
   };
 
-  // ✅ وقتی پیش‌نویس فعال است، فیلترهای عادی غیرفعال‌اند
+  const openMenu = (e, col) => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const next = (menu && menu.key === col.key) ? null : { key: col.key, y: Math.min(r.bottom + 2, window.innerHeight - 340), right: window.innerWidth - r.right };
+    setMenu(next);
+    if (next && col.filterable) loadMenuValues(col);
+  };
+
+  // ✅ بررسی وجود دستگاه در دیتابیس هنگام خروج از خانهٔ دستگاه
+  const checkDeviceExists = async () => {
+    const name = norm(draft?.AssetName);
+    if (!name) return;
+    try {
+      const res = await fetch('/api/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'AssetName', source: 'asset', constraints: {} }),
+      });
+      const d = await res.json();
+      const list = d.success ? d.values : [];
+      if (!list.some((v) => norm(v) === name)) onDraftDeviceMissing && onDraftDeviceMissing(name);
+    } catch {}
+  };
+
   const filtered = draftActive
     ? (tasks || [])
     : (tasks || []).filter((t) => {
@@ -81,13 +123,6 @@ export default function TaskTable({
     return sortDir === 'asc' ? cmp : -cmp;
   });
 
-  const openMenu = (e, key) => {
-    e.stopPropagation();
-    const r = e.currentTarget.getBoundingClientRect();
-    const y = Math.min(r.bottom + 2, window.innerHeight - 340); // ✅ مهار داخل پنجره
-    setMenu((m) => (m && m.key === key ? null : { key, y, right: window.innerWidth - r.right }));
-  };
-
   const toggleSort = (key) => {
     if (sortKey === key) {
       if (sortDir === 'asc') setSortDir('desc');
@@ -102,10 +137,32 @@ export default function TaskTable({
       return { ...prev, [key]: cur };
     });
   };
-  const setFilterAll = (key) => setFilters((prev) => ({ ...prev, [key]: new Set(uniqueValues(key)) }));
+  const setFilterAll = (key) => setFilters((prev) => ({ ...prev, [key]: new Set(menuValues || []) }));
   const clearFilter = (key) => setFilters((prev) => { const n = { ...prev }; delete n[key]; return n; });
   const clearAllFilters = () => setFilters({});
   const hasAnyFilter = !draftActive && Object.keys(filters).some((k) => filters[k] && filters[k].size > 0);
+
+  // ✅ خانهٔ قابل‌کلیک سطر پیش‌نویس (placeholder هم‌نام سرستون)
+  const draftCell = (key, ph) => (
+    <td className="draft-cell">
+      <div className="draft-cell-wrap">
+        <input
+          className="draft-input"
+          value={draft[key] || ''}
+          placeholder={ph}
+          onChange={(e) => onDraftChange(key, e.target.value)}
+          onClick={(e) => { const col = COLUMNS.find((c) => c.key === key); if (col) openMenu(e, col); }}
+          onBlur={() => { if (key === 'AssetName') checkDeviceExists(); }}
+        />
+        <button
+          type="button"
+          className="col-menu-btn"
+          title="گزینه‌ها از کل دیتابیس"
+          onClick={(e) => { const col = COLUMNS.find((c) => c.key === key); if (col) openMenu(e, col); }}
+        >▾</button>
+      </div>
+    </td>
+  );
 
   if (!tasks || tasks.length === 0)
     return (
@@ -132,7 +189,7 @@ export default function TaskTable({
                     {(col.sortable || col.filterable) && (
                       <button
                         type="button"
-                        onClick={(e) => openMenu(e, col.key)}
+                        onClick={(e) => openMenu(e, col)}
                         className={`col-menu-btn ${isFiltered || isSorted || isOpen ? 'active' : ''}`}
                         title={draftActive ? 'انتخاب برای کار جدید' : 'مرتب‌سازی / فیلتر'}
                       >
@@ -150,19 +207,23 @@ export default function TaskTable({
             <tr className="draft-row">
               <td>—</td>
               <td><span className="draft-badge">پیش‌نویس</span></td>
-              <td><input className="draft-input" value={draft.AssetName || ''} placeholder="دستگاه" onChange={(e) => onDraftChange('AssetName', e.target.value)} /></td>
-              <td><input className="draft-input" value={draft.Building || ''} placeholder="ساختمان" onChange={(e) => onDraftChange('Building', e.target.value)} /></td>
-              <td><input className="draft-input" value={draft.Location || ''} placeholder="قسمت" onChange={(e) => onDraftChange('Location', e.target.value)} /></td>
-              <td><input className="draft-input" value={draft.TaskTtl || ''} placeholder="موضوع" onChange={(e) => onDraftChange('TaskTtl', e.target.value)} /></td>
-              <td><input className="draft-input" value={draft.Descriptions || ''} placeholder="توضیحات" onChange={(e) => onDraftChange('Descriptions', e.target.value)} /></td>
-              <td><input className="draft-input" value={draft.Priorities || ''} placeholder="اولویت" onChange={(e) => onDraftChange('Priorities', e.target.value)} /></td>
+              {draftCell('AssetName', 'دستگاه/مجموعه')}
+              {draftCell('AssetNumber', 'شماره')}
+              {draftCell('Building', 'ساختمان')}
+              {draftCell('Location', 'قسمت')}
+              {draftCell('TaskTtl', 'موضوع')}
+              {draftCell('Descriptions', 'توضیحات')}
+              {draftCell('Priorities', 'اولویت')}
               <td>پیش‌نویس</td>
               <td>-</td>
               <td>-</td>
-              <td colSpan={3} style={{ whiteSpace: 'nowrap' }}>
-                <button type="button" className="btn-success px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onDraftSave(); }}>ذخیره موقت</button>
-                <button type="button" className="btn-primary px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onDraftFinish(); }}>تکمیل ثبت</button>
-                <button type="button" className="btn-danger px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onDraftCancel(); }}>✕</button>
+              <td>-</td>
+              <td>
+                <div className="draft-actions">
+                  <button type="button" className="btn-success" onClick={(e) => { e.stopPropagation(); onDraftSave(); }}>ذخیره موقت</button>
+                  <button type="button" className="btn-primary" onClick={(e) => { e.stopPropagation(); onDraftFinish(); }}>تکمیل ثبت</button>
+                  <button type="button" className="btn-danger" onClick={(e) => { e.stopPropagation(); onDraftCancel(); }}>✕</button>
+                </div>
               </td>
             </tr>
           )}
@@ -223,17 +284,18 @@ export default function TaskTable({
         </div>
       )}
 
-      {/* ✅ منوی سرستون با Portal روی body — توسط overflow بریده نمی‌شود */}
       {menu && menuCol && createPortal(
         <div className="col-menu" style={{ top: menu.y, right: menu.right }} onClick={(e) => e.stopPropagation()}>
           {draftActive ? (
             <div className="col-menu-section">
               <div className="col-menu-title">
-                {menuCol.assignable ? `انتخاب «${menuCol.label}» برای کار جدید` : 'این ستون برای پیش‌نویس قابل انتخاب نیست'}
+                {menuCol.assignable || menuCol.filterable ? `انتخاب «${menuCol.label}» از کل دیتابیس` : 'این ستون برای پیش‌نویس قابل انتخاب نیست'}
               </div>
-              {menuCol.assignable && (
+              {menuLoading && <div className="col-menu-empty">در حال خواندن گزینه‌ها…</div>}
+              {!menuLoading && menuValues && menuValues.length === 0 && <div className="col-menu-empty">گزینه‌ای یافت نشد</div>}
+              {!menuLoading && menuValues && menuValues.length > 0 && (
                 <div className="col-menu-list">
-                  {uniqueValues(menuCol.key).map((v) => (
+                  {menuValues.map((v) => (
                     <button key={v} type="button" onClick={() => { onDraftAssign(menuCol.key, v); setMenu(null); }}>
                       {v}
                     </button>
@@ -259,23 +321,26 @@ export default function TaskTable({
               )}
               {menuCol.filterable && (
                 <div className="col-menu-section">
-                  <div className="col-menu-title">فیلتر ({uniqueValues(menuCol.key).length} مقدار)</div>
+                  <div className="col-menu-title">فیلتر از کل دیتابیس{menuValues ? ` (${menuValues.length} مقدار)` : ''}</div>
                   <div className="col-menu-actions">
                     <button type="button" onClick={() => setFilterAll(menuCol.key)}>انتخاب همه</button>
                     <button type="button" onClick={() => clearFilter(menuCol.key)}>حذف فیلتر</button>
                   </div>
-                  <div className="col-menu-list">
-                    {uniqueValues(menuCol.key).map((v) => (
-                      <label key={v} className="col-menu-item">
-                        <input
-                          type="checkbox"
-                          checked={!filters[menuCol.key] || filters[menuCol.key].has(v)}
-                          onChange={() => toggleFilterValue(menuCol.key, v)}
-                        />
-                        <span className="truncate">{v}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {menuLoading && <div className="col-menu-empty">در حال خواندن گزینه‌ها…</div>}
+                  {!menuLoading && menuValues && (
+                    <div className="col-menu-list">
+                      {menuValues.map((v) => (
+                        <label key={v} className="col-menu-item">
+                          <input
+                            type="checkbox"
+                            checked={!filters[menuCol.key] || filters[menuCol.key].has(v)}
+                            onChange={() => toggleFilterValue(menuCol.key, v)}
+                          />
+                          <span className="truncate">{v}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>

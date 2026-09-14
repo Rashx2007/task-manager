@@ -10,7 +10,7 @@ export default function Toolbar({
   const [updOpen, setUpdOpen] = useState(false);
   const buttons = [
     { label: 'جدید', icon: '➕', action: onNewTask, color: 'bg-teal-500 hover:bg-teal-600', disabled: disableNew },
-    { label: 'ایجاد از فیلتر', icon: '📋', action: onQuickCreate, color: 'bg-amber-500 hover:bg-amber-600' },
+    { label: 'جدید (جدولی)', icon: '📋', action: onQuickCreate, color: 'bg-amber-500 hover:bg-amber-600' },
     { label: 'ویرایش', icon: '✏️', action: onEdit, color: 'bg-blue-500 hover:bg-blue-600' },
     { label: 'حذف', icon: '🗑️', action: onDelete, color: 'bg-red-500 hover:bg-red-600' },
     { label: 'اتمام کار', icon: '✅', action: onComplete, color: 'bg-green-500 hover:bg-green-600' },
