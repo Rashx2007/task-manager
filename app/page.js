@@ -21,15 +21,18 @@ function FullHeight({ children }) {
     const apply = () => {
       if (!el) return;
       const H = el.clientHeight || 0;
-      const row = Math.max(40, H / 10.5);   // ۱۰ سطر + ۰٫۵ سرستون = کل ارتفاع
-      el.style.setProperty('--row-h', row + 'px');
-      el.style.setProperty('--head-h', row * 0.5 + 'px');
+      const row = Math.max(40, H / 10.5); // ۱۰ سطر + ۰٫۵ سرستون = کل ارتفاع
+      el.style.setProperty("--row-h", row + "px");
+      el.style.setProperty("--head-h", row * 0.5 + "px");
     };
     apply();
     const mo = new MutationObserver(apply); // با باز/بسته‌شدن پنل‌ها دوباره محاسبه شود
     mo.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', apply);
-    return () => { mo.disconnect(); window.removeEventListener('resize', apply); };
+    window.addEventListener("resize", apply);
+    return () => {
+      mo.disconnect();
+      window.removeEventListener("resize", apply);
+    };
   }, []);
   return (
     <div ref={ref} className="table-host">
@@ -54,11 +57,42 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
   const [status, setStatus] = useState({ count: 0, today: "" });
+  const [draft, setDraft] = useState(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("task_draft");
+      if (raw) setDraft(JSON.parse(raw));
+    } catch {}
+  }, []);
+  const startDraft = () => setDraft((d) => d || {});
+  const changeDraft = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+  const assignDraft = (colKey, value) =>
+    setDraft((d) => (d ? { ...d, [colKey]: value } : d));
+  const saveDraft = () => {
+    try {
+      localStorage.setItem("task_draft", JSON.stringify(draft));
+      alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
+    } catch {}
+  };
+  const finishDraft = () => {
+    setEditTask({ ...draft }); // فرم کار جدید با مقادیر پیش‌نویس باز می‌شود
+    setShowTaskForm(true);
+  };
+  const cancelDraft = () => {
+    setDraft(null);
+    try {
+      localStorage.removeItem("task_draft");
+    } catch {}
+  };
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
   const pageTasks = tasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [tasks]);          // با هر جستجوی جدید، برگشت به صفحهٔ ۱
-  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]); // جلوگیری از صفحهٔ خارج از محدوده
+  useEffect(() => {
+    setPage(1);
+  }, [tasks]); // با هر جستجوی جدید، برگشت به صفحهٔ ۱
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]); // جلوگیری از صفحهٔ خارج از محدوده
 
   const loadTasks = useCallback(async (type = "daily") => {
     try {
@@ -214,6 +248,7 @@ export default function Home() {
       <div className="shrink-0">
         <Toolbar
           onNewTask={openNew}
+          onQuickCreate={startDraft}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onComplete={() =>
@@ -237,49 +272,85 @@ export default function Home() {
         />
       </div>
 
-        {(showSearch || showComprehensive) && (
-    <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
-      {showSearch && (
-        <SearchPanel
-          onResult={(rows) => {
-            setTasks(rows);
-            setLoadType("search");
-          }}
-          onClose={() => setShowSearch(false)}
-        />
+      {(showSearch || showComprehensive) && (
+        <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
+          {showSearch && (
+            <SearchPanel
+              onResult={(rows) => {
+                setTasks(rows);
+                setLoadType("search");
+              }}
+              onClose={() => setShowSearch(false)}
+            />
+          )}
+          {showComprehensive && (
+            <ComprehensiveSearch
+              onResult={(rows) => {
+                setTasks(rows);
+                setLoadType("search");
+              }}
+              onClose={() => setShowComprehensive(false)}
+            />
+          )}
+        </div>
       )}
-      {showComprehensive && (
-        <ComprehensiveSearch
-          onResult={(rows) => {
-            setTasks(rows);
-            setLoadType("search");
-          }}
-          onClose={() => setShowComprehensive(false)}
-        />
-      )}
-    </div>
-  )}
 
       <div className="p-3 flex-1 min-h-0 flex flex-col">
-             <FullHeight>
-       <TaskTable
-         tasks={pageTasks}
-         startNumber={(page - 1) * PAGE_SIZE}
-         onRowClick={setSelectedTask}
+        <FullHeight>
+          <TaskTable
+            tasks={pageTasks}
+            startNumber={(page - 1) * PAGE_SIZE}
+           }
          onComplete={handleComplete}
          onEdit={openEdit}
          onFolder={setFolderTask}
          selectedTask={selectedTask}
-       />
-     </FullHeight>
-     <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
-       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage(1)}>اولین</button>
-       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>قبلی</button>
-       <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">صفحهٔ {page} از {totalPages} — {tasks.length} کار</span>
-       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>بعدی</button>
-       <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>آخرین</button>
-     </div>
-   </div>
+         draft={draft}
+         onDraftChange={changeDraft}
+         onDraftAssign={assignDraft}
+         onDraftSave={saveDraft}
+         onDraftFinish={finishDraft}
+         onDraftCancel={cancelDraft}
+          />
+        </FullHeight>
+        <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+          >
+            اولین
+          </button>
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            قبلی
+          </button>
+          <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">
+            صفحهٔ {page} از {totalPages} — {tasks.length} کار
+          </span>
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            بعدی
+          </button>
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page >= totalPages}
+            onClick={() => setPage(totalPages)}
+          >
+            آخرین
+          </button>
+        </div>
+      </div>
 
       <div className="shrink-0">
         <StatusBar count={status.count} today={status.today} />
