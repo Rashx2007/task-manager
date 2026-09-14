@@ -262,3 +262,7 @@ html, body {
   color: #6b7280;
   text-align: center;
 }
+
+/* ✅ ردیف دوم پیش‌نویس (مشخصات مکانی دستگاه) */
+.draft-row-place td { background: #fdf3d7 !important; }
+.draft-place-note { font-size: 12px; color: #6b7280; }

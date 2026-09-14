@@ -12,6 +12,7 @@ import AssetsModal from "@/components/AssetsModal";
 import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
+import { placeRules } from "@/lib/assetRules";
 
 const PAGE_SIZE = 10;
 
@@ -70,39 +71,39 @@ export default function Home() {
   }, []);
   
   const startDraft = () => setDraft((d) => d || {});
-  const changeDraft = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
-  const assignDraft = (colKey, value) => setDraft((d) => (d ? { ...d, [colKey]: value } : d));
+    const applyPlace = (d) => {
+    if (!d || !d.Building) return d;
+    const r = placeRules(d.Building, d.Block, d.Floor, d.Entrance);
+    if (!r.central) return { ...d, Block: r.block, Floor: String(r.floor), Entrance: r.entrance };
+    return d;
+  };
+  const changeDraft = (k, v) => setDraft((d) => applyPlace({ ...d, [k]: v }));
+  const assignDraft = (colKey, value) => setDraft((d) => (d ? applyPlace({ ...d, [colKey]: value }) : d));
   
   // ✅ تابع saveDraft اصلاح‌شده: بررسی وجود دستگاه قبل از ذخیره موقت
-  const saveDraft = async () => {
+    const saveDraft = async () => {
     if (!draft) return;
-    
+    const d = applyPlace(draft);
+    setDraft(d);
+
     // اگر نام دستگاه و ساختمان مشخص شده‌اند، بررسی وجود در دیتابیس
-    if (draft.AssetName && draft.Building) {
+    if (d.AssetName && d.Building) {
       try {
         const checkRes = await fetch('/api/asset-check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            AssetName: draft.AssetName,
-            AssetNumber: draft.AssetNumber,
-            Building: draft.Building,
-            Block: draft.Block,
-            Floor: draft.Floor,
-            Entrance: draft.Entrance,
-            Location: draft.Location,
-          }),
+          body: JSON.stringify(d),
         });
         const checkData = await checkRes.json();
         
         if (!checkData.found) {
           // دستگاه با این مشخصات کامل وجود ندارد → فراخوانی handleDraftDeviceMissing
-          handleDraftDeviceMissing(draft);
+          handleDraftDeviceMissing(d);
           return;
         }
         
         // دستگاه وجود دارد → ذخیره موقت
-        localStorage.setItem("task_draft", JSON.stringify(draft));
+        localStorage.setItem("task_draft", JSON.stringify(d));
         alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
       } catch (e) {
         alert("خطا در بررسی دستگاه: " + e.message);
@@ -110,7 +111,7 @@ export default function Home() {
     } else {
       // اطلاعات ناقص → فقط ذخیره موقت
       try {
-        localStorage.setItem("task_draft", JSON.stringify(draft));
+        localStorage.setItem("task_draft", JSON.stringify(d));
         alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
       } catch { }
     }
@@ -132,8 +133,12 @@ export default function Home() {
   // ✅ جریان «دستگاه یافت نشد → مودال پیش‌پر → بازگشت به سطر»
   const [assetPreset, setAssetPreset] = useState(null);
   
-  const handleDraftDeviceMissing = (draftData) => {
-    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}, بلوک: ${draftData.Block || '-'}, طبقه: ${draftData.Floor || '-'}, ورودی: ${draftData.Entrance || '-'}, محل: ${draftData.Location || '-'}`;
+    const handleDraftDeviceMissing = (draftData) => {
+    const r = placeRules(draftData.Building, draftData.Block, draftData.Floor, draftData.Entrance);
+    const blockV = r.central ? (r.block || '؟') : r.block;
+    const floorV = r.central ? (r.floor != null ? r.floor : '؟') : r.floor;
+    const entV = r.central ? (r.entrance || '؟') : r.entrance;
+    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}، بلوک: ${blockV}، طبقه: ${floorV}، ورودی: ${entV}، محل: ${draftData.Location || '-'}`;
     
     if (!confirm(`دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`)) return;
     
