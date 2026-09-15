@@ -1,25 +1,9 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { normFa, placeRules } from '@/lib/assetRules';
 
-// ستون‌های جدول دستگاه‌ها (معادل Asset_2_tbl در دسکتاپ)
-const ASSET_COLS = {
-  AssetName: 'AssetName',
-  AssetNumber: 'AssetNumber',
-  Building: 'Building',
-  Block: 'Block',
-  Floor: 'Floor',
-  Entrance: 'Entrance',
-  Location: 'Location',
-  MechSystem: 'MechSystem',
-};
-
-// ستون‌های جدول کارها
-const TASK_COLS = {
-  TaskID: 'tsk.TaskID',
-  TaskTtl: 'tsk.TaskTtl',
-  Descriptions: 'tsk.Descriptions',
-  Priorities: 'TD.Priorities',
-};
+const normCol = (col) =>
+  `LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')))`;
 
 export async function POST(request) {
   try {
@@ -34,28 +18,27 @@ export async function POST(request) {
 
     let sql = '';
     if (source === 'asset') {
-      const col = ASSET_COLS[field];
+      const col = { AssetName: 'AssetName', AssetNumber: 'AssetNumber', Building: 'Building', Block: 'Block', Floor: 'Floor', Entrance: 'Entrance', Location: 'Location', MechSystem: 'MechSystem' }[field];
       if (!col) return NextResponse.json({ success: false, error: 'field نامعتبر' }, { status: 400 });
       for (const [k, v] of Object.entries(constraints)) {
         if (v == null || String(v).trim() === '') continue;
-        if (ASSET_COLS[k]) push(ASSET_COLS[k], k === 'AssetNumber' || k === 'Floor' ? Number(v) : String(v));
+        const c = { AssetName: 'AssetName', AssetNumber: 'AssetNumber', Building: 'Building', Block: 'Block', Floor: 'Floor', Entrance: 'Entrance', Location: 'Location', MechSystem: 'MechSystem' }[k];
+        if (c) push(c, (k === 'AssetNumber' || k === 'Floor') ? Number(v) : String(v));
       }
-      const where =
-        `WHERE ${col} IS NOT NULL AND LTRIM(RTRIM(CAST(${col} AS nvarchar(60)))) <> N''` +
-        (conds.length ? ` AND ${conds.join(' AND ')}` : '');
+      const where = `WHERE ${col} IS NOT NULL AND LTRIM(RTRIM(CAST(${col} AS nvarchar(60)))) <> N''` + (conds.length ? ` AND ${conds.join(' AND ')}` : '');
       sql = `SELECT DISTINCT ${col} AS v FROM Asset_2_tbl ${where} ORDER BY ${col}`;
     } else {
-      const col = TASK_COLS[field];
+      const col = { TaskID: 'tsk.TaskID', TaskTtl: 'tsk.TaskTtl', Descriptions: 'tsk.Descriptions', Priorities: 'TD.Priorities' }[field];
       if (!col) return NextResponse.json({ success: false, error: 'field نامعتبر' }, { status: 400 });
       for (const [k, v] of Object.entries(constraints)) {
         if (v == null || String(v).trim() === '') continue;
-        if (TASK_COLS[k]) push(TASK_COLS[k], String(v));
-        else if (ASSET_COLS[k]) push(`asset.${ASSET_COLS[k]}`, k === 'AssetNumber' || k === 'Floor' ? Number(v) : String(v));
+        const tc = { TaskID: 'tsk.TaskID', TaskTtl: 'tsk.TaskTtl', Descriptions: 'tsk.Descriptions', Priorities: 'TD.Priorities' }[k];
+        const ac = { AssetName: 'asset.AssetName', AssetNumber: 'asset.AssetNumber', Building: 'asset.Building', Block: 'asset.Block', Floor: 'asset.Floor', Entrance: 'asset.Entrance', Location: 'asset.Location', MechSystem: 'asset.MechSystem' }[k];
+        if (tc) push(tc, String(v));
+        else if (ac) push(ac, (k === 'AssetNumber' || k === 'Floor') ? Number(v) : String(v));
       }
       const join = `LEFT JOIN Asset_Task_tbl atk ON atk.TaskID = tsk.TaskID LEFT JOIN Asset_2_tbl asset ON asset.AssetID = atk.AssetID`;
-      const where =
-        `WHERE ${col} IS NOT NULL AND LTRIM(RTRIM(CAST(${col} AS nvarchar(max)))) <> N''` +
-        (conds.length ? ` AND ${conds.join(' AND ')}` : '');
+      const where = `WHERE ${col} IS NOT NULL AND LTRIM(RTRIM(CAST(${col} AS nvarchar(max)))) <> N''` + (conds.length ? ` AND ${conds.join(' AND ')}` : '');
       sql = `SELECT DISTINCT ${col} AS v FROM Tsk_tbl tsk LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID ${join} ${where} ORDER BY ${col}`;
     }
 

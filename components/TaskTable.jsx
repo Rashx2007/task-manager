@@ -27,19 +27,19 @@ const COLUMNS = [
 ];
 
 const PLACE_COLS = [
-  { key: 'Block', label: 'بلوک', source: 'asset' },
-  { key: 'Floor', label: 'طبقه', source: 'asset' },
-  { key: 'Entrance', label: 'ورودی', source: 'asset' },
-  { key: 'MechSystem', label: 'سیستم', source: 'asset' },
+  { key: 'Block', label: 'بلوک', source: 'asset', assignable: true },
+  { key: 'Floor', label: 'طبقه', source: 'asset', assignable: true },
+  { key: 'Entrance', label: 'ورودی', source: 'asset', assignable: true },
+  { key: 'MechSystem', label: 'سیستم', source: 'asset', assignable: true },
 ];
 
 export default function TaskTable({
   tasks, startNumber = 0, onRowClick, onComplete, onEdit, onFolder, selectedTask,
-  draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel, onDraftDeviceMissing,
+  draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel,
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-  const [filters, setFilters] = useState({}); // { key: Set(انتخاب‌شده‌ها) | null = همه }
+  const [filters, setFilters] = useState({}); // { key: null = همه | Set = انتخاب‌شده‌ها }
   const [menu, setMenu] = useState(null);
   const [menuValues, setMenuValues] = useState(null);
   const [menuLoading, setMenuLoading] = useState(false);
@@ -99,9 +99,8 @@ export default function TaskTable({
     } else { setSortKey(key); setSortDir('asc'); }
   };
 
-  // ✅ معنای اکسلی: Set = گزینه‌های تیک‌خورده؛ null = همه
   const isChecked = (key, v) => filters[key] == null || filters[key].has(v);
-  const allChecked = (key) => filters[key] == null || (menuValues != null && filters[key].size === menuValues.length);
+  const allChecked = (key) => filters[key] == null;
   const toggleFilterValue = (key, value) => {
     setFilters((prev) => {
       let cur = prev[key];
@@ -139,7 +138,6 @@ export default function TaskTable({
 
   const hasAnyFilter = !draftActive && Object.values(filters).some((s) => s != null);
 
-  // ✅ خانهٔ سطر اول پیش‌نویس
   const draftCell = (key, ph) => (
     <td className="draft-cell">
       <div className="draft-cell-wrap">
@@ -152,7 +150,6 @@ export default function TaskTable({
     </td>
   );
 
-  // ✅ خانهٔ سطر دوم: بلوک/ورودی فقط برای مرکزی فعال؛ طبقه و سیستم همیشه فعال + پیشنهاد
   const draftPlaceCell = (col) => {
     const disabled = (col.key === 'Block' || col.key === 'Entrance') ? !centralDraft : false;
     return (
@@ -176,7 +173,7 @@ export default function TaskTable({
       </div>
     );
 
-  const menuCol = menu ? COLUMNS.find((c) => c.key === menu.key) || PLACE_COLS.find((c) => c.key === menu.key) : null;
+  const menuCol = menu ? (COLUMNS.find((c) => c.key === menu.key) || PLACE_COLS.find((c) => c.key === menu.key)) : null;
   const shownValues = (menuValues || []).filter((v) => !menuQuery || String(v).includes(menuQuery));
 
   return (
@@ -255,8 +252,13 @@ export default function TaskTable({
             </tr>
           )}
           {sorted.map((t, i) => (
-            <tr key={t.TaskID} onClick={() => onRowClick(t)} onDoubleClick={() => onEdit && onEdit(t)}
-              className={selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''} style={{ cursor: 'pointer' }}>
+            <tr
+              key={t.TaskID}
+              onClick={() => onRowClick(t)}
+              onDoubleClick={() => onEdit && onEdit(t)}
+              className={selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''}
+              style={{ cursor: 'pointer' }}
+            >
               <td>{startNumber + i + 1}</td>
               <td><Tip tip={`ثبت: ${fmtFa(t.Submit_Date)}\nاولویت: ${t.Priorities || '-'}`}>{t.TaskID}</Tip></td>
               <td><Tip tip={assetSpec(t)}>{t.AssetName || '-'}</Tip></td>
@@ -301,13 +303,9 @@ export default function TaskTable({
           {draftActive ? (
             <div className="col-menu-section">
               <div className="col-menu-title">
-                {menuCol.key === 'Priorities'
-                  ? 'الویت در مرحلهٔ پیش‌نویس قابل انتخاب نیست'
-                  : `انتخاب «${menuCol.label}» از کل دیتابیس`}
+                {menuCol.assignable ? `انتخاب «${menuCol.label}» از کل دیتابیس` : 'این ستون برای پیش‌نویس قابل انتخاب نیست'}
               </div>
-              {menuCol.key === 'Priorities' ? (
-                <div className="col-menu-empty">الویت پس از ثبت کار (تکمیل ثبت) تنظیم می‌شود.</div>
-              ) : (
+              {menuCol.assignable ? (
                 <>
                   <input className="col-menu-search" placeholder="تایپ برای جستجو در گزینه‌ها…" value={menuQuery} onChange={(e) => setMenuQuery(e.target.value)} />
                   {menuLoading && <div className="col-menu-empty">در حال خواندن گزینه‌ها…</div>}
@@ -320,6 +318,8 @@ export default function TaskTable({
                     </div>
                   )}
                 </>
+              ) : (
+                <div className="col-menu-empty">الویت پس از ثبت کار (تکمیل ثبت) تنظیم می‌شود.</div>
               )}
             </div>
           ) : (

@@ -31,9 +31,16 @@ function FullHeight({ children }) {
     const mo = new MutationObserver(apply);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", apply);
-    return () => { mo.disconnect(); window.removeEventListener("resize", apply); };
+    return () => {
+      mo.disconnect();
+      window.removeEventListener("resize", apply);
+    };
   }, []);
-  return <div ref={ref} className="table-host">{children}</div>;
+  return (
+    <div ref={ref} className="table-host">
+      {children}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -67,11 +74,31 @@ export default function Home() {
   const applyPlace = (d) => {
     if (!d || !d.Building) return d;
     const r = placeRules(d.Building, d.Block, d.Floor, d.Entrance);
-    if (!r.central) return { ...d, Block: '-', Entrance: '-', Floor: d.Floor };
+    if (!r.central) return { ...d, Block: "-", Entrance: "-", Floor: d.Floor };
     return d;
   };
   const changeDraft = (k, v) => setDraft((d) => applyPlace({ ...d, [k]: v }));
   const assignDraft = (colKey, value) => setDraft((d) => (d ? applyPlace({ ...d, [colKey]: value }) : d));
+
+  const [assetPreset, setAssetPreset] = useState(null);
+  const handleDraftDeviceMissing = (draftData) => {
+    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}، طبقه: ${draftData.Floor ?? '-'}، قسمت: ${draftData.Location || '-'}`;
+    if (!confirm(`دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`)) return;
+    setAssetPreset({
+      AssetName: draftData.AssetName || '',
+      AssetNumber: draftData.AssetNumber || '',
+      Building: draftData.Building || '',
+      Block: draftData.Block || '-',
+      Floor: draftData.Floor != null ? String(draftData.Floor) : '',
+      Entrance: draftData.Entrance || '',
+      Location: draftData.Location || '',
+      MechSystem: draftData.MechSystem || '',
+    });
+    setShowAssets(true);
+  };
+  const handleAssetSavedFromDraft = (newId, form) => {
+    setDraft((d) => (d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d));
+  };
 
   const saveDraft = async () => {
     if (!draft) return;
@@ -121,26 +148,6 @@ export default function Home() {
   const cancelDraft = () => {
     setDraft(null);
     try { localStorage.removeItem('task_draft'); } catch { }
-  };
-
-  const [assetPreset, setAssetPreset] = useState(null);
-  const handleDraftDeviceMissing = (draftData) => {
-    const spec = `${draftData.AssetName || ''} (شماره: ${draftData.AssetNumber || '-'})\nساختمان: ${draftData.Building || ''}، طبقه: ${draftData.Floor ?? '-'}، قسمت: ${draftData.Location || '-'}`;
-    if (!confirm(`دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`)) return;
-    setAssetPreset({
-      AssetName: draftData.AssetName || '',
-      AssetNumber: draftData.AssetNumber || '',
-      Building: draftData.Building || '',
-      Block: draftData.Block || '-',
-      Floor: draftData.Floor != null ? String(draftData.Floor) : '',
-      Entrance: draftData.Entrance || '',
-      Location: draftData.Location || '',
-      MechSystem: draftData.MechSystem || '',
-    });
-    setShowAssets(true);
-  };
-  const handleAssetSavedFromDraft = (newId, form) => {
-    setDraft((d) => (d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d));
   };
 
   // ✅ صفحه‌بندی
@@ -289,7 +296,6 @@ export default function Home() {
             onDraftSave={saveDraft}
             onDraftFinish={finishDraft}
             onDraftCancel={cancelDraft}
-            onDraftDeviceMissing={handleDraftDeviceMissing}
           />
         </FullHeight>
         <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">

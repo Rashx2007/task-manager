@@ -267,7 +267,8 @@ html, body {
 .draft-row-place td { background: #fdf3d7 !important; }
 .draft-place-note { font-size: 12px; color: #6b7280; }
 
-/* ✅ منوی سرستون: عرض محدود تا از جدول بیرون نزند */
+
+/* ✅ منوی سرستون: عرض محدود + جستجو + Select All */
 .col-menu { width: 300px; max-width: min(340px, 92vw); }
 .col-menu-search {
   width: 100%;
