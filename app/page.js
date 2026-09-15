@@ -31,15 +31,21 @@ function FullHeight({ children }) {
     const mo = new MutationObserver(apply);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", apply);
-    return () => { mo.disconnect(); window.removeEventListener("resize", apply); };
+    return () => {
+      mo.disconnect();
+      window.removeEventListener("resize", apply);
+    };
   }, []);
-  return <div ref={ref} className="table-host">{children}</div>;
+  return (
+    <div ref={ref} className="table-host">
+      {children}
+    </div>
+  );
 }
 
 export default function Home() {
   const [tasks, setTasks] = useState([]);
   const [totalFiltered, setTotalFiltered] = useState(0);
-  const [loadType, setLoadType] = useState("daily");
   const [selectedTask, setSelectedTask] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -52,12 +58,8 @@ export default function Home() {
   const [showPersons, setShowPersons] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
-  const [status, setStatus] = useState({ count: 0, today: "" });
 
-  // ✅ فیلترهای فعال (از TaskTable به اینجا می‌آید)
-  const [activeFilters, setActiveFilters] = useState({});
-
-  // ✅ پیش‌نویس
+  // ✅ پیش‌نویس (ایجاد از فیلتر)
   const [draft, setDraft] = useState(null);
   const finishingDraftRef = useRef(false);
   useEffect(() => {
@@ -104,14 +106,17 @@ export default function Home() {
     if (d.AssetName && d.Building) {
       try {
         const res = await fetch('/api/asset-check', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(d),
         });
         const cd = await res.json();
         if (cd.needFloor) { alert('برای تعیین دقیق دستگاه، لطفاً «طبقه» را در ردیف «مشخصات مکانی دستگاه» مشخص کنید.'); return; }
         if (!cd.found) { handleDraftDeviceMissing(d); return; }
         if (cd.ambiguous && cd.matches && cd.matches.length > 1) {
-          const list = cd.matches.map((m, i) => `${i + 1}) کد ${m.AssetID}: بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}، سیستم ${m.MechSystem || '-'}`).join('\n');
+          const list = cd.matches
+            .map((m, i) => `${i + 1}) کد ${m.AssetID}: بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}، سیستم ${m.MechSystem || '-'}`)
+            .join('\n');
           const pick = prompt(`چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف دستگاه مورد نظر را وارد کنید:\n${list}`, '1');
           if (pick === null) return;
           const m = cd.matches[Number(pick) - 1];
@@ -124,50 +129,70 @@ export default function Home() {
         alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
       } catch (e) { alert('خطا در بررسی دستگاه: ' + e.message); }
     } else {
-      try { localStorage.setItem('task_draft', JSON.stringify(d)); alert('پیش‌نویس به‌صورت موقت ذخیره شد.'); } catch { }
+      try {
+        localStorage.setItem('task_draft', JSON.stringify(d));
+        alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
+      } catch { }
     }
   };
 
-  const finishDraft = () => { finishingDraftRef.current = true; setEditTask({ ...draft }); setShowTaskForm(true); };
-  const cancelDraft = () => { setDraft(null); try { localStorage.removeItem('task_draft'); } catch { } };
+  const finishDraft = () => {
+    finishingDraftRef.current = true;
+    setEditTask({ ...draft });
+    setShowTaskForm(true);
+  };
+  const cancelDraft = () => {
+    setDraft(null);
+    try { localStorage.removeItem('task_draft'); } catch { }
+  };
 
-  // ✅ صفحه‌بندی بر اساس نتایج فیلترشده
+  // ✅ صفحه‌بندی + فیلتر سمت سرور
   const [page, setPage] = useState(1);
+  const [activeFilters, setActiveFilters] = useState({});
+  const [reloadKey, setReloadKey] = useState(0);
+  const loadTypeRef = useRef("daily");
+  const searchRowsRef = useRef([]);
   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
-  // ✅ بارگذاری با فیلترها
-  const loadTasks = useCallback(async (type = "daily", filters = {}, pageNum = 1) => {
+  const applyClientFilters = (rows, fObj) => rows.filter((t) => {
+    for (const [k, vals] of Object.entries(fObj)) {
+      if (!Array.isArray(vals)) continue;
+      if (vals.length === 0) return false;
+      const v = k === 'status' ? (Number(t.Complited) === 1 ? 'اتمام' : 'جاری') : String(t[k] ?? '');
+      if (!vals.includes(v)) return false;
+    }
+    return true;
+  });
+
+  const loadTasks = useCallback(async (filtersObj, pageNum) => {
+    const type = loadTypeRef.current;
     try {
+      if (type === 'search') {
+        const filteredRows = applyClientFilters(searchRowsRef.current || [], filtersObj);
+        setTotalFiltered(filteredRows.length);
+        setTasks(filteredRows.slice((pageNum - 1) * PAGE_SIZE, pageNum * PAGE_SIZE));
+        return;
+      }
       const offset = (pageNum - 1) * PAGE_SIZE;
-      const filtersStr = Object.keys(filters).length ? `&filters=${encodeURIComponent(JSON.stringify(filters))}` : '';
+      const filtersStr = Object.keys(filtersObj).length ? `&filters=${encodeURIComponent(JSON.stringify(filtersObj))}` : '';
       const res = await fetch(`/api/load-data?type=${type}&offset=${offset}&limit=${PAGE_SIZE}${filtersStr}`);
       const d = await res.json();
       if (d.success) {
         setTasks(d.data || []);
         setTotalFiltered(d.total || 0);
-        setStatus({ count: d.total || 0, today: new Date().toLocaleDateString("fa-IR") });
       }
     } catch { }
   }, []);
 
-  // ✅ بارگذاری اولیه
-  useEffect(() => { loadTasks("daily", {}, 1); }, [loadTasks]);
-
-  // ✅ هنگام تغییر فیلترها یا صفحه، بارگذاری مجدد
-  useEffect(() => {
-    if (draft) return; // در حالت پیش‌نویس فیلتر غیرفعال است
-    loadTasks(loadType, activeFilters, page);
-  }, [loadType, activeFilters, page, draft, loadTasks]);
-
-  // ✅ وقتی فیلترها تغییر می‌کنند، برگشت به صفحه ۱
+  useEffect(() => { loadTasks({}, 1); }, [loadTasks]);
   useEffect(() => { setPage(1); }, [activeFilters]);
+  useEffect(() => { loadTasks(activeFilters, page); }, [activeFilters, page, reloadKey, loadTasks]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
-  // ✅ هندلر تغییر فیلتر از TaskTable
   const handleFiltersChange = useCallback((filters) => {
-    // تبدیل Set به Array برای ارسال به API
     const serializable = {};
     for (const [k, v] of Object.entries(filters)) {
-      if (v === null) continue;
+      if (v == null) continue;
       serializable[k] = Array.from(v);
     }
     setActiveFilters(serializable);
@@ -176,9 +201,13 @@ export default function Home() {
   const handleComplete = async (taskId) => {
     if (!confirm("آیا این کار اتمام یافته است؟")) return;
     try {
-      const res = await fetch("/api/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId }) });
+      const res = await fetch("/api/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId }),
+      });
       const d = await res.json();
-      if (d.success) loadTasks(loadType, activeFilters, page);
+      if (d.success) setReloadKey((k) => k + 1);
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -189,17 +218,17 @@ export default function Home() {
     try {
       const res = await fetch(`/api/tasks/${selectedTask.TaskID}`, { method: "DELETE" });
       const d = await res.json();
-      if (d.success) { setSelectedTask(null); loadTasks(loadType, activeFilters, page); }
+      if (d.success) { setSelectedTask(null); setReloadKey((k) => k + 1); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
 
   const handleEdit = () => { if (selectedTask) openEdit(selectedTask); else alert("ابتدا یک کار را انتخاب کنید."); };
-  const handleRefresh = () => loadTasks(loadType, activeFilters, page);
+  const handleRefresh = () => setReloadKey((k) => k + 1);
 
   const handleReschedule = async () => {
     if (!confirm("مرتب‌سازی «بدون کارهای زمان ثابت» انجام شود؟")) return;
-    try { await fetch("/api/reschedule", { method: "POST" }); loadTasks(loadType, activeFilters, page); }
+    try { await fetch("/api/reschedule", { method: "POST" }); setReloadKey((k) => k + 1); }
     catch { alert("خطا در ارتباط با سرور"); }
   };
 
@@ -207,9 +236,13 @@ export default function Home() {
     const m = prompt("چند دقیقه جلو برده شود؟", "60");
     if (m === null) return;
     try {
-      const res = await fetch("/api/move-fixed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: Number(m) }) });
+      const res = await fetch("/api/move-fixed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutes: Number(m) }),
+      });
       const d = await res.json();
-      if (d.success) { alert("انجام شد."); loadTasks(loadType, activeFilters, page); }
+      if (d.success) { alert("انجام شد."); setReloadKey((k) => k + 1); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -219,7 +252,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/correct-priorities", { method: "POST" });
       const d = await res.json();
-      if (d.success) { alert(d.corrected + " مورد اصلاح شد."); loadTasks(loadType, activeFilters, page); }
+      if (d.success) { alert(d.corrected + " مورد اصلاح شد."); setReloadKey((k) => k + 1); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -229,7 +262,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/priority-increase", { method: "POST" });
       const d = await res.json();
-      if (d.success) { alert(d.changed + " کار افزایش الویت یافت."); loadTasks(loadType, activeFilters, page); }
+      if (d.success) { alert(d.changed + " کار افزایش الویت یافت."); setReloadKey((k) => k + 1); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -275,8 +308,30 @@ export default function Home() {
 
       {(showSearch || showComprehensive) && (
         <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
-          {showSearch && <SearchPanel onResult={(rows) => { setTasks(rows); setTotalFiltered(rows.length); setLoadType("search"); }} onClose={() => setShowSearch(false)} />}
-          {showComprehensive && <ComprehensiveSearch onResult={(rows) => { setTasks(rows); setTotalFiltered(rows.length); setLoadType("search"); }} onClose={() => setShowComprehensive(false)} />}
+          {showSearch && (
+            <SearchPanel
+              onResult={(rows) => {
+                loadTypeRef.current = "search";
+                searchRowsRef.current = rows || [];
+                setTasks((rows || []).slice(0, PAGE_SIZE));
+                setTotalFiltered((rows || []).length);
+                setPage(1);
+              }}
+              onClose={() => setShowSearch(false)}
+            />
+          )}
+          {showComprehensive && (
+            <ComprehensiveSearch
+              onResult={(rows) => {
+                loadTypeRef.current = "search";
+                searchRowsRef.current = rows || [];
+                setTasks((rows || []).slice(0, PAGE_SIZE));
+                setTotalFiltered((rows || []).length);
+                setPage(1);
+              }}
+              onClose={() => setShowComprehensive(false)}
+            />
+          )}
         </div>
       )}
 
@@ -296,8 +351,6 @@ export default function Home() {
             onDraftSave={saveDraft}
             onDraftFinish={finishDraft}
             onDraftCancel={cancelDraft}
-            onDraftDeviceMissing={handleDraftDeviceMissing}
-            activeFilters={activeFilters}
             onFiltersChange={handleFiltersChange}
           />
         </FullHeight>
@@ -311,15 +364,22 @@ export default function Home() {
       </div>
 
       <div className="shrink-0">
-        <StatusBar count={status.count} today={status.today} />
+        <StatusBar count={totalFiltered} today={new Date().toLocaleDateString("fa-IR")} />
       </div>
 
       {showTaskForm && (
         <TaskForm
           initial={editTask}
           defaultAssetId={newTaskAssetId}
-          onClose={() => { setShowTaskForm(false); setNewTaskAssetId(null); finishingDraftRef.current = false; }}
-          onSaved={() => { loadTasks(loadType, activeFilters, page); if (finishingDraftRef.current) { cancelDraft(); finishingDraftRef.current = false; } }}
+          onClose={() => {
+            setShowTaskForm(false);
+            setNewTaskAssetId(null);
+            finishingDraftRef.current = false;
+          }}
+          onSaved={() => {
+            setReloadKey((k) => k + 1);
+            if (finishingDraftRef.current) { cancelDraft(); finishingDraftRef.current = false; }
+          }}
         />
       )}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
@@ -333,8 +393,12 @@ export default function Home() {
         />
       )}
       {showPersons && <PersonsModal onClose={() => setShowPersons(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} onSaved={() => loadTasks(loadType, activeFilters, page)} />}
-      {folderTask && <FolderModal taskId={folderTask.TaskID} onClose={() => setFolderTask(null)} onSaved={() => loadTasks(loadType, activeFilters, page)} />}
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} onSaved={() => setReloadKey((k) => k + 1)} />
+      )}
+      {folderTask && (
+        <FolderModal taskId={folderTask.TaskID} onClose={() => setFolderTask(null)} onSaved={() => setReloadKey((k) => k + 1)} />
+      )}
     </main>
   );
 }

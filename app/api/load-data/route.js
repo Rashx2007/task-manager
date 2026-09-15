@@ -1,24 +1,30 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
+// ✅ نرمال‌سازی فارسی برای پارامترها (هم‌خوان با normCol سمت SQL)
+const normalizeFa = (s) => String(s == null ? '' : s)
+  .replace(/[يى]/g, 'ی')
+  .replace(/ك/g, 'ک')
+  .replace(/[\u200c\u200f\u200e]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const normCol = (col) =>
+  `LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')))`;
+
+const TASK_TEXT_COLS = { TaskTtl: 'tsk.TaskTtl', Descriptions: 'tsk.Descriptions', Priorities: 'TD.Priorities' };
+const ASSET_TEXT_COLS = { AssetName: 'asset.AssetName', Building: 'asset.Building', Location: 'asset.Location' };
+
 export async function GET(request) {
   const url = new URL(request.url);
   const type = url.searchParams.get('type') || 'daily';
-  const offset = Number(url.searchParams.get('offset') || 0);
-  const limit = Number(url.searchParams.get('limit') || 10);
-  const filtersParam = url.searchParams.get('filters');
-  
+  const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
+  const limit = Math.max(1, Number(url.searchParams.get('limit') || 10));
   let filters = {};
-  try { filters = filtersParam ? JSON.parse(filtersParam) : {}; } catch {}
-
-  const normCol = (col) =>
-    `LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')))`;
+  try { filters = JSON.parse(url.searchParams.get('filters') || '{}'); } catch { filters = {}; }
 
   try {
     let where;
-    const filterConds = [];
-    const filterParams = [];
-
     if (type === 'fixed') {
       where = `(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت')`;
     } else if (type === 'all') {
@@ -39,67 +45,60 @@ export async function GET(request) {
       }
     }
 
-    // ✅ اعمال فیلترهای کلاینت
+    // ✅ فیلترهای ستونی (از کل دیتابیس) با پارامترهای نرمال‌شده
+    const conds = [];
+    const params = [];
     for (const [key, values] of Object.entries(filters)) {
-      if (!values || !Array.isArray(values) || values.length === 0) continue;
+      if (!Array.isArray(values)) continue;
+      if (values.length === 0) { conds.push('(1=0)'); continue; }
       if (key === 'status') {
-        const conds = [];
-        if (values.includes('جاری')) conds.push(`(tsk.Complited < 1)`);
-        if (values.includes('اتمام')) conds.push(`(tsk.Complited = 1)`);
-        if (conds.length) { filterConds.push(`(${conds.join(' OR ')})`); }
-      } else if (['TaskID', 'TaskTtl', 'Descriptions', 'Priorities'].includes(key)) {
-        const col = { TaskID: 'tsk.TaskID', TaskTtl: 'tsk.TaskTtl', Descriptions: 'tsk.Descriptions', Priorities: 'TD.Priorities' }[key];
-        const placeholders = values.map(() => `(${normCol(col)} = ?)`).join(' OR ');
-        filterConds.push(`(${placeholders})`);
-        filterParams.push(...values.map((v) => String(v)));
-      } else {
-        const col = { AssetName: 'asset.AssetName', AssetNumber: 'asset.AssetNumber', Building: 'asset.Building', Location: 'asset.Location' }[key];
-        if (!col) continue;
-        if (key === 'AssetNumber') {
-          const placeholders = values.map(() => `(asset.AssetNumber = ?)`).join(' OR ');
-          filterConds.push(`(${placeholders})`);
-          filterParams.push(...values.map((v) => Number(v) || null));
-        } else {
-          const placeholders = values.map(() => `(${normCol(col)} = ?)`).join(' OR ');
-          filterConds.push(`(${placeholders})`);
-          filterParams.push(...values.map((v) => String(v)));
-        }
+        const hasCur = values.includes('جاری');
+        const hasDone = values.includes('اتمام');
+        if (hasCur && hasDone) continue;
+        if (hasCur) conds.push('(tsk.Complited < 1)');
+        else if (hasDone) conds.push('(tsk.Complited = 1)');
+        else conds.push('(1=0)');
+        continue;
       }
+      if (key === 'TaskID') {
+        conds.push(`(${values.map(() => '(tsk.TaskID = ?)').join(' OR ')})`);
+        values.forEach((v) => params.push(Number(v)));
+        continue;
+      }
+      if (key === 'AssetNumber') {
+        conds.push(`(${values.map(() => '(asset.AssetNumber = ?)').join(' OR ')})`);
+        values.forEach((v) => params.push(Number(v)));
+        continue;
+      }
+      const col = TASK_TEXT_COLS[key] || ASSET_TEXT_COLS[key];
+      if (!col) continue;
+      conds.push(`(${values.map(() => `(${normCol(col)} = ?)`).join(' OR ')})`);
+      values.forEach((v) => params.push(normalizeFa(v)));
     }
+    const filterWhere = conds.length ? ` AND ${conds.join(' AND ')}` : '';
+    const fullWhere = `${where}${filterWhere}`;
 
-    const filterWhere = filterConds.length ? ` AND ${filterConds.join(' AND ')}` : '';
-    const fullWhere = where + filterWhere;
+    const baseFrom = `FROM Tsk_tbl tsk
+      LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
+      LEFT JOIN Asset_2_tbl asset ON atk.AssetID = asset.AssetID
+      LEFT JOIN ApplicantFunctor_tbl AF ON AF.TaskID = tsk.TaskID
+      LEFT JOIN Persons_tbl pa ON pa.PersonID = COALESCE(tsk.ApplicantID, AF.ApplicantID)
+      LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID`;
 
-    // ✅ شمارش کل نتایج فیلترشده
-    const countRows = await query(
-      `SELECT COUNT(DISTINCT tsk.TaskID) AS total
-       FROM Tsk_tbl tsk
-       LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
-       LEFT JOIN Asset_2_tbl asset ON atk.AssetID = asset.AssetID
-       LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
-       WHERE ${fullWhere}`,
-      filterParams
-    );
-    const total = Number(countRows[0]?.total || 0);
+    // ✅ تعداد کل نتایج فیلترشده (برای صفحه‌بندی و نوار وضعیت)
+    const countRows = await query(`SELECT COUNT(DISTINCT tsk.TaskID) AS c ${baseFrom} WHERE ${fullWhere}`, params);
+    const total = Number(countRows[0]?.c || 0);
 
-    // ✅ دریافت صفحه فعلی
-    const rows = await query(
-      `SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location,
-        tsk.TaskTtl, tsk.Descriptions, tsk.Complited, atk.AssetID,
-        pa.PersonName AS ApplicantName,
-        TD.Submit_Date, TD.Priorities, TD.DueDateTime, TD.EndDateTime,
-        CASE WHEN TD.Priorities = N'زمان انجام ثابت' THEN 0 ELSE 1 END AS FixOrd
-       FROM Tsk_tbl tsk
-       LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
-       LEFT JOIN Asset_2_tbl asset ON atk.AssetID = asset.AssetID
-       LEFT JOIN ApplicantFunctor_tbl AF ON AF.TaskID = tsk.TaskID
-       LEFT JOIN Persons_tbl pa ON pa.PersonID = COALESCE(tsk.ApplicantID, AF.ApplicantID)
-       LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
-       WHERE ${fullWhere}
-       ORDER BY FixOrd, TD.DueDateTime
-       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,
-      [...filterParams, offset, limit]
-    );
+    // ✅ فقط صفحهٔ درخواستی
+    const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location,
+      tsk.TaskTtl, tsk.Descriptions, tsk.Complited, atk.AssetID,
+      pa.PersonName AS ApplicantName,
+      TD.Submit_Date, TD.Priorities, TD.DueDateTime, TD.EndDateTime,
+      CASE WHEN TD.Priorities = N'زمان انجام ثابت' THEN 0 ELSE 1 END AS FixOrd
+      ${baseFrom}
+      WHERE ${fullWhere}
+      ORDER BY FixOrd, TD.DueDateTime, tsk.TaskID
+      OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, offset, limit]);
 
     return NextResponse.json({ success: true, data: rows, total });
   } catch (e) {

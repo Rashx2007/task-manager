@@ -35,28 +35,16 @@ const PLACE_COLS = [
 
 export default function TaskTable({
   tasks, startNumber = 0, onRowClick, onComplete, onEdit, onFolder, selectedTask,
-  draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel, onDraftDeviceMissing,
-  activeFilters = {}, onFiltersChange,
+  draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel,
+  onFiltersChange,
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-  const [filters, setFilters] = useState(() => {
-    // تبدیل activeFilters از page.js به فرمت داخلی
-    const f = {};
-    for (const [k, v] of Object.entries(activeFilters)) {
-      f[k] = new Set(v);
-    }
-    return f;
-  });
+  const [filters, setFilters] = useState({}); // { key: null = همه | Set = انتخاب‌شده‌ها }
   const [menu, setMenu] = useState(null);
   const [menuValues, setMenuValues] = useState(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuQuery, setMenuQuery] = useState('');
-
-  // ✅ همگام‌سازی فیلترها با page.js
-  useEffect(() => {
-    if (onFiltersChange) onFiltersChange(filters);
-  }, [filters, onFiltersChange]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -66,10 +54,16 @@ export default function TaskTable({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // ✅ اطلاع‌رسانی فیلترها به page.js برای جستجوی سمت سرور
+  useEffect(() => {
+    if (onFiltersChange) onFiltersChange(filters);
+  }, [filters, onFiltersChange]);
+
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
   const draftActive = draft != null;
   const centralDraft = isCentral(draft?.Building);
 
+  // ✅ گزینه‌ها از کل دیتابیس؛ در حالت پیش‌نویس آبشاری بر اساس انتخاب‌های خودِ پیش‌نویس
   const loadMenuValues = async (col) => {
     setMenuLoading(true);
     setMenuValues(null);
@@ -84,16 +78,15 @@ export default function TaskTable({
       delete constraints[col.key];
       constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
     } else {
-      // ✅ فیلتر آبشاری: محدودکردن گزینه‌ها بر اساس فیلترهای فعال دیگر
-      for (const [k, v] of Object.entries(filters)) {
-        if (v === null || v.size === 0 || k === col.key) continue;
-        const vals = Array.from(v);
-        if (vals.length === 1) constraints[k] = vals[0];
+      for (const [k, set] of Object.entries(filters)) {
+        if (k === col.key || set == null || set.size !== 1) continue;
+        constraints[k] = Array.from(set)[0];
       }
     }
     try {
       const res = await fetch('/api/options', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ field: col.key, source: col.source || 'task', constraints }),
       });
       const d = await res.json();
@@ -126,13 +119,14 @@ export default function TaskTable({
       if (cur == null) cur = new Set(menuValues || []);
       const next = new Set(cur);
       if (next.has(value)) next.delete(value); else next.add(value);
-      return { ...prev, [key]: next };
+      // ✅ اگر همهٔ گزینه‌ها انتخاب شدند = بدون فیلتر (جلوگیری از کوئری‌های غول‌پیکر)
+      return { ...prev, [key]: (menuValues && next.size === menuValues.length) ? null : next };
     });
   };
   const setAllChecked = (key, checked) => setFilters((prev) => ({ ...prev, [key]: checked ? null : new Set() }));
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
-  // ✅ مرتب‌سازی فقط روی نتایج فعلی صفحه
+  // ✅ مرتب‌سازی روی ردیف‌های همین صفحه (نتایج سرورAlready فیلتر شده‌اند)
   const sorted = [...(tasks || [])].sort((a, b) => {
     if (!sortKey) return 0;
     let av, bv;
@@ -145,7 +139,7 @@ export default function TaskTable({
     return sortDir === 'asc' ? cmp : -cmp;
   });
 
-  const hasAnyFilter = !draftActive && Object.values(filters).some((s) => s != null && s.size > 0);
+  const hasAnyFilter = !draftActive && Object.values(filters).some((s) => s != null);
 
   const draftCell = (key, ph) => (
     <td className="draft-cell">
@@ -191,7 +185,7 @@ export default function TaskTable({
         <thead>
           <tr>
             {COLUMNS.map((col) => {
-              const isFiltered = !draftActive && filters[col.key] != null && filters[col.key].size > 0;
+              const isFiltered = !draftActive && filters[col.key] != null;
               const isSorted = sortKey === col.key;
               const isOpen = menu && menu.key === col.key;
               return (
@@ -261,8 +255,13 @@ export default function TaskTable({
             </tr>
           )}
           {sorted.map((t, i) => (
-            <tr key={t.TaskID} onClick={() => onRowClick(t)} onDoubleClick={() => onEdit && onEdit(t)}
-              className={selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''} style={{ cursor: 'pointer' }}>
+            <tr
+              key={t.TaskID}
+              onClick={() => onRowClick(t)}
+              onDoubleClick={() => onEdit && onEdit(t)}
+              className={selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''}
+              style={{ cursor: 'pointer' }}
+            >
               <td>{startNumber + i + 1}</td>
               <td><Tip tip={`ثبت: ${fmtFa(t.Submit_Date)}\nاولویت: ${t.Priorities || '-'}`}>{t.TaskID}</Tip></td>
               <td><Tip tip={assetSpec(t)}>{t.AssetName || '-'}</Tip></td>
@@ -289,7 +288,7 @@ export default function TaskTable({
       {hasAnyFilter && (
         <div className="filter-summary">
           <span style={{ fontWeight: 'bold' }}>فیلترهای فعال:</span>
-          {Object.entries(filters).filter(([, s]) => s != null && s.size > 0).map(([k, s]) => {
+          {Object.entries(filters).filter(([, s]) => s != null).map(([k, s]) => {
             const col = COLUMNS.find((c) => c.key === k);
             return (
               <span key={k} className="filter-chip">
