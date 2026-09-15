@@ -31,20 +31,14 @@ function FullHeight({ children }) {
     const mo = new MutationObserver(apply);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", apply);
-    return () => {
-      mo.disconnect();
-      window.removeEventListener("resize", apply);
-    };
+    return () => { mo.disconnect(); window.removeEventListener("resize", apply); };
   }, []);
-  return (
-    <div ref={ref} className="table-host">
-      {children}
-    </div>
-  );
+  return <div ref={ref} className="table-host">{children}</div>;
 }
 
 export default function Home() {
   const [tasks, setTasks] = useState([]);
+  const [totalFiltered, setTotalFiltered] = useState(0);
   const [loadType, setLoadType] = useState("daily");
   const [selectedTask, setSelectedTask] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -60,7 +54,10 @@ export default function Home() {
   const [folderTask, setFolderTask] = useState(null);
   const [status, setStatus] = useState({ count: 0, today: "" });
 
-  // ✅ پیش‌نویس (ایجاد از فیلتر)
+  // ✅ فیلترهای فعال (از TaskTable به اینجا می‌آید)
+  const [activeFilters, setActiveFilters] = useState({});
+
+  // ✅ پیش‌نویس
   const [draft, setDraft] = useState(null);
   const finishingDraftRef = useRef(false);
   useEffect(() => {
@@ -107,20 +104,14 @@ export default function Home() {
     if (d.AssetName && d.Building) {
       try {
         const res = await fetch('/api/asset-check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(d),
         });
         const cd = await res.json();
-        if (cd.needFloor) {
-          alert('برای تعیین دقیق دستگاه، لطفاً «طبقه» را در ردیف «مشخصات مکانی دستگاه» مشخص کنید.');
-          return;
-        }
+        if (cd.needFloor) { alert('برای تعیین دقیق دستگاه، لطفاً «طبقه» را در ردیف «مشخصات مکانی دستگاه» مشخص کنید.'); return; }
         if (!cd.found) { handleDraftDeviceMissing(d); return; }
         if (cd.ambiguous && cd.matches && cd.matches.length > 1) {
-          const list = cd.matches
-            .map((m, i) => `${i + 1}) کد ${m.AssetID}: بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}، سیستم ${m.MechSystem || '-'}`)
-            .join('\n');
+          const list = cd.matches.map((m, i) => `${i + 1}) کد ${m.AssetID}: بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}، سیستم ${m.MechSystem || '-'}`).join('\n');
           const pick = prompt(`چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف دستگاه مورد نظر را وارد کنید:\n${list}`, '1');
           if (pick === null) return;
           const m = cd.matches[Number(pick) - 1];
@@ -133,48 +124,61 @@ export default function Home() {
         alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
       } catch (e) { alert('خطا در بررسی دستگاه: ' + e.message); }
     } else {
-      try {
-        localStorage.setItem('task_draft', JSON.stringify(d));
-        alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
-      } catch { }
+      try { localStorage.setItem('task_draft', JSON.stringify(d)); alert('پیش‌نویس به‌صورت موقت ذخیره شد.'); } catch { }
     }
   };
 
-  const finishDraft = () => {
-    finishingDraftRef.current = true;
-    setEditTask({ ...draft });
-    setShowTaskForm(true);
-  };
-  const cancelDraft = () => {
-    setDraft(null);
-    try { localStorage.removeItem('task_draft'); } catch { }
-  };
+  const finishDraft = () => { finishingDraftRef.current = true; setEditTask({ ...draft }); setShowTaskForm(true); };
+  const cancelDraft = () => { setDraft(null); try { localStorage.removeItem('task_draft'); } catch { } };
 
-  // ✅ صفحه‌بندی
+  // ✅ صفحه‌بندی بر اساس نتایج فیلترشده
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
-  const pageTasks = tasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [tasks]);
-  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
-  const loadTasks = useCallback(async (type = "daily") => {
+  // ✅ بارگذاری با فیلترها
+  const loadTasks = useCallback(async (type = "daily", filters = {}, pageNum = 1) => {
     try {
-      const res = await fetch(`/api/load-data?type=${type}`);
+      const offset = (pageNum - 1) * PAGE_SIZE;
+      const filtersStr = Object.keys(filters).length ? `&filters=${encodeURIComponent(JSON.stringify(filters))}` : '';
+      const res = await fetch(`/api/load-data?type=${type}&offset=${offset}&limit=${PAGE_SIZE}${filtersStr}`);
       const d = await res.json();
       if (d.success) {
         setTasks(d.data || []);
-        setStatus({ count: (d.data || []).length, today: new Date().toLocaleDateString("fa-IR") });
+        setTotalFiltered(d.total || 0);
+        setStatus({ count: d.total || 0, today: new Date().toLocaleDateString("fa-IR") });
       }
     } catch { }
   }, []);
-  useEffect(() => { loadTasks("daily"); }, [loadTasks]);
+
+  // ✅ بارگذاری اولیه
+  useEffect(() => { loadTasks("daily", {}, 1); }, [loadTasks]);
+
+  // ✅ هنگام تغییر فیلترها یا صفحه، بارگذاری مجدد
+  useEffect(() => {
+    if (draft) return; // در حالت پیش‌نویس فیلتر غیرفعال است
+    loadTasks(loadType, activeFilters, page);
+  }, [loadType, activeFilters, page, draft, loadTasks]);
+
+  // ✅ وقتی فیلترها تغییر می‌کنند، برگشت به صفحه ۱
+  useEffect(() => { setPage(1); }, [activeFilters]);
+
+  // ✅ هندلر تغییر فیلتر از TaskTable
+  const handleFiltersChange = useCallback((filters) => {
+    // تبدیل Set به Array برای ارسال به API
+    const serializable = {};
+    for (const [k, v] of Object.entries(filters)) {
+      if (v === null) continue;
+      serializable[k] = Array.from(v);
+    }
+    setActiveFilters(serializable);
+  }, []);
 
   const handleComplete = async (taskId) => {
     if (!confirm("آیا این کار اتمام یافته است؟")) return;
     try {
       const res = await fetch("/api/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId }) });
       const d = await res.json();
-      if (d.success) loadTasks(loadType);
+      if (d.success) loadTasks(loadType, activeFilters, page);
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -185,17 +189,17 @@ export default function Home() {
     try {
       const res = await fetch(`/api/tasks/${selectedTask.TaskID}`, { method: "DELETE" });
       const d = await res.json();
-      if (d.success) { setSelectedTask(null); loadTasks(loadType); }
+      if (d.success) { setSelectedTask(null); loadTasks(loadType, activeFilters, page); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
 
   const handleEdit = () => { if (selectedTask) openEdit(selectedTask); else alert("ابتدا یک کار را انتخاب کنید."); };
-  const handleRefresh = () => loadTasks(loadType);
+  const handleRefresh = () => loadTasks(loadType, activeFilters, page);
 
   const handleReschedule = async () => {
     if (!confirm("مرتب‌سازی «بدون کارهای زمان ثابت» انجام شود؟")) return;
-    try { await fetch("/api/reschedule", { method: "POST" }); loadTasks(loadType); }
+    try { await fetch("/api/reschedule", { method: "POST" }); loadTasks(loadType, activeFilters, page); }
     catch { alert("خطا در ارتباط با سرور"); }
   };
 
@@ -205,7 +209,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/move-fixed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: Number(m) }) });
       const d = await res.json();
-      if (d.success) { alert("انجام شد."); loadTasks(loadType); }
+      if (d.success) { alert("انجام شد."); loadTasks(loadType, activeFilters, page); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -215,7 +219,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/correct-priorities", { method: "POST" });
       const d = await res.json();
-      if (d.success) { alert(d.corrected + " مورد اصلاح شد."); loadTasks(loadType); }
+      if (d.success) { alert(d.corrected + " مورد اصلاح شد."); loadTasks(loadType, activeFilters, page); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -225,7 +229,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/priority-increase", { method: "POST" });
       const d = await res.json();
-      if (d.success) { alert(d.changed + " کار افزایش الویت یافت."); loadTasks(loadType); }
+      if (d.success) { alert(d.changed + " کار افزایش الویت یافت."); loadTasks(loadType, activeFilters, page); }
       else alert("خطا: " + d.error);
     } catch { alert("خطا در ارتباط با سرور"); }
   };
@@ -271,19 +275,15 @@ export default function Home() {
 
       {(showSearch || showComprehensive) && (
         <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
-          {showSearch && (
-            <SearchPanel onResult={(rows) => { setTasks(rows); setLoadType("search"); }} onClose={() => setShowSearch(false)} />
-          )}
-          {showComprehensive && (
-            <ComprehensiveSearch onResult={(rows) => { setTasks(rows); setLoadType("search"); }} onClose={() => setShowComprehensive(false)} />
-          )}
+          {showSearch && <SearchPanel onResult={(rows) => { setTasks(rows); setTotalFiltered(rows.length); setLoadType("search"); }} onClose={() => setShowSearch(false)} />}
+          {showComprehensive && <ComprehensiveSearch onResult={(rows) => { setTasks(rows); setTotalFiltered(rows.length); setLoadType("search"); }} onClose={() => setShowComprehensive(false)} />}
         </div>
       )}
 
       <div className="p-3 flex-1 min-h-0 flex flex-col">
         <FullHeight>
           <TaskTable
-            tasks={pageTasks}
+            tasks={tasks}
             startNumber={(page - 1) * PAGE_SIZE}
             onRowClick={setSelectedTask}
             onComplete={handleComplete}
@@ -296,12 +296,15 @@ export default function Home() {
             onDraftSave={saveDraft}
             onDraftFinish={finishDraft}
             onDraftCancel={cancelDraft}
+            onDraftDeviceMissing={handleDraftDeviceMissing}
+            activeFilters={activeFilters}
+            onFiltersChange={handleFiltersChange}
           />
         </FullHeight>
         <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
           <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage(1)}>اولین</button>
           <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>قبلی</button>
-          <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">صفحهٔ {page} از {totalPages} — {tasks.length} کار</span>
+          <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">صفحهٔ {page} از {totalPages} — {totalFiltered} کار</span>
           <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>بعدی</button>
           <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>آخرین</button>
         </div>
@@ -316,10 +319,7 @@ export default function Home() {
           initial={editTask}
           defaultAssetId={newTaskAssetId}
           onClose={() => { setShowTaskForm(false); setNewTaskAssetId(null); finishingDraftRef.current = false; }}
-          onSaved={() => {
-            loadTasks(loadType);
-            if (finishingDraftRef.current) { cancelDraft(); finishingDraftRef.current = false; }
-          }}
+          onSaved={() => { loadTasks(loadType, activeFilters, page); if (finishingDraftRef.current) { cancelDraft(); finishingDraftRef.current = false; } }}
         />
       )}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
@@ -333,8 +333,8 @@ export default function Home() {
         />
       )}
       {showPersons && <PersonsModal onClose={() => setShowPersons(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} onSaved={() => loadTasks(loadType)} />}
-      {folderTask && <FolderModal taskId={folderTask.TaskID} onClose={() => setFolderTask(null)} onSaved={() => loadTasks(loadType)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} onSaved={() => loadTasks(loadType, activeFilters, page)} />}
+      {folderTask && <FolderModal taskId={folderTask.TaskID} onClose={() => setFolderTask(null)} onSaved={() => loadTasks(loadType, activeFilters, page)} />}
     </main>
   );
 }
