@@ -54,16 +54,17 @@ export default function TaskTable({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ✅ اطلاع‌رسانی فیلترها به page.js برای جستجوی سمت سرور
-  useEffect(() => {
-    if (onFiltersChange) onFiltersChange(filters);
-  }, [filters, onFiltersChange]);
-
-  const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
   const draftActive = draft != null;
   const centralDraft = isCentral(draft?.Building);
 
-  // ✅ گزینه‌ها از کل دیتابیس؛ در حالت پیش‌نویس آبشاری بر اساس انتخاب‌های خودِ پیش‌نویس
+  // ✅ اطلاع‌رسانی فیلترها به page.js (در حالت پیش‌نویس، فیلترها غیرفعال‌اند)
+  useEffect(() => {
+    if (onFiltersChange) onFiltersChange(draftActive ? {} : filters);
+  }, [filters, onFiltersChange, draftActive]);
+
+  const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
+
+  // ✅ گزینه‌ها از کل دیتابیس؛ آبشاری بر اساس فیلترهای تک‌مقداری فعال (یا انتخاب‌های پیش‌نویس)
   const loadMenuValues = async (col) => {
     setMenuLoading(true);
     setMenuValues(null);
@@ -119,14 +120,13 @@ export default function TaskTable({
       if (cur == null) cur = new Set(menuValues || []);
       const next = new Set(cur);
       if (next.has(value)) next.delete(value); else next.add(value);
-      // ✅ اگر همهٔ گزینه‌ها انتخاب شدند = بدون فیلتر (جلوگیری از کوئری‌های غول‌پیکر)
       return { ...prev, [key]: (menuValues && next.size === menuValues.length) ? null : next };
     });
   };
   const setAllChecked = (key, checked) => setFilters((prev) => ({ ...prev, [key]: checked ? null : new Set() }));
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
-  // ✅ مرتب‌سازی روی ردیف‌های همین صفحه (نتایج سرورAlready فیلتر شده‌اند)
+  // ✅ مرتب‌سازی روی ردیف‌های همین صفحه (نتایج از قبل سمت سرور فیلتر/صفحه‌بندی شده‌اند)
   const sorted = [...(tasks || [])].sort((a, b) => {
     if (!sortKey) return 0;
     let av, bv;
@@ -169,7 +169,8 @@ export default function TaskTable({
     );
   };
 
-  if (!tasks || tasks.length === 0)
+  const emptyNoDraft = !draftActive && (!tasks || tasks.length === 0);
+  if (emptyNoDraft)
     return (
       <div className="h-full flex items-center justify-center text-gray-600 bg-[#b4a9b0] rounded-lg shadow-lg">
         کاری یافت نشد

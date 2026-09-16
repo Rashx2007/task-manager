@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
-// ✅ نرمال‌سازی فارسی برای پارامترها (هم‌خوان با normCol سمت SQL)
 const normalizeFa = (s) => String(s == null ? '' : s)
   .replace(/[يى]/g, 'ی')
   .replace(/ك/g, 'ک')
@@ -30,13 +29,11 @@ export async function GET(request) {
     } else if (type === 'all') {
       where = `(tsk.Complited < 1)`;
     } else {
-      const uns = await query(`SELECT COUNT(*) AS c FROM Tsk_tbl
-        WHERE (Complited < 1) AND ((Temporary = 1) OR (Priorities = N'نامشخص') OR (Priorities IS NULL))`);
+      const uns = await query(`SELECT COUNT(*) AS c FROM Tsk_tbl WHERE (Complited < 1) AND ((Temporary = 1) OR (Priorities = N'نامشخص') OR (Priorities IS NULL))`);
       if (Number(uns[0].c) > 0) {
         where = `(tsk.Complited < 1) AND ((tsk.Temporary = 1) OR (tsk.Priorities = N'نامشخص') OR (tsk.Priorities IS NULL))`;
       } else {
-        const od = await query(`SELECT COUNT(*) AS c FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID = tsk.TaskID
-          WHERE (tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`);
+        const od = await query(`SELECT COUNT(*) AS c FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID = tsk.TaskID WHERE (tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`);
         if (Number(od[0].c) > 0) {
           where = `(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`;
         } else {
@@ -45,7 +42,6 @@ export async function GET(request) {
       }
     }
 
-    // ✅ فیلترهای ستونی (از کل دیتابیس) با پارامترهای نرمال‌شده
     const conds = [];
     const params = [];
     for (const [key, values] of Object.entries(filters)) {
@@ -60,20 +56,20 @@ export async function GET(request) {
         else conds.push('(1=0)');
         continue;
       }
-      if (key === 'TaskID') {
-        conds.push(`(${values.map(() => '(tsk.TaskID = ?)').join(' OR ')})`);
-        values.forEach((v) => params.push(Number(v)));
-        continue;
-      }
-      if (key === 'AssetNumber') {
-        conds.push(`(${values.map(() => '(asset.AssetNumber = ?)').join(' OR ')})`);
-        values.forEach((v) => params.push(Number(v)));
+      if (key === 'TaskID' || key === 'AssetNumber') {
+        const nums = values.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+        if (nums.length === 0) continue;
+        const col = key === 'TaskID' ? 'tsk.TaskID' : 'asset.AssetNumber';
+        conds.push(`(${nums.map(() => `(${col} = ?)`).join(' OR ')})`);
+        nums.forEach((n) => params.push(n));
         continue;
       }
       const col = TASK_TEXT_COLS[key] || ASSET_TEXT_COLS[key];
       if (!col) continue;
-      conds.push(`(${values.map(() => `(${normCol(col)} = ?)`).join(' OR ')})`);
-      values.forEach((v) => params.push(normalizeFa(v)));
+      const texts = values.map((v) => normalizeFa(v)).filter((s) => s !== '');
+      if (texts.length === 0) continue;
+      conds.push(`(${texts.map(() => `(${normCol(col)} = ?)`).join(' OR ')})`);
+      texts.forEach((s) => params.push(s));
     }
     const filterWhere = conds.length ? ` AND ${conds.join(' AND ')}` : '';
     const fullWhere = `${where}${filterWhere}`;
@@ -85,11 +81,9 @@ export async function GET(request) {
       LEFT JOIN Persons_tbl pa ON pa.PersonID = COALESCE(tsk.ApplicantID, AF.ApplicantID)
       LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID`;
 
-    // ✅ تعداد کل نتایج فیلترشده (برای صفحه‌بندی و نوار وضعیت)
     const countRows = await query(`SELECT COUNT(DISTINCT tsk.TaskID) AS c ${baseFrom} WHERE ${fullWhere}`, params);
     const total = Number(countRows[0]?.c || 0);
 
-    // ✅ فقط صفحهٔ درخواستی
     const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location,
       tsk.TaskTtl, tsk.Descriptions, tsk.Complited, atk.AssetID,
       pa.PersonName AS ApplicantName,

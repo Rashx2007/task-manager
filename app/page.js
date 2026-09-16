@@ -46,6 +46,7 @@ function FullHeight({ children }) {
 export default function Home() {
   const [tasks, setTasks] = useState([]);
   const [totalFiltered, setTotalFiltered] = useState(0);
+  const [loadError, setLoadError] = useState("");
   const [selectedTask, setSelectedTask] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -166,6 +167,7 @@ export default function Home() {
 
   const loadTasks = useCallback(async (filtersObj, pageNum) => {
     const type = loadTypeRef.current;
+    setLoadError("");
     try {
       if (type === 'search') {
         const filteredRows = applyClientFilters(searchRowsRef.current || [], filtersObj);
@@ -180,15 +182,19 @@ export default function Home() {
       if (d.success) {
         setTasks(d.data || []);
         setTotalFiltered(d.total || 0);
+      } else {
+        setLoadError(d.error || 'خطای نامشخص از سرور');
       }
-    } catch { }
+    } catch (e) {
+      setLoadError('خطا در ارتباط با سرور: ' + e.message);
+    }
   }, []);
 
   useEffect(() => { loadTasks({}, 1); }, [loadTasks]);
-  useEffect(() => { setPage(1); }, [activeFilters]);
   useEffect(() => { loadTasks(activeFilters, page); }, [activeFilters, page, reloadKey, loadTasks]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
+  // ✅ تغییر فیلتر = برگشت به صفحهٔ ۱ + کوئری جدید
   const handleFiltersChange = useCallback((filters) => {
     const serializable = {};
     for (const [k, v] of Object.entries(filters)) {
@@ -196,6 +202,7 @@ export default function Home() {
       serializable[k] = Array.from(v);
     }
     setActiveFilters(serializable);
+    setPage(1);
   }, []);
 
   const handleComplete = async (taskId) => {
@@ -332,6 +339,13 @@ export default function Home() {
               onClose={() => setShowComprehensive(false)}
             />
           )}
+        </div>
+      )}
+
+      {loadError && (
+        <div className="mx-3 mt-2 bg-red-100 border border-red-400 text-red-800 rounded p-2 text-sm font-bold flex items-center gap-2">
+          <span>⚠️ خطا در بارگذاری: {loadError}</span>
+          <button type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => setLoadError("")}>بستن</button>
         </div>
       )}
 
