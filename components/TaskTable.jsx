@@ -54,17 +54,16 @@ export default function TaskTable({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // ✅ اطلاع‌رسانی فیلترها به page.js برای جستجوی سمت سرور
+  useEffect(() => {
+    if (onFiltersChange) onFiltersChange(draft != null ? {} : filters);
+  }, [filters, onFiltersChange, draft]);
+
+  const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
   const draftActive = draft != null;
   const centralDraft = isCentral(draft?.Building);
 
-  // ✅ اطلاع‌رسانی فیلترها به page.js (در حالت پیش‌نویس، فیلترها غیرفعال‌اند)
-  useEffect(() => {
-    if (onFiltersChange) onFiltersChange(draftActive ? {} : filters);
-  }, [filters, onFiltersChange, draftActive]);
-
-  const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
-
-  // ✅ گزینه‌ها از کل دیتابیس؛ آبشاری بر اساس فیلترهای تک‌مقداری فعال (یا انتخاب‌های پیش‌نویس)
+  // ✅ گزینه‌ها از کل دیتابیس؛ آبشاری بر اساس فیلترهای تک‌مقداری فعال
   const loadMenuValues = async (col) => {
     setMenuLoading(true);
     setMenuValues(null);
@@ -126,7 +125,7 @@ export default function TaskTable({
   const setAllChecked = (key, checked) => setFilters((prev) => ({ ...prev, [key]: checked ? null : new Set() }));
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
-  // ✅ مرتب‌سازی روی ردیف‌های همین صفحه (نتایج از قبل سمت سرور فیلتر/صفحه‌بندی شده‌اند)
+  // ✅ مرتب‌سازی روی ردیف‌های همین صفحه (نتایج از قبل سمت سرور فیلتر شده‌اند)
   const sorted = [...(tasks || [])].sort((a, b) => {
     if (!sortKey) return 0;
     let av, bv;
@@ -140,6 +139,7 @@ export default function TaskTable({
   });
 
   const hasAnyFilter = !draftActive && Object.values(filters).some((s) => s != null);
+  const tasksEmpty = !tasks || tasks.length === 0;
 
   const draftCell = (key, ph) => (
     <td className="draft-cell">
@@ -169,14 +169,8 @@ export default function TaskTable({
     );
   };
 
-  const emptyNoDraft = !draftActive && (!tasks || tasks.length === 0);
-  if (emptyNoDraft)
-    return (
-      <div className="h-full flex items-center justify-center text-gray-600 bg-[#b4a9b0] rounded-lg shadow-lg">
-        کاری یافت نشد
-      </div>
-    );
-
+  // ✅ دیگر هیچ return زودهنگامی که کل جدول را حذف کند وجود ندارد.
+  //    سرستون‌ها و کادر جدول همیشه باقی می‌مانند.
   const menuCol = menu ? (COLUMNS.find((c) => c.key === menu.key) || PLACE_COLS.find((c) => c.key === menu.key)) : null;
   const shownValues = (menuValues || []).filter((v) => !menuQuery || String(v).includes(menuQuery));
 
@@ -207,6 +201,7 @@ export default function TaskTable({
           </tr>
         </thead>
         <tbody>
+          {/* ✅ سطرهای پیش‌نویس (حتی اگر tasks خالی باشد نمایش داده می‌شوند) */}
           {draftActive && (
             <tr className="draft-row">
               <td>—</td>
@@ -245,16 +240,25 @@ export default function TaskTable({
               </td>
             </tr>
           )}
+
+          {/* ✅ پیام خالی‌بودن، داخل <tbody> — سرستون‌ها و کادر جدول حفظ می‌شوند */}
           {sorted.length === 0 && !draftActive && (
             <tr>
-              <td colSpan={COLUMNS.length} style={{ textAlign: 'center', padding: '20px' }}>
-                هیچ کاری با این فیلترها یافت نشد
-                {hasAnyFilter && (
-                  <button type="button" onClick={() => setFilters({})} className="btn-danger px-2 py-1 text-xs mr-2">حذف همه فیلترها</button>
-                )}
+              <td colSpan={COLUMNS.length} style={{ textAlign: 'center', padding: '20px', background: '#CCDAD1' }}>
+                {tasksEmpty
+                  ? 'کاری یافت نشد'
+                  : (
+                    <>
+                      هیچ کاری با این فیلترها یافت نشد
+                      {hasAnyFilter && (
+                        <button type="button" onClick={() => setFilters({})} className="btn-danger px-2 py-1 text-xs mr-2">حذف همه فیلترها</button>
+                      )}
+                    </>
+                  )}
               </td>
             </tr>
           )}
+
           {sorted.map((t, i) => (
             <tr
               key={t.TaskID}
