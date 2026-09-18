@@ -60,7 +60,7 @@ function Sec({ k, title, badge, open, onToggle, children }) {
   );
 }
 
-export default function ComprehensiveSearch({ onResult, onClose }) {
+export default function ComprehensiveSearch({ onResult, onClose, sync = null }) {
   const [status, setStatus] = useState('current');
   const [f, setF] = useState({ ...EMPTY_F });
   const [start, setStart] = useState(DEFAULT_START);
@@ -100,6 +100,14 @@ export default function ComprehensiveSearch({ onResult, onClose }) {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+    // ✅ همگام‌سازی فرم/وضعیت با فیلترهای ستونی جدول (هر بار که فیلتری اعمال می‌شود)
+  useEffect(() => {
+    if (!sync || !sync.nonce) return;
+    if (sync.f) setF((prev) => ({ ...prev, ...sync.f }));
+    if (sync.status) setStatus(sync.status);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sync?.nonce]);
 
   useEffect(() => {
     fetch('/api/smart-search?kind=devices').then((r) => r.json()).then((d) => { if (d.success) setDevices(d.rows || []); }).catch(() => {});

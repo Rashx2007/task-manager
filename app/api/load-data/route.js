@@ -1,19 +1,37 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
-// ✅ نرمال‌سازی فارسی برای پارامترها (هم‌خوان با normCol سمت SQL)
+// ✅ همان نرمال‌سازی که کوئری دسکتاپ/جامع استفاده می‌کند
 const normalizeFa = (s) => String(s == null ? '' : s)
-  .replace(/[يى]/g, 'ی')
-  .replace(/ك/g, 'ک')
-  .replace(/[\u200c\u200f\u200e]/g, '')
-  .replace(/\s+/g, ' ')
-  .trim();
+  .replace(/[يى]/g, 'ی').replace(/ك/g, 'ک')
+  .replace(/[\u200c\u200f\u200e]/g, '').replace(/\s+/g, ' ').trim();
 
 const normCol = (col) =>
-  `LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')))`;
+  `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
 
-const TASK_TEXT_COLS = { TaskTtl: 'tsk.TaskTtl', Descriptions: 'tsk.Descriptions', Priorities: 'TD.Priorities' };
-const ASSET_TEXT_COLS = { AssetName: 'asset.AssetName', Building: 'asset.Building', Location: 'asset.Location' };
+// ✅ همان FROM که کوئری دسکتاپ/جامع استفاده می‌کند
+const BASE_FROM = `FROM Tsk_tbl tsk
+  LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
+  LEFT JOIN Asset_2_tbl asset ON atk.AssetID = asset.AssetID
+  LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
+  LEFT JOIN ApplicantFunctor_tbl af ON af.TaskID = tsk.TaskID
+  LEFT JOIN Persons_tbl pApp ON pApp.PersonID = af.ApplicantID
+  LEFT JOIN Persons_tbl pFun ON pFun.PersonID = af.FunctorID`;
+
+// ✅ نگاشت کلید فیلتر ستونی → همان شرطی که کوئری دسکتاپ/جامع می‌سازد
+const COLUMN_FILTER_MAP = {
+  TaskID:       { kind: 'eqNum', col: 'tsk.TaskID' },
+  AssetNumber:  { kind: 'eqNum', col: 'asset.AssetNumber' },
+  AssetName:    { kind: 'like',  col: 'asset.AssetName' },
+  Building:     { kind: 'like',  col: 'asset.Building' },
+  Location:     { kind: 'like',  col: 'asset.Location' },
+  TaskTtl:      { kind: 'like',  col: 'tsk.TaskTtl' },
+  Descriptions: { kind: 'like',  col: 'tsk.Descriptions' },
+  Priorities:   { kind: 'eq',    col: 'TD.Priorities' },
+  status:       { kind: 'status' },
+};
+
+const p2 = (n) => String(n).padStart(2, '0');
 
 export async function GET(request) {
   const url = new URL(request.url);
@@ -24,89 +42,82 @@ export async function GET(request) {
   try { filters = JSON.parse(url.searchParams.get('filters') || '{}'); } catch { filters = {}; }
 
   try {
-    // ✅ آیا هیچ فیلتر ستونی فعالی وجود دارد؟
-    const hasColumnFilters = Object.values(filters).some((v) => Array.isArray(v) && v.length > 0);
-
-    let where;
-    if (hasColumnFilters) {
-      // ✅ وقتی فیلتر ستونی فعال است، لایه‌بندی روزانه کنار می‌رود و
-      //    جستجو روی کل کارها (جاری + اتمام‌یافته) انجام می‌شود؛
-      //    فیلتر «وضعیت» (اگر کاربر گذاشته باشد) همچنان اعمال می‌شود.
-      where = '(1=1)';
-    } else if (type === 'fixed') {
-      where = `(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت')`;
-    } else if (type === 'all') {
-      where = `(tsk.Complited < 1)`;
-    } else {
-      // ✅ لایهٔ ۱: کارهای بدون الویت («نامشخص») یا موقتی
-      const uns = await query(`SELECT COUNT(*) AS c FROM Tsk_tbl WHERE (Complited < 1) AND ((Temporary = 1) OR (Priorities = N'نامشخص') OR (Priorities IS NULL))`);
-      if (Number(uns[0].c) > 0) {
-        where = `(tsk.Complited < 1) AND ((tsk.Temporary = 1) OR (tsk.Priorities = N'نامشخص') OR (tsk.Priorities IS NULL))`;
-      } else {
-        // ✅ لایهٔ ۲: کارهای ثابتِ سررسیدگذشته
-        const od = await query(`SELECT COUNT(*) AS c FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID = tsk.TaskID WHERE (tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`);
-        if (Number(od[0].c) > 0) {
-          where = `(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`;
-        } else {
-          // ✅ لایهٔ ۳: کارهای غیرثابت تا امروز + ثابت‌های همان روز
-          where = `(tsk.Complited < 1) AND (TD.TaskID IS NULL OR TD.DueDateTime IS NULL OR CAST(TD.DueDateTime AS DATE) <= CAST(GETDATE() AS DATE))`;
-        }
-      }
-    }
-
-    // ✅ فیلترهای ستونی (از کل دیتابیس) با پارامترهای نرمال‌شده
     const conds = [];
     const params = [];
-    for (const [key, values] of Object.entries(filters)) {
-      if (!Array.isArray(values)) continue;
-      if (values.length === 0) { conds.push('(1=0)'); continue; }
-      if (key === 'status') {
-        const hasCur = values.includes('جاری');
-        const hasDone = values.includes('اتمام');
-        if (hasCur && hasDone) continue;
-        if (hasCur) conds.push('(tsk.Complited < 1)');
-        else if (hasDone) conds.push('(tsk.Complited = 1)');
-        else conds.push('(1=0)');
-        continue;
+
+    const hasColumnFilters = Object.values(filters).some((v) => Array.isArray(v) && v.length > 0);
+
+    if (!hasColumnFilters) {
+      // ✅ بدون فیلتر ستونی: همان لایه‌بندی روزانهٔ قبلی
+      if (type === 'fixed') {
+        conds.push(`(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت')`);
+      } else if (type === 'all') {
+        conds.push(`(tsk.Complited < 1)`);
+      } else {
+        const uns = await query(`SELECT COUNT(*) AS c FROM Tsk_tbl WHERE (Complited < 1) AND ((Temporary = 1) OR (Priorities = N'نامشخص') OR (Priorities IS NULL))`);
+        if (Number(uns[0].c) > 0) {
+          conds.push(`(tsk.Complited < 1) AND ((tsk.Temporary = 1) OR (tsk.Priorities = N'نامشخص') OR (tsk.Priorities IS NULL))`);
+        } else {
+          const od = await query(`SELECT COUNT(*) AS c FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID = tsk.TaskID WHERE (tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`);
+          if (Number(od[0].c) > 0) {
+            conds.push(`(tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime < GETDATE())`);
+          } else {
+            conds.push(`(tsk.Complited < 1) AND (TD.TaskID IS NULL OR TD.DueDateTime IS NULL OR CAST(TD.DueDateTime AS DATE) <= CAST(GETDATE() AS DATE))`);
+          }
+        }
       }
-      if (key === 'TaskID') {
-        conds.push(`(${values.map(() => '(tsk.TaskID = ?)').join(' OR ')})`);
-        values.forEach((v) => params.push(Number(v)));
-        continue;
+    } else {
+      // ✅✅ با فیلتر ستونی: دقیقاً همان کوئری دسکتاپ/جامع
+      // بازهٔ تاریخ پیش‌فرض (همان فرم جامع)
+      conds.push('(TD.DueDateTime >= ?)'); params.push('2018-03-21 00:00:00');
+      const d2 = new Date(); d2.setFullYear(d2.getFullYear() + 10);
+      conds.push('(TD.DueDateTime <= ?)'); params.push(`${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} 23:59:59`);
+
+      for (const [key, values] of Object.entries(filters)) {
+        if (!Array.isArray(values) || values.length === 0) continue;
+        const def = COLUMN_FILTER_MAP[key];
+        if (!def) continue;
+
+        if (def.kind === 'status') {
+          const hasCur = values.includes('جاری');
+          const hasDone = values.includes('اتمام');
+          if (hasCur && !hasDone) conds.push('(tsk.Complited < 1)');
+          else if (hasDone && !hasCur) conds.push('(tsk.Complited = 1)');
+          // هر دو یا هیچ‌کدام = همهٔ کارها (بدون شرط)
+          continue;
+        }
+
+        const ors = [];
+        for (const v of values) {
+          if (def.kind === 'like') {
+            ors.push(`(${normCol(def.col)} LIKE ?)`);
+            params.push(`%${normalizeFa(v)}%`);
+          } else if (def.kind === 'eq') {
+            ors.push(`(${def.col} = ?)`);
+            params.push(String(v));
+          } else {
+            ors.push(`(${def.col} = ?)`);
+            params.push(Number(v));
+          }
+        }
+        conds.push(`(${ors.join(' OR ')})`);
       }
-      if (key === 'AssetNumber') {
-        conds.push(`(${values.map(() => '(asset.AssetNumber = ?)').join(' OR ')})`);
-        values.forEach((v) => params.push(Number(v)));
-        continue;
-      }
-      const col = TASK_TEXT_COLS[key] || ASSET_TEXT_COLS[key];
-      if (!col) continue;
-      conds.push(`(${values.map(() => `(${normCol(col)} = ?)`).join(' OR ')})`);
-      values.forEach((v) => params.push(normalizeFa(v)));
     }
-    const filterWhere = conds.length ? ` AND ${conds.join(' AND ')}` : '';
-    const fullWhere = `${where}${filterWhere}`;
 
-    const baseFrom = `FROM Tsk_tbl tsk
-      LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
-      LEFT JOIN Asset_2_tbl asset ON atk.AssetID = atk.AssetID
-      LEFT JOIN ApplicantFunctor_tbl AF ON AF.TaskID = tsk.TaskID
-      LEFT JOIN Persons_tbl pa ON pa.PersonID = COALESCE(tsk.ApplicantID, AF.ApplicantID)
-      LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID`;
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
-    // ✅ تعداد کل نتایج فیلترشده (برای صفحه‌بندی و نوار وضعیت)
-    const countRows = await query(`SELECT COUNT(DISTINCT tsk.TaskID) AS c ${baseFrom} WHERE ${fullWhere}`, params);
+    // ✅ شمارش کل، دقیقاً مثل جامع
+    const countRows = await query(`SELECT COUNT(*) AS c FROM (SELECT DISTINCT tsk.TaskID ${BASE_FROM} ${where}) AS q`, params);
     const total = Number(countRows[0]?.c || 0);
 
-    // ✅ فقط صفحهٔ درخواستی
+    // ✅ ردیف‌های صفحه، دقیقاً مثل جامع + صفحه‌بندی
     const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location,
       tsk.TaskTtl, tsk.Descriptions, tsk.Complited, atk.AssetID,
-      pa.PersonName AS ApplicantName,
       TD.Submit_Date, TD.Priorities, TD.DueDateTime, TD.EndDateTime,
-      CASE WHEN TD.Priorities = N'زمان انجام ثابت' THEN 0 ELSE 1 END AS FixOrd
-      ${baseFrom}
-      WHERE ${fullWhere}
-      ORDER BY FixOrd, TD.DueDateTime, tsk.TaskID
+      pApp.PersonName AS ApplicantName, pFun.PersonName AS FunctorName
+      ${BASE_FROM}
+      ${where}
+      ORDER BY TD.DueDateTime, tsk.TaskID
       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, offset, limit]);
 
     return NextResponse.json({ success: true, data: rows, total });

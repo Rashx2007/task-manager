@@ -195,6 +195,7 @@ export default function Home() {
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   // ✅ تغییر فیلتر = برگشت به صفحهٔ ۱ + کوئری جدید
+  const [compSync, setCompSync] = useState(null);
   const handleFiltersChange = useCallback((filters) => {
     const serializable = {};
     for (const [k, v] of Object.entries(filters)) {
@@ -203,6 +204,28 @@ export default function Home() {
     }
     setActiveFilters(serializable);
     setPage(1);
+    // ✅ بازتاب هم‌زمان فیلترهای ستونی در فرم فیلترها و بخش «وضعیت و بازهٔ تاریخ»
+    const one = (k) => (serializable[k] && serializable[k].length === 1 ? serializable[k][0] : '');
+    const st = serializable.status;
+    setCompSync({
+      nonce: Date.now(),
+      f: {
+        building: one('Building'),
+        location: one('Location'),
+        assetName: one('AssetName'),
+        assetNumber: one('AssetNumber'),
+        subject: one('TaskTtl'),
+        description: one('Descriptions'),
+        block: one('Block'),
+        floor: one('Floor'),
+        entrance: one('Entrance'),
+      },
+      status: st
+        ? (st.includes('جاری') && !st.includes('اتمام') ? 'current'
+          : st.includes('اتمام') && !st.includes('جاری') ? 'completed'
+          : 'all')
+        : null,
+    });
   }, []);
 
   const handleComplete = async (taskId) => {
@@ -329,6 +352,7 @@ export default function Home() {
           )}
           {showComprehensive && (
             <ComprehensiveSearch
+              sync={compSync}
               onResult={(rows) => {
                 loadTypeRef.current = "search";
                 searchRowsRef.current = rows || [];

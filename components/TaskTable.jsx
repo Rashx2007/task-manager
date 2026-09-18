@@ -261,7 +261,7 @@ export default function TaskTable({
 
           {sorted.map((t, i) => (
             <tr
-              key={t.TaskID}
+              key={`${t.TaskID}-${t.AssetID ?? 0}-${i}`}
               onClick={() => onRowClick(t)}
               onDoubleClick={() => onEdit && onEdit(t)}
               className={selectedTask?.TaskID === t.TaskID ? 'task-row-selected' : ''}
