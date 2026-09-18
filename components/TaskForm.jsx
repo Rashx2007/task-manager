@@ -69,6 +69,7 @@ const assetSpec = (a) =>
 export default function TaskForm({
   initial = null,
   defaultAssetId = null,
+  initialAssetPreset = null,
   onClose,
   onSaved,
 }) {
@@ -88,28 +89,43 @@ export default function TaskForm({
   const [showFolder, setShowFolder] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [assetPreset, setAssetPreset] = useState(null);
+  const [assetPreset, setAssetPreset] = useState(initialAssetPreset);
   const [completeAsk, setCompleteAsk] = useState(null); // دیالوگ «اتمام یافته؟» با پیش‌فرض انصراف
   const askComplete = () =>
     new Promise((resolve) => setCompleteAsk({ resolve }));
   const [functorName, setFunctorName] = useState("");
   const [assetQuery, setAssetQuery] = useState("");
-  const [form, setForm] = useState({
-    // ✅ مانند دسکتاپ: کار جدید با الویت «نامشخص» ثبت می‌شود
-    TaskTtl: "",
-    Descriptions: "",
-    Priorities: "نامشخص",
-    tskType: "",
-    IsConsiderableAction: "",
-    Complited: 0,
-    AssetID: "",
-    ApplicantName: "",
-    DueDateTime: "",
-    EndDateTime: "",
-    FixedDueTime: false,
-    RequestNumber: "",
-    RegisterNumber: "",
-    RequestDate: "",
+  const [form, setForm] = useState(() => {
+    const base = {
+      TaskTtl: "",
+      Descriptions: "",
+      Priorities: "نامشخص",
+      tskType: "",
+      IsConsiderableAction: "",
+      Complited: 0,
+      AssetID: "",
+      ApplicantName: "",
+      DueDateTime: "",
+      EndDateTime: "",
+      FixedDueTime: false,
+      RequestNumber: "",
+      RegisterNumber: "",
+      RequestDate: "",
+    };
+    // ✅ پیش‌پر کردن از پیش‌نویس «جدید (جدولی)» وقتی TaskID ندارد
+    if (initial && !initial.TaskID) {
+      return {
+        ...base,
+        TaskTtl: initial.TaskTtl || "",
+        Descriptions: initial.Descriptions || "",
+        Priorities:
+          initial.Priorities && initial.Priorities !== "-"
+            ? initial.Priorities
+            : "نامشخص",
+        AssetID: initial.AssetID ? String(initial.AssetID) : "",
+      };
+    }
+    return base;
   });
 
   const formRef = useRef(form);
@@ -175,7 +191,7 @@ export default function TaskForm({
 
   // ✅ بارگذاری رکورد کامل (فقط هنگام ویرایش کار موجود)
   useEffect(() => {
-    if (!initial) return;
+    if (!initial || !initial.TaskID) return;
     (async () => {
       try {
         const res = await fetch(`/api/tasks/${initial.TaskID}`);
@@ -463,6 +479,13 @@ export default function TaskForm({
             {form.AssetID && (
               <div className="text-xs text-gray-700 mt-1">
                 کد دستگاه: {form.AssetID}
+              </div>
+            )}
+
+            {!form.AssetID && initialAssetPreset && (
+              <div className="text-xs text-amber-800 mt-1">
+                دستگاه پیش‌نویس هنوز ثبت/انتخاب نشده؛ با دکمه «...» آن را انتخاب
+                یا با همان مشخصات پیش‌پر ایجاد کنید.
               </div>
             )}
           </div>
@@ -774,19 +797,27 @@ export default function TaskForm({
           onSaved={onSaved}
         />
       )}
-      {showAssetPicker && <AssetsModal
-        preset={assetPreset}
-        onClose={() => { setShowAssetPicker(false); setAssetPreset(null); }}
-        onSelectAsset={(id) => {
-          setForm((f) => ({ ...f, AssetID: String(id) }));
-          setShowAssetPicker(false);
-          setAssetPreset(null);
-          // ✅ بارگذاری مجدد لیست دستگاه‌ها تا assetSpec دستگاه جدید را پیدا کند
-          fetch('/api/assets').then((r) => r.json()).then((d) => {
-            if (d.success) setAssets(d.data || []);
-          }).catch(() => {});
-        }}
-      />}
+      {showAssetPicker && (
+        <AssetsModal
+          preset={assetPreset}
+          onClose={() => {
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+          }}
+          onSelectAsset={(id) => {
+            setForm((f) => ({ ...f, AssetID: String(id) }));
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+            // ✅ بارگذاری مجدد لیست دستگاه‌ها تا assetSpec دستگاه جدید را پیدا کند
+            fetch("/api/assets")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success) setAssets(d.data || []);
+              })
+              .catch(() => {});
+          }}
+        />
+      )}
       {showMap && (
         <MapModal
           onClose={() => setShowMap(false)}
@@ -794,9 +825,12 @@ export default function TaskForm({
             setForm((f) => ({ ...f, AssetID: String(id) }));
             setShowMap(false);
             // ✅ بارگذاری مجدد لیست دستگاه‌ها
-            fetch('/api/assets').then((r) => r.json()).then((d) => {
-              if (d.success) setAssets(d.data || []);
-            }).catch(() => {});
+            fetch("/api/assets")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success) setAssets(d.data || []);
+              })
+              .catch(() => {});
           }}
           onOpenDefineDevice={(preset) => {
             setAssetPreset(preset);
