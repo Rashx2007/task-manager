@@ -69,15 +69,20 @@ export default function TaskTable({
     setMenuValues(null);
     if (col.key === 'status') { setMenuValues(['جاری', 'اتمام']); setMenuLoading(false); return; }
     let constraints = {};
-    if (draftActive) {
-      constraints = {
-        AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
-        Block: draft.Block, Floor: draft.Floor, Entrance: draft.Entrance, Location: draft.Location,
-        MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
-      };
-      delete constraints[col.key];
-      constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
-    } else {
+if (draftActive) {
+  if (col.key === 'TaskTtl' || col.key === 'Descriptions') {
+    // ✅ موضوع/توضیحات: فقط بر اساس نوع دستگاه (دستگاه/مجموعه)، نه منحصر به دستگاهِ یک محل خاص
+    constraints = draft.AssetName ? { AssetName: draft.AssetName } : {};
+  } else {
+    constraints = {
+      AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
+      Block: draft.Block, Floor: draft.Floor, Entrance: draft.Entrance, Location: draft.Location,
+      MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
+    };
+    delete constraints[col.key];
+    constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
+  }
+} else {
       for (const [k, set] of Object.entries(filters)) {
         if (k === col.key || set == null || set.size !== 1) continue;
         constraints[k] = Array.from(set)[0];
