@@ -13,7 +13,7 @@ const COLUMNS = [
   { key: 'row',          label: 'ردیف',          sortable: false, filterable: false },
   { key: 'TaskID',       label: 'کد کار',        sortable: true,  filterable: true,  source: 'task' },
   { key: 'AssetName',    label: 'دستگاه/مجموعه', sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  source: 'asset' },
+  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  assignable: true, source: 'asset' },
   { key: 'Building',     label: 'ساختمان',       sortable: true,  filterable: true,  assignable: true, source: 'asset' },
   { key: 'Location',     label: 'قسمت',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
   { key: 'TaskTtl',      label: 'موضوع',         sortable: true,  filterable: true,  assignable: true, source: 'task' },

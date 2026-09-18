@@ -100,42 +100,44 @@ export default function Home() {
     setDraft((d) => (d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d));
   };
 
-  const saveDraft = async () => {
-    if (!draft) return;
-    const d = applyPlace(draft);
-    setDraft(d);
-    if (d.AssetName && d.Building) {
-      try {
-        const res = await fetch('/api/asset-check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(d),
-        });
-        const cd = await res.json();
-        if (cd.needFloor) { alert('برای تعیین دقیق دستگاه، لطفاً «طبقه» را در ردیف «مشخصات مکانی دستگاه» مشخص کنید.'); return; }
-        if (!cd.found) { handleDraftDeviceMissing(d); return; }
-        if (cd.ambiguous && cd.matches && cd.matches.length > 1) {
+const saveDraft = async () => {
+  if (!draft) return;
+  const d = applyPlace(draft);
+  setDraft(d);
+  if (d.AssetName && d.Building) {
+    try {
+      const res = await fetch('/api/asset-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(d),
+      });
+      const cd = await res.json();
+      if (cd.found) {
+        let assetId = cd.AssetID;
+        // ✅ اگر چند دستگاه منطبق بود و شماره انتخاب نشده، از کاربر بپرس
+        if (cd.matches && cd.matches.length > 1 && (d.AssetNumber == null || String(d.AssetNumber).trim() === '')) {
           const list = cd.matches
-            .map((m, i) => `${i + 1}) کد ${m.AssetID}: بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}، سیستم ${m.MechSystem || '-'}`)
+            .map((m, i) => `${i + 1}) شماره ${m.AssetNumber}، بلوک ${m.Block || '-'}، طبقه ${m.Floor}، ورودی ${m.Entrance || '-'}، قسمت ${m.Location || '-'}`)
             .join('\n');
-          const pick = prompt(`چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف دستگاه مورد نظر را وارد کنید:\n${list}`, '1');
+          const pick = prompt(`چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف مورد نظر را وارد کنید:\n${list}`, '1');
           if (pick === null) return;
           const m = cd.matches[Number(pick) - 1];
           if (!m) { alert('انتخاب نامعتبر بود.'); return; }
-          localStorage.setItem('task_draft', JSON.stringify({ ...d, AssetID: m.AssetID }));
-          alert(`پیش‌نویس ذخیره شد (دستگاه کد ${m.AssetID}).`);
-          return;
+          assetId = m.AssetID;
         }
-        localStorage.setItem('task_draft', JSON.stringify({ ...d, AssetID: cd.AssetID || null }));
+        localStorage.setItem('task_draft', JSON.stringify({ ...d, AssetID: assetId }));
         alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
-      } catch (e) { alert('خطا در بررسی دستگاه: ' + e.message); }
-    } else {
-      try {
-        localStorage.setItem('task_draft', JSON.stringify(d));
-        alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
-      } catch { }
-    }
-  };
+      } else {
+        handleDraftDeviceMissing(d);
+      }
+    } catch (e) { alert('خطا در بررسی دستگاه: ' + e.message); }
+  } else {
+    try {
+      localStorage.setItem('task_draft', JSON.stringify(d));
+      alert('پیش‌نویس به‌صورت موقت ذخیره شد.');
+    } catch { }
+  }
+};
 
   const finishDraft = () => {
     finishingDraftRef.current = true;

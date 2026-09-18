@@ -1,52 +1,51 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { normFa, placeRules } from '@/lib/assetRules';
+import { normFa } from '@/lib/assetRules';
 
 const normCol = (col) =>
   `LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')))`;
 
+// ✅ بررسی وجود دستگاه با «تطبیق جزئی»: فقط فیلدهای پُرشده در شرط شرکت می‌کنند
 export async function POST(request) {
   try {
     const b = (await request.json()) || {};
+    const conds = [];
+    const params = [];
+
     const name = normFa(b.AssetName);
+    if (name) { conds.push(`(${normCol('AssetName')} = ?)`); params.push(name); }
+
     const building = normFa(b.Building);
-    if (!name || !building) return NextResponse.json({ found: false, matches: [] });
+    if (building) { conds.push(`(${normCol('Building')} = ?)`); params.push(building); }
 
-    const rules = placeRules(b.Building, b.Block, b.Floor, b.Entrance);
-    const loc = normFa(b.Location);
-    const hasNum = b.AssetNumber != null && String(b.AssetNumber).trim() !== '';
-    const exclude = b.excludeAssetId ? Number(b.excludeAssetId) : null;
+    const block = normFa(b.Block);
+    if (block && block !== '-') { conds.push(`(${normCol('Block')} = ?)`); params.push(block); }
 
-    // ✅ بدون طبقه، دستگاه دقیق قابل تعیین نیست
-    if (rules.floor == null) return NextResponse.json({ found: false, needFloor: true, matches: [] });
+    const floor = (b.Floor === '' || b.Floor == null || String(b.Floor).trim() === '' || isNaN(Number(b.Floor))) ? null : Number(b.Floor);
+    if (floor != null) { conds.push(`(Floor = ?)`); params.push(floor); }
 
-    const conds = [
-      `(${normCol('AssetName')} = ?)`,
-      `(${normCol('Building')} = ?)`,
-      `(Floor = ?)`,
-    ];
-    const params = [name, building, rules.floor];
-    if (hasNum) { conds.push(`(AssetNumber = ?)`); params.push(Number(b.AssetNumber)); }
-    else conds.push(`(AssetNumber IS NULL)`);
-    if (loc) { conds.push(`(${normCol('Location')} = ?)`); params.push(loc); }
-    else conds.push(`(${normCol('Location')} IN ('', '-') OR Location IS NULL)`);
-    if (rules.central) {
-      if (rules.block) { conds.push(`(${normCol('Block')} = ?)`); params.push(rules.block); }
-      else conds.push(`(${normCol('Block')} IN ('', '-', '0') OR Block IS NULL)`);
-      if (rules.entrance && rules.entrance !== '-') { conds.push(`(${normCol('Entrance')} = ?)`); params.push(rules.entrance); }
-      else conds.push(`(${normCol('Entrance')} IN ('', '-', '0') OR Entrance IS NULL)`);
-    } else {
-      conds.push(`(${normCol('Block')} IN ('', '-', '0') OR Block IS NULL)`);
-      conds.push(`(${normCol('Entrance')} IN ('', '-', '0') OR Entrance IS NULL)`);
-    }
-    if (exclude) { conds.push(`(AssetID <> ?)`); params.push(exclude); }
+    const entrance = normFa(b.Entrance);
+    if (entrance && entrance !== '-') { conds.push(`(${normCol('Entrance')} = ?)`); params.push(entrance); }
 
-    const sql = `SELECT AssetID, AssetName, AssetNumber, Building, Block, Floor, Entrance, Location, MechSystem
-                 FROM Asset_2_tbl WHERE ${conds.join(' AND ')}`;
-    const rows = await query(sql, params);
+    const location = normFa(b.Location);
+    if (location) { conds.push(`(${normCol('Location')} = ?)`); params.push(location); }
+
+    const num = (b.AssetNumber === '' || b.AssetNumber == null || String(b.AssetNumber).trim() === '' || isNaN(Number(b.AssetNumber))) ? null : Number(b.AssetNumber);
+    if (num != null) { conds.push(`(AssetNumber = ?)`); params.push(num); }
+
+    // دست‌کم نام دستگاه یا ساختمان لازم است
+    if (!name && !building) return NextResponse.json({ found: false, matches: [] });
+
+    // ✅ IsActive=NULL هم معتبر است (ردیف‌های شما NULL دارند)
+    const where = `WHERE (IsActive IS NULL OR IsActive = 1)` + (conds.length ? ` AND ${conds.join(' AND ')}` : '');
+    const rows = await query(
+      `SELECT AssetID, AssetName, AssetNumber, Building, Block, Floor, Entrance, Location, MechSystem
+       FROM Asset_2_tbl ${where} ORDER BY AssetID`,
+      params
+    );
+
     if (rows.length === 0) return NextResponse.json({ found: false, matches: [] });
-    if (rows.length === 1) return NextResponse.json({ found: true, AssetID: rows[0].AssetID, matches: rows });
-    return NextResponse.json({ found: true, ambiguous: true, matches: rows });
+    return NextResponse.json({ found: true, AssetID: rows[0].AssetID, matches: rows });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
