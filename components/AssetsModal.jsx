@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import FileBrowser from './FileBrowser';
-import { placeRules, isCentral } from '@/lib/assetRules';
 
 const DEFAULT_ASSET_FOLDER = 'D:\\(فنّی)';
 
@@ -9,7 +8,7 @@ const distinct = (arr) =>
   [...new Set(arr.map((x) => (x == null ? '' : String(x))).filter((x) => x !== '' && x !== '-'))]
     .sort((a, b) => a.localeCompare(b, 'fa'));
 
-export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null, onAssetSaved = null }) {
+export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null }) {
   const [tab, setTab] = useState('devices');
   const [all, setAll] = useState([]);
   const [search, setSearch] = useState('');
@@ -54,16 +53,18 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
   const setF = (k) => (e) => setFlt({ ...flt, [k]: e.target.value });
 
   const startAdd = (pre = null) => {
-    const baseForm = {
+    setEditingId(null);
+    setForm({
       AssetName: '', AssetNumber: '', Building: '', Block: '-', Floor: '', Entrance: '', Location: '',
       MechSystem: '', Specifications: '', PropertyCode: '0', SerialNumber: '0', FolderPath: DEFAULT_ASSET_FOLDER,
       ...(pre || {}),
-    };
-    if (!isCentral(baseForm.Building)) { baseForm.Block = '-'; baseForm.Entrance = '-'; }
-    setEditingId(null);
-    setForm(baseForm);
+      AssetNumber: pre && pre.AssetNumber != null && String(pre.AssetNumber).trim() !== '' ? String(pre.AssetNumber) : '',
+      Floor: pre && pre.Floor != null && String(pre.Floor).trim() !== '' ? String(pre.Floor) : '',
+      Block: pre && pre.Block ? String(pre.Block) : '-',
+    });
   };
 
+  // ✅ اگر preset از نقشه آمده: مستقیم فرم افزودن با فیلدهای پیش‌پر باز شود
   useEffect(() => {
     if (preset) {
       setTab('devices');
@@ -79,21 +80,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
 
   const save = async () => {
     if (!form.AssetName || !form.Building) { alert('نام دستگاه و ساختمان الزامی است.'); return; }
-    // ✅ چک تکراری‌نبودن با کلید کامل (معادل CheckRecordDuplication دسکتاپ)
-    try {
-      const cr = await fetch('/api/asset-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, excludeAssetId: editingId || null }),
-      });
-      const cd = await cr.json();
-      if (cd.needFloor) { alert('لطفاً «طبقه» را مشخص کنید؛ برای همهٔ ساختمان‌ها الزامی است.'); return; }
-      if (cd.found) {
-        const m = (cd.matches || [])[0];
-        alert(`ثبت/ویرایش نشد.\nمورد تکراری است (کد دستگاه ${m ? m.AssetID : '-'}).`);
-        return;
-      }
-    } catch {}
     setSaving(true);
     try {
       const res = editingId
@@ -102,8 +88,9 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
       const d = await res.json();
       if (d.success) {
         alert('ذخیره شد.');
-        const newId = d.AssetID || d.assetId || d.id || null;
+        // ✅ لینک برچسب نقشه (MapTag) به دستگاه جدیدِ ساخته‌شده از نقشه
         try {
+          const newId = d.AssetID || d.assetId || d.id || null;
           if (!editingId && preset && preset.MapTag && newId) {
             await fetch('/api/maps/register', {
               method: 'POST',
@@ -112,7 +99,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
             });
           }
         } catch {}
-        if (onAssetSaved) onAssetSaved(newId, form);
         setForm(null); setEditingId(null); loadAll();
       } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
@@ -135,7 +121,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
   };
 
   const inp = 'search-input w-full';
-  const centralForm = isCentral(form?.Building);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-3"
@@ -215,14 +200,9 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[700px]">
               {preset && !editingId && (
                 <div className="md:col-span-4 bg-yellow-100 rounded p-2 text-sm font-bold">
-                  📋 این دستگاه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
+                  🗺 این دستگاه از نقشه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
                 </div>
               )}
-              <div className="md:col-span-4 bg-teal-50 rounded p-2 text-sm font-bold">
-                {centralForm
-                  ? '🏢 ساختمان مرکزی: بلوک و ورودی را وارد کنید؛ «طبقه» برای همهٔ ساختمان‌ها الزامی است.'
-                  : '🏢 ساختمان غیرمرکزی: بلوک و ورودی «-» خودکار اعمال شد؛ «طبقه» را وارد کنید.'}
-              </div>
               <div>
                 <label className="text-sm font-bold">نام دستگاه *</label>
                 <input className={inp} list="asset-names" value={form.AssetName || ''} onChange={(e) => setForm({ ...form, AssetName: e.target.value })} />
@@ -231,16 +211,12 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
               <div><label className="text-sm font-bold">شماره</label><input className={inp} value={form.AssetNumber ?? ''} onChange={(e) => setForm({ ...form, AssetNumber: e.target.value })} /></div>
               <div>
                 <label className="text-sm font-bold">ساختمان *</label>
-                <input className={inp} list="buildings-list" value={form.Building || ''} onChange={(e) => {
-                  const nf = { ...form, Building: e.target.value };
-                  if (!isCentral(nf.Building)) { nf.Block = '-'; nf.Entrance = '-'; }
-                  setForm(nf);
-                }} />
+                <input className={inp} list="buildings-list" value={form.Building || ''} onChange={(e) => setForm({ ...form, Building: e.target.value })} />
                 <datalist id="buildings-list">{opt('Building', all).map((b) => <option key={b} value={b} />)}</datalist>
               </div>
-              <div><label className="text-sm font-bold">بلوک</label><input className={inp} disabled={!centralForm} value={form.Block ?? ''} onChange={(e) => setForm({ ...form, Block: e.target.value })} /></div>
+              <div><label className="text-sm font-bold">بلوک</label><input className={inp} value={form.Block ?? ''} onChange={(e) => setForm({ ...form, Block: e.target.value })} /></div>
               <div><label className="text-sm font-bold">طبقه</label><input className={inp} value={form.Floor ?? ''} onChange={(e) => setForm({ ...form, Floor: e.target.value })} /></div>
-              <div><label className="text-sm font-bold">ورودی</label><input className={inp} disabled={!centralForm} value={form.Entrance ?? ''} onChange={(e) => setForm({ ...form, Entrance: e.target.value })} /></div>
+              <div><label className="text-sm font-bold">ورودی</label><input className={inp} value={form.Entrance ?? ''} onChange={(e) => setForm({ ...form, Entrance: e.target.value })} /></div>
               <div><label className="text-sm font-bold">محل</label><input className={inp} value={form.Location ?? ''} onChange={(e) => setForm({ ...form, Location: e.target.value })} /></div>
               <div>
                 <label className="text-sm font-bold">سیستم</label>

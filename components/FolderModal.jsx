@@ -64,13 +64,21 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
     return base + '\\' + n;
   };
 
-  const openPath = async (p) => {
-    try {
-      const res = await fetch('/api/open-path', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
-      const d = await res.json();
-      if (!d.success) alert('خطا: ' + d.error);
-    } catch { alert('خطا در ارتباط با سرور'); }
-  };
+const openPath = async (p) => {
+  try {
+    const res = await fetch('/api/open-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: p }),
+    });
+    const d = await res.json();
+    if (!d.success) alert('خطا: ' + d.error);
+    else if (d.adjusted)
+      alert('پوشهٔ دقیق روی دیسک یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n' + d.opened);
+  } catch {
+    alert('خطا در ارتباط با سرور');
+  }
+};
 
   const copyPath = async () => {
     const p = fullPath();
