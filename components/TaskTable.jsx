@@ -34,7 +34,7 @@ const PLACE_COLS = [
 ];
 
 export default function TaskTable({
-  tasks, startNumber = 0, onRowClick, onComplete, onEdit, onFolder, selectedTask,
+  tasks, startNumber = 0, onRowClick, onComplete, onEdit, onCopy, onFolder, selectedTask,
   draft, onDraftChange, onDraftAssign, onDraftSave, onDraftFinish, onDraftCancel,
   onFiltersChange,
 }) {
@@ -286,9 +286,15 @@ if (draftActive) {
               <td>{fmtFa(t.EndDateTime)}</td>
               <td><button className="btn-primary px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onFolder && onFolder(t); }}>📁</button></td>
               <td>
-                {Number(t.Complited) !== 1 && (
-                  <button className="btn-success px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onComplete(t.TaskID); }}>اتمام</button>
-                )}
+                <div className="flex flex-wrap gap-1 justify-center">
+                  {Number(t.Complited) !== 1 && (
+                    <button className="btn-success px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onComplete(t.TaskID); }}>اتمام</button>
+                  )}
+                  <button className="btn-primary px-2 py-1 text-xs" title="ایجاد کار جدید برابر با این کار"
+                    onClick={(e) => { e.stopPropagation(); onCopy && onCopy(t); }}>کپی</button>
+                  <button className="btn-primary px-2 py-1 text-xs" title="ویرایش این کار"
+                    onClick={(e) => { e.stopPropagation(); onEdit && onEdit(t); }}>ویرایش</button>
+                </div>
               </td>
             </tr>
           ))}

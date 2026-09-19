@@ -67,7 +67,7 @@ export default function Home() {
     try {
       const raw = localStorage.getItem("task_draft");
       if (raw) setDraft(JSON.parse(raw));
-    } catch {}
+    } catch { }
   }, []);
 
   const startDraft = () => setDraft((d) => d || {});
@@ -162,7 +162,7 @@ export default function Home() {
       try {
         localStorage.setItem("task_draft", JSON.stringify(d));
         alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-      } catch {}
+      } catch { }
     }
   };
 
@@ -172,15 +172,15 @@ export default function Home() {
     setDraftAssetPreset(
       draft && !draft.AssetID
         ? {
-            AssetName: draft.AssetName || "",
-            AssetNumber: draft.AssetNumber || "",
-            Building: draft.Building || "",
-            Block: draft.Block || "-",
-            Floor: draft.Floor != null ? String(draft.Floor) : "",
-            Entrance: draft.Entrance || "",
-            Location: draft.Location || "",
-            MechSystem: draft.MechSystem || "",
-          }
+          AssetName: draft.AssetName || "",
+          AssetNumber: draft.AssetNumber || "",
+          Building: draft.Building || "",
+          Block: draft.Block || "-",
+          Floor: draft.Floor != null ? String(draft.Floor) : "",
+          Entrance: draft.Entrance || "",
+          Location: draft.Location || "",
+          MechSystem: draft.MechSystem || "",
+        }
         : null,
     );
     setShowTaskForm(true);
@@ -189,7 +189,7 @@ export default function Home() {
     setDraft(null);
     try {
       localStorage.removeItem("task_draft");
-    } catch {}
+    } catch { }
   };
 
   // ✅ صفحه‌بندی + فیلتر سمت سرور
@@ -428,6 +428,32 @@ export default function Home() {
     setShowTaskForm(true);
   };
 
+  // ✅ کپی: ایجاد کار جدید برابر با سطر جاری (بدون کد کار، بدون زمان‌ها و بدون شماره‌های درخواست/ثبت)
+  const handleCopyTask = async (t) => {
+    try {
+      const res = await fetch(`/api/tasks/${t.TaskID}`);
+      const d = await res.json();
+      const src = d.success && d.data ? d.data : t;
+      setEditTask({
+        ...src,
+        TaskID: undefined,
+        Complited: 0,
+        DueDateTime: undefined,
+        EndDateTime: undefined,
+        TDDue: undefined,
+        TDEnd: undefined,
+        TDF: undefined,
+        FixedDueTime: 0,
+        RequestNumber: undefined,
+        RegisterNumber: undefined,
+        RequestDate: undefined,
+      });
+      setShowTaskForm(true);
+    } catch {
+      alert('خطا در ارتباط با سرور');
+    }
+  };
+
   return (
     <main className="h-screen bg-[#D8C9B4] flex flex-col overflow-hidden">
       <div className="shrink-0">
@@ -508,6 +534,7 @@ export default function Home() {
             onRowClick={setSelectedTask}
             onComplete={handleComplete}
             onEdit={openEdit}
+            onCopy={handleCopyTask}
             onFolder={setFolderTask}
             selectedTask={selectedTask}
             draft={draft}
