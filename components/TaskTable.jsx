@@ -10,20 +10,20 @@ const assetSpec = (t) =>
     : '';
 
 const COLUMNS = [
-  { key: 'row',          label: 'ردیف',          sortable: false, filterable: false },
-  { key: 'TaskID',       label: 'کد کار',        sortable: true,  filterable: true,  source: 'task' },
-  { key: 'AssetName',    label: 'دستگاه/مجموعه', sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'Building',     label: 'ساختمان',       sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'Location',     label: 'قسمت',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'TaskTtl',      label: 'موضوع',         sortable: true,  filterable: true,  assignable: true, source: 'task' },
-  { key: 'Descriptions', label: 'توضیحات',       sortable: false, filterable: false, source: 'task' },
-  { key: 'Priorities',   label: 'اولویت',        sortable: true,  filterable: true,  source: 'task' },
-  { key: 'status',       label: 'وضعیت',         sortable: true,  filterable: true,  source: 'task' },
-  { key: 'DueDateTime',  label: 'زمان شروع',     sortable: true,  filterable: false },
-  { key: 'EndDateTime',  label: 'زمان پایان',    sortable: true,  filterable: false },
-  { key: 'attachments',  label: 'ضمائم',         sortable: false, filterable: false },
-  { key: 'actions',      label: 'عملیات',        sortable: false, filterable: false },
+  { key: 'row', label: 'ردیف', sortable: false, filterable: false },
+  { key: 'TaskID', label: 'کد کار', sortable: true, filterable: true, source: 'task' },
+  { key: 'AssetName', label: 'دستگاه/مجموعه', sortable: true, filterable: true, assignable: true, source: 'asset' },
+  { key: 'AssetNumber', label: 'شماره', sortable: true, filterable: true, assignable: true, source: 'asset' },
+  { key: 'Building', label: 'ساختمان', sortable: true, filterable: true, assignable: true, source: 'asset' },
+  { key: 'Location', label: 'قسمت', sortable: true, filterable: true, assignable: true, source: 'asset' },
+  { key: 'TaskTtl', label: 'موضوع', sortable: true, filterable: true, assignable: true, source: 'task' },
+  { key: 'Descriptions', label: 'توضیحات', sortable: false, filterable: false, source: 'task' },
+  { key: 'Priorities', label: 'اولویت', sortable: true, filterable: true, source: 'task' },
+  { key: 'status', label: 'وضعیت', sortable: true, filterable: true, source: 'task' },
+  { key: 'DueDateTime', label: 'زمان شروع', sortable: true, filterable: false },
+  { key: 'EndDateTime', label: 'زمان پایان', sortable: true, filterable: false },
+  { key: 'attachments', label: 'ضمائم', sortable: false, filterable: false },
+  { key: 'actions', label: 'عملیات', sortable: false, filterable: false },
 ];
 
 const PLACE_COLS = [
@@ -69,20 +69,20 @@ export default function TaskTable({
     setMenuValues(null);
     if (col.key === 'status') { setMenuValues(['جاری', 'اتمام']); setMenuLoading(false); return; }
     let constraints = {};
-if (draftActive) {
-  if (col.key === 'TaskTtl' || col.key === 'Descriptions') {
-    // ✅ موضوع/توضیحات: فقط بر اساس نوع دستگاه (دستگاه/مجموعه)، نه منحصر به دستگاهِ یک محل خاص
-    constraints = draft.AssetName ? { AssetName: draft.AssetName } : {};
-  } else {
-    constraints = {
-      AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
-      Block: draft.Block, Floor: draft.Floor, Entrance: draft.Entrance, Location: draft.Location,
-      MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
-    };
-    delete constraints[col.key];
-    constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
-  }
-} else {
+    if (draftActive) {
+      if (col.key === 'TaskTtl' || col.key === 'Descriptions') {
+        // ✅ موضوع/توضیحات: فقط بر اساس نوع دستگاه (دستگاه/مجموعه)، نه منحصر به دستگاهِ یک محل خاص
+        constraints = draft.AssetName ? { AssetName: draft.AssetName } : {};
+      } else {
+        constraints = {
+          AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
+          Block: draft.Block, Floor: draft.Floor, Entrance: draft.Entrance, Location: draft.Location,
+          MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
+        };
+        delete constraints[col.key];
+        constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
+      }
+    } else {
       for (const [k, set] of Object.entries(filters)) {
         if (k === col.key || set == null || set.size !== 1) continue;
         constraints[k] = Array.from(set)[0];
@@ -286,14 +286,15 @@ if (draftActive) {
               <td>{fmtFa(t.EndDateTime)}</td>
               <td><button className="btn-primary px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onFolder && onFolder(t); }}>📁</button></td>
               <td>
-                <div className="flex flex-wrap gap-1 justify-center">
+                <div className="row-actions">
                   {Number(t.Complited) !== 1 && (
-                    <button className="btn-success px-2 py-1 text-xs" onClick={(e) => { e.stopPropagation(); onComplete(t.TaskID); }}>اتمام</button>
+                    <button type="button" className="row-action row-action-done" title="اتمام کار"
+                      onClick={(e) => { e.stopPropagation(); onComplete(t.TaskID); }}>✔</button>
                   )}
-                  <button className="btn-primary px-2 py-1 text-xs" title="ایجاد کار جدید برابر با این کار"
-                    onClick={(e) => { e.stopPropagation(); onCopy && onCopy(t); }}>کپی</button>
-                  <button className="btn-primary px-2 py-1 text-xs" title="ویرایش این کار"
-                    onClick={(e) => { e.stopPropagation(); onEdit && onEdit(t); }}>ویرایش</button>
+                  <button type="button" className="row-action row-action-copy" title="کپی (ایجاد کار جدید برابر با این کار)"
+                    onClick={(e) => { e.stopPropagation(); onCopy && onCopy(t); }}>⧉</button>
+                  <button type="button" className="row-action row-action-edit" title="ویرایش این کار"
+                    onClick={(e) => { e.stopPropagation(); onEdit && onEdit(t); }}>✎</button>
                 </div>
               </td>
             </tr>

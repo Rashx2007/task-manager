@@ -1,14 +1,73 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import FileBrowser from './FileBrowser';
 
 const DEFAULT_ASSET_FOLDER = 'D:\\(فنّی)';
 
 const distinct = (arr) =>
   [...new Set(arr.map((x) => (x == null ? '' : String(x))).filter((x) => x !== '' && x !== '-'))]
-    .sort((a, b) => a.localeCompare(b, 'fa'));
+    .sort((a, b) => a.localeCompare(b, 'fa', { numeric: true }));
 
-export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null }) {
+const sameVal = (a, b) => {
+  const sa = String(a ?? '').trim();
+  const sb = String(b ?? '').trim();
+  if (sa === sb) return true;
+  const na = Number(sa);
+  const nb = Number(sb);
+  return !isNaN(na) && !isNaN(nb) && sa !== '' && sb !== '' && na === nb;
+};
+
+// ✅ ترتیب آبشاری پیشنهادها (مانند دسکتاپ)
+const CASCADE_ORDER = [
+  'Building', 'Block', 'Floor', 'Entrance', 'Location',
+  'MechSystem', 'AssetName', 'AssetNumber',
+  'Specifications', 'PropertyCode', 'SerialNumber',
+];
+
+// ✅ کمبوباکس واقعی: input + دکمهٔ ▾ + لیست بازشو
+function ComboInput({ value, onChange, options, placeholder, disabled, className }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const shown = (options || []).filter((v) => !q || String(v).includes(q));
+  return (
+    <div ref={wrapRef} className="relative">
+      <input
+        className={className}
+        style={{ paddingLeft: '26px' }}
+        value={value ?? ''}
+        placeholder={placeholder || ''}
+        disabled={disabled}
+        onChange={(e) => { onChange(e.target.value); setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+      />
+      <button
+        type="button"
+        className="combo-btn"
+        disabled={disabled}
+        onClick={() => { setQ(''); setOpen((o) => !o); }}
+      >▾</button>
+      {open && (
+        <div className="combo-list">
+          {shown.length === 0 && <div className="combo-empty">گزینه‌ای نیست</div>}
+          {shown.map((v) => (
+            <button key={v} type="button" className="combo-item" onClick={() => { onChange(v); setOpen(false); setQ(''); }}>
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset = null, preset = null, onAssetSaved = null }) {
   const [tab, setTab] = useState('devices');
   const [all, setAll] = useState([]);
   const [search, setSearch] = useState('');
@@ -52,6 +111,45 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
   const opt = (key, src) => distinct(src.map((a) => a[key]));
   const setF = (k) => (e) => setFlt({ ...flt, [k]: e.target.value });
 
+  // ✅ گزینه‌های آبشاری هر فیلد بر اساس فیلدهای قبلیِ پرشده
+  const cascadeOptions = (field) => {
+    if (!form) return [];
+    const idx = CASCADE_ORDER.indexOf(field);
+    if (idx < 0) return [];
+    let rows = all;
+    for (let i = 0; i < idx; i++) {
+      const k = CASCADE_ORDER[i];
+      const v = String(form[k] ?? '').trim();
+      if (!v) continue;
+      rows = rows.filter((r) => sameVal(r[k], v));
+    }
+    return distinct(rows.map((r) => r[field]));
+  };
+
+  // ✅✅ ورودی/دستگاه/سیستم: کل گزینه‌های ممکن در دیتابیس (بدون فیلتر آبشاری)
+  const allOptions = (field) => {
+    if (field === 'MechSystem') {
+      return distinct([
+        ...all.map((r) => r.MechSystem),
+        ...(base.systems || []).map((s) => s.MechSystem),
+      ]);
+    }
+    if (field === 'AssetName') {
+      return distinct([
+        ...all.map((r) => r.AssetName),
+        ...(base.names || []).map((n) => n.AssetName),
+      ]);
+    }
+    return distinct(all.map((r) => r[field]));
+  };
+
+  const optionsFor = (field) =>
+    (field === 'Entrance' || field === 'MechSystem' || field === 'AssetName')
+      ? allOptions(field)
+      : cascadeOptions(field);
+
+  const setFormField = (k, v) => setForm((f) => (f ? { ...f, [k]: v } : f));
+
   const startAdd = (pre = null) => {
     setEditingId(null);
     setForm({
@@ -64,7 +162,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     });
   };
 
-  // ✅ اگر preset از نقشه آمده: مستقیم فرم افزودن با فیلدهای پیش‌پر باز شود
   useEffect(() => {
     if (preset) {
       setTab('devices');
@@ -88,9 +185,8 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
       const d = await res.json();
       if (d.success) {
         alert('ذخیره شد.');
-        // ✅ لینک برچسب نقشه (MapTag) به دستگاه جدیدِ ساخته‌شده از نقشه
+        const newId = d.AssetID || d.assetId || d.id || null;
         try {
-          const newId = d.AssetID || d.assetId || d.id || null;
           if (!editingId && preset && preset.MapTag && newId) {
             await fetch('/api/maps/register', {
               method: 'POST',
@@ -99,6 +195,7 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
             });
           }
         } catch {}
+        if (onAssetSaved) onAssetSaved(newId, form);
         setForm(null); setEditingId(null); loadAll();
       } else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
@@ -200,39 +297,65 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[700px]">
               {preset && !editingId && (
                 <div className="md:col-span-4 bg-yellow-100 rounded p-2 text-sm font-bold">
-                  🗺 این دستگاه از نقشه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
+                  🗺 این دستگاه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
                 </div>
               )}
-              <div>
-                <label className="text-sm font-bold">نام دستگاه *</label>
-                <input className={inp} list="asset-names" value={form.AssetName || ''} onChange={(e) => setForm({ ...form, AssetName: e.target.value })} />
-                <datalist id="asset-names">{base.names.map((n) => <option key={n.AssetNameID} value={n.AssetName} />)}</datalist>
-              </div>
-              <div><label className="text-sm font-bold">شماره</label><input className={inp} value={form.AssetNumber ?? ''} onChange={(e) => setForm({ ...form, AssetNumber: e.target.value })} /></div>
+
               <div>
                 <label className="text-sm font-bold">ساختمان *</label>
-                <input className={inp} list="buildings-list" value={form.Building || ''} onChange={(e) => setForm({ ...form, Building: e.target.value })} />
-                <datalist id="buildings-list">{opt('Building', all).map((b) => <option key={b} value={b} />)}</datalist>
+                <ComboInput className={inp} value={form.Building} onChange={(v) => setFormField('Building', v)} options={optionsFor('Building')} />
               </div>
-              <div><label className="text-sm font-bold">بلوک</label><input className={inp} value={form.Block ?? ''} onChange={(e) => setForm({ ...form, Block: e.target.value })} /></div>
-              <div><label className="text-sm font-bold">طبقه</label><input className={inp} value={form.Floor ?? ''} onChange={(e) => setForm({ ...form, Floor: e.target.value })} /></div>
-              <div><label className="text-sm font-bold">ورودی</label><input className={inp} value={form.Entrance ?? ''} onChange={(e) => setForm({ ...form, Entrance: e.target.value })} /></div>
-              <div><label className="text-sm font-bold">محل</label><input className={inp} value={form.Location ?? ''} onChange={(e) => setForm({ ...form, Location: e.target.value })} /></div>
+              <div>
+                <label className="text-sm font-bold">بلوک</label>
+                <ComboInput className={inp} value={form.Block} onChange={(v) => setFormField('Block', v)} options={optionsFor('Block')} />
+              </div>
+              <div>
+                <label className="text-sm font-bold">طبقه</label>
+                <ComboInput className={inp} value={form.Floor} onChange={(v) => setFormField('Floor', v)} options={optionsFor('Floor')} />
+              </div>
+              <div>
+                <label className="text-sm font-bold">ورودی</label>
+                <ComboInput className={inp} value={form.Entrance} onChange={(v) => setFormField('Entrance', v)} options={optionsFor('Entrance')} />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold">محل</label>
+                <ComboInput className={inp} value={form.Location} onChange={(v) => setFormField('Location', v)} options={optionsFor('Location')} />
+              </div>
               <div>
                 <label className="text-sm font-bold">سیستم</label>
-                <input className={inp} list="mech-systems" value={form.MechSystem ?? ''} onChange={(e) => setForm({ ...form, MechSystem: e.target.value })} />
-                <datalist id="mech-systems">{base.systems.map((s) => <option key={s.MechSystemsID} value={s.MechSystem} />)}</datalist>
+                <ComboInput className={inp} value={form.MechSystem} onChange={(v) => setFormField('MechSystem', v)} options={optionsFor('MechSystem')} />
               </div>
-              <div><label className="text-sm font-bold">کد اموال</label><input className={inp} value={form.PropertyCode ?? ''} onChange={(e) => setForm({ ...form, PropertyCode: e.target.value })} /></div>
-              <div><label className="text-sm font-bold">شماره سریال</label><input className={inp} value={form.SerialNumber ?? ''} onChange={(e) => setForm({ ...form, SerialNumber: e.target.value })} /></div>
-              <div className="md:col-span-2"><label className="text-sm font-bold">مشخصات</label><input className={inp} value={form.Specifications ?? ''} onChange={(e) => setForm({ ...form, Specifications: e.target.value })} /></div>
-              <div className="md:col-span-3">
+              <div>
+                <label className="text-sm font-bold">نام دستگاه *</label>
+                <ComboInput className={inp} value={form.AssetName} onChange={(v) => setFormField('AssetName', v)} options={optionsFor('AssetName')} />
+              </div>
+              <div>
+                <label className="text-sm font-bold">شماره</label>
+                <ComboInput className={inp} value={form.AssetNumber} onChange={(v) => setFormField('AssetNumber', v)} options={optionsFor('AssetNumber')} />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold">کد اموال</label>
+                <ComboInput className={inp} value={form.PropertyCode} onChange={(v) => setFormField('PropertyCode', v)} options={optionsFor('PropertyCode')} />
+              </div>
+              <div>
+                <label className="text-sm font-bold">شماره سریال</label>
+                <ComboInput className={inp} value={form.SerialNumber} onChange={(v) => setFormField('SerialNumber', v)} options={optionsFor('SerialNumber')} />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-bold">مشخصات</label>
+                <ComboInput className={inp} value={form.Specifications} onChange={(v) => setFormField('Specifications', v)} options={optionsFor('Specifications')} />
+              </div>
+
+              <div className="md:col-span-4">
                 <label className="text-sm font-bold">مسیر پوشه</label>
                 <div className="flex gap-2">
                   <input className={inp} dir="ltr" value={form.FolderPath || ''} onChange={(e) => setForm({ ...form, FolderPath: e.target.value })} />
                   <button type="button" className="btn-primary whitespace-nowrap" onClick={() => setShowBrowser(true)}>مرور پوشه‌ها...</button>
                 </div>
               </div>
+
               <div className="md:col-span-4 flex gap-2 mt-2">
                 <button className="btn-success" disabled={saving} onClick={save}>{saving ? '...' : 'ذخیره'}</button>
                 <button className="btn-danger" onClick={() => { setForm(null); setEditingId(null); }}>انصراف</button>
