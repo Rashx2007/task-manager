@@ -126,8 +126,24 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     return distinct(rows.map((r) => r[field]));
   };
 
-  // ✅✅ «محل»: آبشاری فقط تا سطح ساختمان؛ اگر خالی بود، کل محل‌های دیتابیس
-  //    (تا با تایپ، همیشه پیشنهاد وجود داشته باشد)
+  // ✅✅ ورودی/دستگاه/سیستم: کل گزینه‌های ممکن در دیتابیس (دستگاه‌ها + کاتالوگ‌ها)
+  const allOptions = (field) => {
+    if (field === 'MechSystem') {
+      return distinct([
+        ...all.map((r) => r.MechSystem),
+        ...(base.systems || []).map((s) => s.MechSystem),
+      ]);
+    }
+    if (field === 'AssetName') {
+      return distinct([
+        ...all.map((r) => r.AssetName),
+        ...(base.names || []).map((n) => n.AssetName),
+      ]);
+    }
+    return distinct(all.map((r) => r[field]));
+  };
+
+  // ✅ محل: آبشاری تا سطح ساختمان + fallback به کل محل‌ها (تا با تایپ همیشه پیشنهاد باشد)
   const locationOptions = () => {
     if (!form) return [];
     const byBuilding = form.Building ? all.filter((r) => sameVal(r.Building, form.Building)) : all;
@@ -136,8 +152,11 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     return opts;
   };
 
-  const optionsFor = (field) =>
-    field === 'Location' ? locationOptions() : cascadeOptions(field);
+  const optionsFor = (field) => {
+    if (field === 'Location') return locationOptions();
+    if (field === 'Entrance' || field === 'MechSystem' || field === 'AssetName') return allOptions(field);
+    return cascadeOptions(field);
+  };
 
   const setFormField = (k, v) => setForm((f) => (f ? { ...f, [k]: v } : f));
 
@@ -153,6 +172,7 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     });
   };
 
+  // ✅ اگر preset آمده (از نقشه یا پیش‌نویس): مستقیم فرم افزودن با فیلدهای پیش‌پر باز شود
   useEffect(() => {
     if (preset) {
       setTab('devices');
