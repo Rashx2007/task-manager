@@ -24,7 +24,7 @@ const CASCADE_ORDER = [
   'Specifications', 'PropertyCode', 'SerialNumber',
 ];
 
-// ✅ کمبوباکس واقعی: input + دکمهٔ ▾ + لیست بازشو
+// ✅ کمبوباکس واقعی: input + دکمهٔ ▾ + لیست بازشو + فیلتر زنده با تایپ
 function ComboInput({ value, onChange, options, placeholder, disabled, className }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -126,27 +126,18 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     return distinct(rows.map((r) => r[field]));
   };
 
-  // ✅✅ ورودی/دستگاه/سیستم: کل گزینه‌های ممکن در دیتابیس (بدون فیلتر آبشاری)
-  const allOptions = (field) => {
-    if (field === 'MechSystem') {
-      return distinct([
-        ...all.map((r) => r.MechSystem),
-        ...(base.systems || []).map((s) => s.MechSystem),
-      ]);
-    }
-    if (field === 'AssetName') {
-      return distinct([
-        ...all.map((r) => r.AssetName),
-        ...(base.names || []).map((n) => n.AssetName),
-      ]);
-    }
-    return distinct(all.map((r) => r[field]));
+  // ✅✅ «محل»: آبشاری فقط تا سطح ساختمان؛ اگر خالی بود، کل محل‌های دیتابیس
+  //    (تا با تایپ، همیشه پیشنهاد وجود داشته باشد)
+  const locationOptions = () => {
+    if (!form) return [];
+    const byBuilding = form.Building ? all.filter((r) => sameVal(r.Building, form.Building)) : all;
+    let opts = distinct(byBuilding.map((r) => r.Location));
+    if (opts.length === 0) opts = distinct(all.map((r) => r.Location));
+    return opts;
   };
 
   const optionsFor = (field) =>
-    (field === 'Entrance' || field === 'MechSystem' || field === 'AssetName')
-      ? allOptions(field)
-      : cascadeOptions(field);
+    field === 'Location' ? locationOptions() : cascadeOptions(field);
 
   const setFormField = (k, v) => setForm((f) => (f ? { ...f, [k]: v } : f));
 
@@ -320,7 +311,7 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
 
               <div>
                 <label className="text-sm font-bold">محل</label>
-                <ComboInput className={inp} value={form.Location} onChange={(v) => setFormField('Location', v)} options={optionsFor('Location')} />
+                <ComboInput className={inp} value={form.Location} onChange={(v) => setFormField('Location', v)} options={optionsFor('Location')} placeholder="تایپ کنید تا پیشنهاد داده شود..." />
               </div>
               <div>
                 <label className="text-sm font-bold">سیستم</label>
