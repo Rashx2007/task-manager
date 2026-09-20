@@ -229,7 +229,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
         ? await fetch('/api/follow', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ followId: editingId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2) })
+            body: JSON.stringify({ followId: editingId, taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
           })
         : await fetch('/api/follow', {
             method: 'POST',

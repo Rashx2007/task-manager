@@ -45,12 +45,36 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const { followId, description, dueDateTime, endDateTime } = await request.json();
+    const { followId, taskId, description, dueDateTime, endDateTime, updateDescription } = await request.json();
     const due = wallToDate(dueDateTime);
     const end = wallToDate(endDateTime);
     const durMs = Math.max(0, end - due);
+    const fid = Number(followId);
     await query(`UPDATE Follow_tbl SET Description=?, DueDateTime=?, EndDateTime=?, Duration=? WHERE FollowID=?`,
-      [description, formatSqlDateTime(due), formatSqlDateTime(end), durationToStr(durMs), Number(followId)]);
+      [description, formatSqlDateTime(due), formatSqlDateTime(end), durationToStr(durMs), fid]);
+
+    // ✅ یافتن TaskID ردیف پیگیری (از بدنه یا از خود جدول)
+    let tid = Number(taskId) || 0;
+    if (!tid) {
+      const r = await query(`SELECT TaskID FROM Follow_tbl WHERE FollowID=?`, [fid]);
+      tid = r.length ? Number(r[0].TaskID) : 0;
+    }
+
+    // ✅ مانند ثبت پیگیری: در صورت درخواست، شرح کار با متن ویرایش‌شده جایگزین شود
+    if (updateDescription && tid) {
+      await query(`UPDATE Tsk_tbl SET Descriptions = ? WHERE TaskID=?`, [description, tid]);
+    }
+
+    // ✅ مانند ثبت پیگیری: زمان پایان کار = بیشینهٔ پایان پیگیری‌ها
+    if (tid) {
+      try {
+        const mx = await query(`SELECT MAX(EndDateTime) AS Finish FROM Follow_tbl WHERE TaskID=?`, [tid]);
+        if (mx.length && mx[0].Finish) {
+          await query(`UPDATE TimeDate_tbl SET Finish_DateTime=? WHERE TaskID=?`, [mx[0].Finish, tid]);
+        }
+      } catch {}
+    }
+
     return NextResponse.json({ success: true });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
