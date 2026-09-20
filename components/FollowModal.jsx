@@ -272,7 +272,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[860px] max-w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-3 border-b border-teal-700">
           <h3 className="font-bold">سوابق پیگیری — کد کار: {taskId}{subject ? ` | ${subject}` : ''}</h3>
