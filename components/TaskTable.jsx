@@ -13,11 +13,11 @@ const COLUMNS = [
   { key: 'row',          label: 'ردیف',          sortable: false, filterable: false },
   { key: 'TaskID',       label: 'کد کار',        sortable: true,  filterable: true,  source: 'task' },
   { key: 'AssetName',    label: 'دستگاه/مجموعه', sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  source: 'asset' },
+{ key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  assignable: true, source: 'asset' },
   { key: 'Building',     label: 'ساختمان',       sortable: true,  filterable: true,  assignable: true, source: 'asset' },
-  { key: 'Block',        label: 'بلوک',          sortable: true,  filterable: true,  source: 'asset' },
-  { key: 'Floor',        label: 'طبقه',          sortable: true,  filterable: true,  source: 'asset' },
-  { key: 'Entrance',     label: 'ورودی',         sortable: true,  filterable: true,  source: 'asset' },
+{ key: 'Block',        label: 'بلوک',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+{ key: 'Floor',        label: 'طبقه',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'Entrance',     label: 'ورودی',         sortable: true,  filterable: true,  assignable: true, source: 'asset' },
   { key: 'Location',     label: 'قسمت',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
   { key: 'TaskTtl',      label: 'موضوع',         sortable: true,  filterable: true,  assignable: true, source: 'task' },
   { key: 'Descriptions', label: 'توضیحات',       sortable: false, filterable: false, source: 'task' },
@@ -81,8 +81,10 @@ export default function TaskTable({
         MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
       };
       delete constraints[col.key];
-      constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
-    } else {
+constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => {
+  const s = String(v ?? '').trim();
+  return s !== '' && s !== '-';
+}));    } else {
       for (const [k, set] of Object.entries(filters)) {
         if (k === col.key || set == null || set.size !== 1) continue;
         constraints[k] = Array.from(set)[0];
