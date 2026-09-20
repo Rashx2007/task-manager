@@ -10,20 +10,23 @@ const assetSpec = (t) =>
     : '';
 
 const COLUMNS = [
-  { key: 'row', label: 'ردیف', sortable: false, filterable: false },
-  { key: 'TaskID', label: 'کد کار', sortable: true, filterable: true, source: 'task' },
-  { key: 'AssetName', label: 'دستگاه/مجموعه', sortable: true, filterable: true, assignable: true, source: 'asset' },
-  { key: 'AssetNumber', label: 'شماره', sortable: true, filterable: true, assignable: true, source: 'asset' },
-  { key: 'Building', label: 'ساختمان', sortable: true, filterable: true, assignable: true, source: 'asset' },
-  { key: 'Location', label: 'قسمت', sortable: true, filterable: true, assignable: true, source: 'asset' },
-  { key: 'TaskTtl', label: 'موضوع', sortable: true, filterable: true, assignable: true, source: 'task' },
-  { key: 'Descriptions', label: 'توضیحات', sortable: false, filterable: false, source: 'task' },
-  { key: 'Priorities', label: 'اولویت', sortable: true, filterable: true, source: 'task' },
-  { key: 'status', label: 'وضعیت', sortable: true, filterable: true, source: 'task' },
-  { key: 'DueDateTime', label: 'زمان شروع', sortable: true, filterable: false },
-  { key: 'EndDateTime', label: 'زمان پایان', sortable: true, filterable: false },
-  { key: 'attachments', label: 'ضمائم', sortable: false, filterable: false },
-  { key: 'actions', label: 'عملیات', sortable: false, filterable: false },
+  { key: 'row',          label: 'ردیف',          sortable: false, filterable: false },
+  { key: 'TaskID',       label: 'کد کار',        sortable: true,  filterable: true,  source: 'task' },
+  { key: 'AssetName',    label: 'دستگاه/مجموعه', sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'AssetNumber',  label: 'شماره',         sortable: true,  filterable: true,  source: 'asset' },
+  { key: 'Building',     label: 'ساختمان',       sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'Block',        label: 'بلوک',          sortable: true,  filterable: true,  source: 'asset' },
+  { key: 'Floor',        label: 'طبقه',          sortable: true,  filterable: true,  source: 'asset' },
+  { key: 'Entrance',     label: 'ورودی',         sortable: true,  filterable: true,  source: 'asset' },
+  { key: 'Location',     label: 'قسمت',          sortable: true,  filterable: true,  assignable: true, source: 'asset' },
+  { key: 'TaskTtl',      label: 'موضوع',         sortable: true,  filterable: true,  assignable: true, source: 'task' },
+  { key: 'Descriptions', label: 'توضیحات',       sortable: false, filterable: false, source: 'task' },
+  { key: 'Priorities',   label: 'اولویت',        sortable: true,  filterable: true,  source: 'task' },
+  { key: 'status',       label: 'وضعیت',         sortable: true,  filterable: true,  source: 'task' },
+  { key: 'DueDateTime',  label: 'زمان شروع',     sortable: true,  filterable: false },
+  { key: 'EndDateTime',  label: 'زمان پایان',    sortable: true,  filterable: false },
+  { key: 'attachments',  label: 'ضمائم',         sortable: false, filterable: false },
+  { key: 'actions',      label: 'عملیات',        sortable: false, filterable: false },
 ];
 
 const PLACE_COLS = [
@@ -32,6 +35,10 @@ const PLACE_COLS = [
   { key: 'Entrance', label: 'ورودی', source: 'asset', assignable: true },
   { key: 'MechSystem', label: 'سیستم', source: 'asset', assignable: true },
 ];
+const BLOCK_COL = PLACE_COLS[0];
+const FLOOR_COL = PLACE_COLS[1];
+const ENTRANCE_COL = PLACE_COLS[2];
+const MECH_COL = PLACE_COLS[3];
 
 export default function TaskTable({
   tasks, startNumber = 0, onRowClick, onComplete, onEdit, onCopy, onFolder, selectedTask,
@@ -40,7 +47,7 @@ export default function TaskTable({
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-  const [filters, setFilters] = useState({}); // { key: null = همه | Set = انتخاب‌شده‌ها }
+  const [filters, setFilters] = useState({});
   const [menu, setMenu] = useState(null);
   const [menuValues, setMenuValues] = useState(null);
   const [menuLoading, setMenuLoading] = useState(false);
@@ -54,7 +61,6 @@ export default function TaskTable({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ✅ اطلاع‌رسانی فیلترها به page.js برای جستجوی سمت سرور
   useEffect(() => {
     if (onFiltersChange) onFiltersChange(draft != null ? {} : filters);
   }, [filters, onFiltersChange, draft]);
@@ -63,25 +69,19 @@ export default function TaskTable({
   const draftActive = draft != null;
   const centralDraft = isCentral(draft?.Building);
 
-  // ✅ گزینه‌ها از کل دیتابیس؛ آبشاری بر اساس فیلترهای تک‌مقداری فعال
   const loadMenuValues = async (col) => {
     setMenuLoading(true);
     setMenuValues(null);
     if (col.key === 'status') { setMenuValues(['جاری', 'اتمام']); setMenuLoading(false); return; }
     let constraints = {};
     if (draftActive) {
-      if (col.key === 'TaskTtl' || col.key === 'Descriptions') {
-        // ✅ موضوع/توضیحات: فقط بر اساس نوع دستگاه (دستگاه/مجموعه)، نه منحصر به دستگاهِ یک محل خاص
-        constraints = draft.AssetName ? { AssetName: draft.AssetName } : {};
-      } else {
-        constraints = {
-          AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
-          Block: draft.Block, Floor: draft.Floor, Entrance: draft.Entrance, Location: draft.Location,
-          MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
-        };
-        delete constraints[col.key];
-        constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
-      }
+      constraints = {
+        AssetName: draft.AssetName, AssetNumber: draft.AssetNumber, Building: draft.Building,
+        Block: draft.Block, Floor: draft.Floor, Entrance: draft.Entrance, Location: draft.Location,
+        MechSystem: draft.MechSystem, TaskTtl: draft.TaskTtl, Priorities: draft.Priorities,
+      };
+      delete constraints[col.key];
+      constraints = Object.fromEntries(Object.entries(constraints).filter(([, v]) => String(v ?? '').trim() !== ''));
     } else {
       for (const [k, set] of Object.entries(filters)) {
         if (k === col.key || set == null || set.size !== 1) continue;
@@ -130,7 +130,6 @@ export default function TaskTable({
   const setAllChecked = (key, checked) => setFilters((prev) => ({ ...prev, [key]: checked ? null : new Set() }));
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
-  // ✅ مرتب‌سازی روی ردیف‌های همین صفحه (نتایج از قبل سمت سرور فیلتر شده‌اند)
   const sorted = [...(tasks || [])].sort((a, b) => {
     if (!sortKey) return 0;
     let av, bv;
@@ -174,14 +173,12 @@ export default function TaskTable({
     );
   };
 
-  // ✅ دیگر هیچ return زودهنگامی که کل جدول را حذف کند وجود ندارد.
-  //    سرستون‌ها و کادر جدول همیشه باقی می‌مانند.
   const menuCol = menu ? (COLUMNS.find((c) => c.key === menu.key) || PLACE_COLS.find((c) => c.key === menu.key)) : null;
   const shownValues = (menuValues || []).filter((v) => !menuQuery || String(v).includes(menuQuery));
 
   return (
     <div className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
-      <table className="task-table w-full min-w-[1300px]">
+      <table className="task-table w-full min-w-[1650px]">
         <thead>
           <tr>
             {COLUMNS.map((col) => {
@@ -206,7 +203,6 @@ export default function TaskTable({
           </tr>
         </thead>
         <tbody>
-          {/* ✅ سطرهای پیش‌نویس (حتی اگر tasks خالی باشد نمایش داده می‌شوند) */}
           {draftActive && (
             <tr className="draft-row">
               <td>—</td>
@@ -214,6 +210,9 @@ export default function TaskTable({
               {draftCell('AssetName', 'دستگاه/مجموعه')}
               {draftCell('AssetNumber', 'شماره')}
               {draftCell('Building', 'ساختمان')}
+              {draftPlaceCell(BLOCK_COL)}
+              {draftPlaceCell(FLOOR_COL)}
+              {draftPlaceCell(ENTRANCE_COL)}
               {draftCell('Location', 'قسمت')}
               {draftCell('TaskTtl', 'موضوع')}
               {draftCell('Descriptions', 'توضیحات')}
@@ -223,7 +222,7 @@ export default function TaskTable({
               <td>-</td>
               <td>-</td>
               <td>
-                <div className="draft-actions">
+                <div className="row-actions">
                   <button type="button" className="btn-success" onClick={(e) => { e.stopPropagation(); onDraftSave(); }}>ذخیره موقت</button>
                   <button type="button" className="btn-primary" onClick={(e) => { e.stopPropagation(); onDraftFinish(); }}>تکمیل</button>
                   <button type="button" className="btn-danger" onClick={(e) => { e.stopPropagation(); onDraftCancel(); }}>✕</button>
@@ -233,20 +232,15 @@ export default function TaskTable({
           )}
           {draftActive && (
             <tr className="draft-row draft-row-place">
-              <td colSpan={2}><span className="draft-badge">مشخصات مکانی دستگاه</span></td>
-              {draftPlaceCell(PLACE_COLS[0])}
-              {draftPlaceCell(PLACE_COLS[1])}
-              {draftPlaceCell(PLACE_COLS[2])}
-              {draftPlaceCell(PLACE_COLS[3])}
-              <td colSpan={8} className="draft-place-note">
+              <td colSpan={2}><span className="draft-badge">سیستم دستگاه</span></td>
+              {draftPlaceCell(MECH_COL)}
+              <td colSpan={14} className="draft-place-note">
                 {centralDraft
-                  ? '🏢 ساختمان مرکزی: بلوک، طبقه و ورودی را تایپ یا از ▾ انتخاب کنید.'
-                  : '🏢 ساختمان غیرمرکزی: بلوک و ورودی «-» خودکار؛ «طبقه» را تایپ یا از ▾ انتخاب کنید.'}
+                  ? '🏢 ساختمان مرکزی: بلوک/طبقه/ورودی را در ستون‌های خودشان وارد یا از ▾ انتخاب کنید.'
+                  : '🏢 ساختمان غیرمرکزی: بلوک و ورودی «-» خودکار؛ «طبقه» را در ستون طبقه وارد یا از ▾ انتخاب کنید.'}
               </td>
             </tr>
           )}
-
-          {/* ✅ پیام خالی‌بودن، داخل <tbody> — سرستون‌ها و کادر جدول حفظ می‌شوند */}
           {sorted.length === 0 && !draftActive && (
             <tr>
               <td colSpan={COLUMNS.length} style={{ textAlign: 'center', padding: '20px', background: '#CCDAD1' }}>
@@ -263,7 +257,6 @@ export default function TaskTable({
               </td>
             </tr>
           )}
-
           {sorted.map((t, i) => (
             <tr
               key={`${t.TaskID}-${t.AssetID ?? 0}-${i}`}
@@ -277,6 +270,9 @@ export default function TaskTable({
               <td><Tip tip={assetSpec(t)}>{t.AssetName || '-'}</Tip></td>
               <td>{t.AssetNumber ?? '-'}</td>
               <td>{t.Building || '-'}</td>
+              <td>{t.Block || '-'}</td>
+              <td>{t.Floor ?? '-'}</td>
+              <td>{t.Entrance || '-'}</td>
               <td>{t.Location || '-'}</td>
               <td className="max-w-[220px]"><Tip tip={t.TaskTtl} block><div className="truncate">{t.TaskTtl}</div></Tip></td>
               <td className="max-w-[320px]"><Tip tip={t.Descriptions} block><div className="line-clamp-2">{t.Descriptions || '-'}</div></Tip></td>
