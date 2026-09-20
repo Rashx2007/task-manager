@@ -21,12 +21,30 @@ const tags = await query(`SELECT t.*, t.TagText AS text, t.Layer AS layer, t.X A
 
 export async function POST(request) {
   try {
-    const { building, block, floor, dwgPath } = await request.json();
+    const { building, block, floor, dwgPath, checkOnly } = await request.json();
     const ex = await query(`SELECT MapID FROM Map_tbl WHERE Building=? AND Block=? AND Floor=?`, [building, block || '', floor]);
     if (ex.length) {
-      await query(`UPDATE Map_tbl SET DwgPath=? WHERE MapID=?`, [dwgPath, ex[0].MapID]);
-      return NextResponse.json({ success: true, mapId: ex[0].MapID });
+      const mapId = ex[0].MapID;
+      // ✅ حالت استعلام: بدون هیچ تغییری، وضعیت نقشهٔ ذخیره‌شده و اختلاف هش را برگردان
+      if (checkOnly) {
+        const rows = await query(`SELECT * FROM Map_tbl WHERE MapID=?`, [mapId]);
+        const map = rows[0];
+        let hashChanged = false;
+        if (dwgPath && fs.existsSync(dwgPath)) hashChanged = hashFile(dwgPath) !== map.FileHash;
+        return NextResponse.json({
+          success: true,
+          exists: true,
+          mapId,
+          svgPath: map.SvgPath || '',
+          version: map.Version || 0,
+          convertedAt: map.ConvertedAt || null,
+          hashChanged,
+        });
+      }
+      await query(`UPDATE Map_tbl SET DwgPath=? WHERE MapID=?`, [dwgPath, mapId]);
+      return NextResponse.json({ success: true, mapId });
     }
+    if (checkOnly) return NextResponse.json({ success: true, exists: false });
     const r = await query(`INSERT INTO Map_tbl (Building, Block, Floor, DwgPath) OUTPUT INSERTED.MapID VALUES (?,?,?,?)`, [building, block || '', floor, dwgPath]);
     return NextResponse.json({ success: true, mapId: r[0].MapID });
   } catch (e) {

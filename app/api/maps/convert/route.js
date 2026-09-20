@@ -183,10 +183,17 @@ export async function POST(request) {
 
     // ✅✅ اصلاح اصلی: pJoin به‌جای path.join (ماژول path پیش‌فرض ایمپورت نشده بود → ReferenceError)
     const dir = pJoin(process.cwd(), "public", "maps");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const version = (map.Version || 0) + 1;
-    const svgName = `map_${map.MapID}_v${version}.svg`;
-    fs.writeFileSync(pJoin(dir, svgName), svg, "utf8");
+if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+const version = (map.Version || 0) + 1;
+const svgName = `map_${map.MapID}_v${version}.svg`;
+fs.writeFileSync(pJoin(dir, svgName), svg, "utf8");
+// ✅ پاک‌کردن فایل SVG قبلی (حذف نسخهٔ قدیمی پس از ذخیرهٔ نسخهٔ جدید)
+if (map.SvgPath) {
+  try {
+    const oldFile = pJoin(process.cwd(), "public", String(map.SvgPath).replace(/^\//, ""));
+    if (fs.existsSync(oldFile) && oldFile !== pJoin(dir, svgName)) fs.unlinkSync(oldFile);
+  } catch {}
+}
 
     await query(`DELETE FROM MapText_tbl WHERE MapID=?`, [map.MapID]);
     for (const t of texts)

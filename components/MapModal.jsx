@@ -329,15 +329,12 @@ export default function MapModal({
     }
   };
 
-  const convert = async () => {
-    if (!map) return;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/maps/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapId: map.MapID, force: true }),
-      });
+  const convert = async (mapIdArg) => {
+const id = mapIdArg || (map && map.MapID);
+if (!id) return;
+setBusy(true);
+try {
+const res = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: id, force: true }) });
       const d = await res.json();
       if (!d.success) {
         alert("خطا: " + d.error);
@@ -358,25 +355,49 @@ export default function MapModal({
     setBusy(false);
   };
 
-  const selectDwg = (full) => {
-    const nm = parseMapInfo(full);
-    if (nm.building) setBuilding(nm.building);
-    if (nm.block) setBlock(nm.block);
-    if (nm.floor) setFloor(nm.floor);
-    setChosenDwg(full);
-    setShowBrowse(false);
-    say(
-      `فایل انتخاب شد: ساختمان=${nm.building || "؟"} بلوک=${nm.block || "؟"} طبقه=${nm.floor || "؟"}`,
-      6000,
-    );
-    const b = nm.building || building,
-      f = nm.floor || floor;
-    if (!b || !f)
-      alert(
-        "«ساختمان» و «طبقه» از نام فایل/مسیر خوانده نشد؛ لطفاً دستی پر کنید و «بارگذاری» بزنید.",
+  const selectDwg = async (full) => {
+  const nm = parseMapInfo(full);
+  if (nm.building) setBuilding(nm.building);
+  if (nm.block) setBlock(nm.block);
+  if (nm.floor) setFloor(nm.floor);
+  setChosenDwg(full);
+  setShowBrowse(false);
+  const b = nm.building || building, bl = nm.block || block, f = nm.floor || floor;
+  say(`فایل انتخاب شد: ساختمان=${b || '؟'} بلوک=${bl || '-'} طبقه=${f || '؟'} — بررسی تفاوت با نقشهٔ ذخیره‌شده…`, 0);
+  if (!b || !f) { alert('«ساختمان» و «طبقه» از نام فایل/مسیر خوانده نشد؛ لطفاً دستی پر کنید و «بارگذاری» بزنید.'); return; }
+  try {
+    // ✅ استعلام: آیا برای این ساختمان/بلوک/طبقه نقشهٔ تبدیل‌شده ذخیره داریم و با فایل جدید اختلاف دارد؟
+    const res = await fetch('/api/maps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building: b, block: bl, floor: f, dwgPath: full, checkOnly: true }) });
+    const d = await res.json();
+    if (d.success && d.exists && d.svgPath) {
+      if (!d.hashChanged) {
+        say('تفاوتی با نقشهٔ ذخیره‌شده نیست (همان فایل قبلی)؛ نقشهٔ موجود بارگذاری شد.', 6000);
+        await load(b, bl, f);
+        return;
+      }
+      const ok = confirm(
+        `برای ساختمان «${b}» بلوک «${bl || '-'}» طبقه «${f}» قبلاً نقشه‌ای تبدیل و ذخیره شده است (نسخه v${d.version || 1}).\n` +
+        `بین نقشهٔ ذخیره‌شده و فایل جدید اختلاف یافت شد.\n` +
+        `قبلی پاک شود و جدید ذخیره شود؟`
       );
-    else load(b, nm.block || block, f);
-  };
+      if (ok) {
+        // ✅ مسیر جدید را ثبت کن، نقشه را بارگذاری کن و تبدیل اجباری (جایگزینی کامل) انجام بده
+        await fetch('/api/maps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ building: b, block: bl, floor: f, dwgPath: full }) });
+        await load(b, bl, f);
+        await convert(d.mapId);
+        say('نقشهٔ قبلی پاک شد و نقشهٔ جدید ذخیره شد.', 6000);
+      } else {
+        say('نگه‌داشتن نقشهٔ قبلی؛ تغییری اعمال نشد.', 6000);
+        await load(b, bl, f);
+      }
+      return;
+    }
+    // نقشه‌ای وجود ندارد یا هنوز تبدیل نشده → جریان عادی بارگذاری/تبدیل خودکار
+    await load(b, bl, f);
+  } catch (e) {
+    alert('خطا در بررسی نقشهٔ ذخیره‌شده: ' + e.message);
+  }
+};
 
   const detectEntrance = (tag) => {
   if (!center || !tag) return '';
