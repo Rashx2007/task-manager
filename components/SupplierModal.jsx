@@ -56,7 +56,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000]"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[640px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-6">
         <h3 className="text-lg font-bold mb-4">تأمین‌کننده / خرید — کد کار: {taskId}</h3>
 
