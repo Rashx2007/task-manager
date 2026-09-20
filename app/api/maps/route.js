@@ -8,8 +8,7 @@ export async function GET(request) {
   const building = searchParams.get('building'), block = searchParams.get('block') || '', floor = searchParams.get('floor');
   try {
     const rules = await query(`SELECT * FROM MapLayerRule_tbl`);
-    const deviceTypes = [...new Set(rules.filter((r) => !r.IsBase).map((r) => r.DeviceType))];
-    const rows = await query(`SELECT * FROM Map_tbl WHERE Building=? AND Block=? AND Floor=?`, [building, block, floor]);
+const deviceTypes = [...new Set(rules.filter((r) => !r.IsBase && r.DeviceType !== '__IGNORE__').map((r) => r.DeviceType))];    const rows = await query(`SELECT * FROM Map_tbl WHERE Building=? AND Block=? AND Floor=?`, [building, block, floor]);
     if (!rows.length) return NextResponse.json({ success: true, map: null, rules, deviceTypes });
     const map = rows[0];
     let hashChanged = false;

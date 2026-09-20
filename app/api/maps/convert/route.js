@@ -205,9 +205,13 @@ export async function POST(request) {
     );
     const assetTags = new Set(assets.map((a) => a.MapTag).filter(Boolean));
     const mapTags = new Set(texts.map((t) => t.text));
-    const newOnMap = texts
-      .filter((t) => isKnown(t.layer) && !assetTags.has(t.text))
-      .map((t) => ({ text: t.text, layer: t.layer }));
+    const isIgnore = (l) => {
+  const r = rules.find((x) => !x.IsBase && likeToRegex(x.LayerLike).test(l));
+  return !!r && String(r.DeviceType) === '__IGNORE__';
+};
+const newOnMap = texts
+  .filter((t) => isKnown(t.layer) && !isIgnore(t.layer) && !assetTags.has(t.text))
+  .map((t) => ({ text: t.text, layer: t.layer }));
     const orphanInDb = assets
       .filter((a) => a.MapTag && !mapTags.has(a.MapTag))
       .map((a) => ({ assetId: a.AssetID, tag: a.MapTag }));

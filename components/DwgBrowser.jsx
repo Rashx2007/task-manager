@@ -67,7 +67,7 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10001] flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1000px] max-w-full max-h-[92vh] flex flex-col p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">انتخاب فایل نقشه (DWG)</h3>
