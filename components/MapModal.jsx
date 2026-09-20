@@ -152,19 +152,19 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     if (ms) msgTimerRef.current = setTimeout(() => setStatusMsg(''), ms);
   };
 
-  const fetchSvg = async (url) => {
-    try {
-      const res = await fetch(url + '?v=' + Date.now());
-      if (!res.ok || !(res.headers.get('content-type') || '').includes('svg')) {
-        setSvgText('');
-        say('فایل SVG نقشه یافت نشد (404)؛ ابتدا «🔄 تبدیل مجدد» یا «⚠ همگام‌سازی» را بزنید.', 8000);
-        return;
-      }
-      const t = await res.text();
-      setSvgText(t);
-      setZoom(1); setPan({ x: 0, y: 0 });
-    } catch {}
-  };
+const fetchSvg = async (url) => {
+  try {
+    const res = await fetch(url + '?v=' + Date.now());
+    if (!res.ok || !(res.headers.get('content-type') || '').includes('svg')) {
+      setSvgText('');
+      return false;
+    }
+    const t = await res.text();
+    setSvgText(t);
+    setZoom(1); setPan({ x: 0, y: 0 });
+    return true;
+  } catch { return false; }
+};
 
   const load = async (b = building, bl = block, f = floor) => {
     if (!b || !f) { alert('لطفاً «ساختمان» و «طبقه» را وارد کنید.'); return; }
@@ -180,16 +180,21 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       setRules(d.rules || []); setDeviceTypes(d.deviceTypes || []);
       setMap(d.map || null); setTags(d.tags || []); setHashChanged(!!d.hashChanged);
       setCenter(d.map && d.map.CenterX != null ? { x: d.map.CenterX, y: d.map.CenterY } : null);
-      if (d.map && d.svgUrl) fetchSvg(d.svgUrl); else setSvgText('');
-      if (d.map && d.hashChanged && !d.map.SvgPath) {
-        const c = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: d.map.MapID, force: true }) });
-        const cd = await c.json();
-        if (cd.success && !cd.unchanged) {
-          setHashChanged(false);
-          setUnknown(cd.unknownLayers || []); setNewOnMap(cd.newOnMap || []); setOrphan(cd.orphanInDb || []);
-          if (cd.svgUrl) fetchSvg(cd.svgUrl);
-        }
-      }
+      let svgOk = false;
+if (d.map && d.svgUrl) svgOk = await fetchSvg(d.svgUrl); else setSvgText('');
+// ✅ اگر فایل SVG فیزیکی نیست (404) یا SvgPath خالی است و DWG تغییر کرده → تبدیل خودکار
+if (d.map && d.hashChanged && (!d.map.SvgPath || !svgOk)) {
+  const c = await fetch('/api/maps/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapId: d.map.MapID, force: true }) });
+  const cd = await c.json();
+  if (cd.success && !cd.unchanged) {
+    setHashChanged(false);
+    setUnknown(cd.unknownLayers || []); setNewOnMap(cd.newOnMap || []); setOrphan(cd.orphanInDb || []);
+    if (cd.svgUrl) svgOk = await fetchSvg(cd.svgUrl);
+  } else if (!cd.success) {
+    say('خطا در تبدیل خودکار: ' + cd.error, 8000);
+  }
+}
+if (!svgOk) say('فایل SVG نقشه یافت نشد (404)؛ ابتدا «🔄 تبدیل مجدد» یا «⚠ همگام‌سازی» را بزنید.', 8000);
     } catch (e) { alert('خطا در بارگذاری نقشه: ' + e.message); }
   };
 
