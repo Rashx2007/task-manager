@@ -13,8 +13,7 @@ const deviceTypes = [...new Set(rules.filter((r) => !r.IsBase && r.DeviceType !=
     const map = rows[0];
     let hashChanged = false;
     if (map.DwgPath && fs.existsSync(map.DwgPath)) hashChanged = hashFile(map.DwgPath) !== map.FileHash;
-    const tags = await query(`SELECT t.*, a.AssetID FROM MapText_tbl t LEFT JOIN Asset_2_tbl a ON a.MapTag = t.TagText AND a.IsActive = 1 WHERE t.MapID=?`, [map.MapID]);
-    return NextResponse.json({ success: true, map, hashChanged, rules, deviceTypes, tags, svgUrl: map.SvgPath });
+const tags = await query(`SELECT t.*, t.TagText AS text, t.Layer AS layer, t.X AS x, t.Y AS y, a.AssetID FROM MapText_tbl t LEFT JOIN Asset_2_tbl a ON a.MapTag = t.TagText AND a.IsActive = 1 WHERE t.MapID=?`, [map.MapID]);    return NextResponse.json({ success: true, map, hashChanged, rules, deviceTypes, tags, svgUrl: map.SvgPath });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }

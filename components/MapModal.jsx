@@ -379,15 +379,17 @@ export default function MapModal({
   };
 
   const detectEntrance = (tag) => {
-    if (!center || !tag) return "";
-    if (!String(building).includes("مرکزی")) return "";
-    const dx = tag.x - center.x,
-      dy = tag.y - center.y;
-    if (dx < 0 && dy < 0) return "1";
-    if (dx < 0 && dy >= 0) return "2";
-    if (dx >= 0 && dy >= 0) return "3";
-    return "4";
-  };
+  if (!center || !tag) return '';
+  if (!String(building).includes('مرکزی')) return '';
+  const tx = Number(tag.x ?? tag.X);
+  const ty = Number(tag.y ?? tag.Y);
+  if (isNaN(tx) || isNaN(ty)) return '';
+  const dx = tx - center.x, dy = ty - center.y;
+  if (dx < 0 && dy < 0) return '1';
+  if (dx < 0 && dy >= 0) return '2';
+  if (dx >= 0 && dy >= 0) return '3';
+  return '4';
+};
 
   const applyLayerAnswers = async () => {
     for (const layer of unknown) {
@@ -580,8 +582,8 @@ export default function MapModal({
         if (onPickAsset) onPickAsset(tag.AssetID);
         return;
       }
-      const layer = tag ? tag.Layer : el.getAttribute("data-layer") || "";
-      const r = ruleForLayer(rules, layer);
+const gLayer = el.closest ? el.closest('g[data-layer]') : null;
+const layer = tag ? (tag.Layer || tag.layer || '') : (gLayer ? gLayer.getAttribute('data-layer') : (el.getAttribute('data-layer') || ''));      const r = ruleForLayer(rules, layer);
 const inferredType = r ? r.DeviceType : (deviceType || '');
 if (inferredType === '__IGNORE__') { say('این لایه «نادیده» است؛ ثبت دستگاه انجام نمی‌شود.', 3000); return; }      const numMatch = txt.match(/^\s*-?\d+(?:\.\d+)?\s*$/);
       const deviceNumber = numMatch ? String(parseInt(txt, 10)) : "";
