@@ -350,7 +350,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <form onSubmit={(e) => { e.preventDefault(); save(); }}
         className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[720px] max-w-full max-h-[90vh] overflow-y-auto p-6">
         <div className="flex items-center justify-between mb-4">
