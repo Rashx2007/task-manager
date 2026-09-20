@@ -428,24 +428,6 @@ export default function Home() {
     setShowTaskForm(true);
   };
 
-    // ✅ کپی: ایجاد کار جدید برابر با سطر جاری (بدون کد کار، بدون زمان‌ها و بدون شماره‌های درخواست/ثبت)
-  const handleCopyTask = async (t) => {
-    try {
-      const res = await fetch(`/api/tasks/${t.TaskID}`);
-      const d = await res.json();
-      const src = d.success && d.data ? d.data : t;
-      setEditTask({
-        ...src,
-        TaskID: undefined,
-        Complited: 0,
-        DueDateTime: undefined, EndDateTime: undefined,
-        TDDue: undefined, TDEnd: undefined, TDF: undefined, FixedDueTime: 0,
-        RequestNumber: undefined, RegisterNumber: undefined, RequestDate: undefined,
-      });
-      setShowTaskForm(true);
-    } catch { alert('خطا در ارتباط با سرور'); }
-  };
-
   // ✅ کپی: ایجاد کار جدید برابر با سطر جاری (بدون کد کار، بدون زمان‌ها و بدون شماره‌های درخواست/ثبت)
   const handleCopyTask = async (t) => {
     try {
