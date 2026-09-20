@@ -6,12 +6,11 @@ import persian_fa from 'react-date-object/locales/persian_fa';
 import TodayPlugin from './TodayPlugin';
 
 const PRIORITIES = ['0.آنی', '1.خیلی بالا', '2.بالا', '3.متوسط', '4.کم', '5.خیلی کم', 'زمان انجام ثابت'];
-
 const pad = (n) => String(n).padStart(2, '0');
 const toFa = (s) => String(s).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 const fromWall = (s) => {
   if (!s) return null;
-  const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return null;
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
 };
@@ -20,7 +19,6 @@ const toWall = (d) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}Z`;
 };
 const fmtTime = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
 const parseTimeText = (raw) => {
   const digits = String(raw || '').replace(/[^0-9]/g, '');
   if (!digits) return null;
@@ -42,12 +40,10 @@ function ClockPicker({ date, onConfirm }) {
   const [minute, setMinute] = useState(date.getMinutes());
   const faceRef = useRef(null);
   const dragRef = useRef(false);
-
   const hours = [];
   for (let h = 1; h <= 12; h++) hours.push({ h, ring: 'inner' });
   for (let h = 13; h <= 23; h++) hours.push({ h, ring: 'outer' });
   hours.push({ h: 0, ring: 'outer' });
-
   const minuteFromEvent = (e) => {
     const rect = faceRef.current.getBoundingClientRect();
     const dx = e.clientX - (rect.left + rect.width / 2);
@@ -56,7 +52,6 @@ function ClockPicker({ date, onConfirm }) {
     if (deg < 0) deg += 360;
     return Math.round(deg / 6) % 60;
   };
-
   const onPointerDown = (e) => {
     if (stage !== 'minute') return;
     e.preventDefault();
@@ -72,12 +67,10 @@ function ClockPicker({ date, onConfirm }) {
     d.setHours(hour, minute, 0, 0);
     onConfirm(d);
   };
-
   const handAngle = ((stage === 'hour' ? (hour % 12) * 30 : minute * 6) * Math.PI) / 180;
   const handR = stage === 'hour' ? (hour === 0 || hour > 12 ? 62 : 40) : 62;
   const hx = 100 + handR * Math.sin(handAngle);
   const hy = 100 - handR * Math.cos(handAngle);
-
   return (
     <div dir="ltr">
       <div
@@ -187,10 +180,11 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const [minutes, setMinutes] = useState('30');
   const [start, setStart] = useState(new Date());
   const [end, setEnd] = useState(new Date());
+  // ✅ زمان ثبت کار (فقط خواندنی)
+  const [submitDate, setSubmitDate] = useState('');
   // تفکیک: تاریخ پایان و ساعت/دقیقهٔ پایان مستقل از هم همگام می‌شوند
   const [endDateTouched, setEndDateTouched] = useState(false);
   const [endTimeTouched, setEndTimeTouched] = useState(false);
-
   const effEnd = new Date(endDateTouched ? end : start);
   effEnd.setHours(
     endTimeTouched ? end.getHours() : start.getHours(),
@@ -198,37 +192,30 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
     0,
     0
   );
-
   const startRef = useRef(start);
   startRef.current = start;
   const endRef = useRef(effEnd);
   endRef.current = effEnd;
-
   const [busy, setBusy] = useState(false);
   const [fixedRows, setFixedRows] = useState([]);
-
   const isFixed = priority === 'زمان انجام ثابت';
 
-  // تغییر تاریخ شروع → فقط تاریخ پایان همگام شود
   const changeStartDate = (d) => {
     const nd = new Date(d);
     nd.setHours(start.getHours(), start.getMinutes(), 0, 0);
     setStart(nd);
     setEndDateTouched(false);
   };
-  // تغییر ساعت شروع → فقط ساعت/دقیقهٔ پایان همگام شود
   const changeStartTime = (t) => {
     setStart(t);
     setEndTimeTouched(false);
   };
-  // تغییر دستی تاریخ پایان → استقلال تاریخ پایان
   const changeEndDate = (d) => {
     const nd = new Date(d);
     nd.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0);
     setEnd(nd);
     setEndDateTouched(true);
   };
-  // تغییر دستی ساعت پایان → استقلال ساعت پایان
   const changeEndTime = (t) => {
     setEnd(t);
     setEndTimeTouched(true);
@@ -262,7 +249,6 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
       else changeEndDate(nd);
     } catch (err) {}
   };
-
   const onDurArrow = (e, kind) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
@@ -280,6 +266,8 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           const src = d.data;
           const prio = src.TDP || src.Priorities || '';
           if (prio) setPriority(prio);
+          // ✅ زمان ثبت کار (غیرقابل ویرایش)
+          setSubmitDate(src.Submit_Date || src.TDSubmit || src.SubmitDate || '');
           if (src.Durationtime) {
             const parts = String(src.Durationtime).split(':').map((x) => parseInt(x, 10) || 0);
             setHours(pad(parts[0] || 0));
@@ -356,6 +344,12 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">الویت و زمان — کد کار: {taskId}</h3>
           <button type="button" onClick={onClose} className="text-xl">✕</button>
+        </div>
+
+        {/* ✅ زمان ثبت کار — فقط خواندنی */}
+        <div className="mb-4">
+          <label className="block text-sm font-bold mb-1">زمان ثبت (غیرقابل ویرایش)</label>
+          <input className={inp} value={fmtFa(submitDate)} readOnly disabled />
         </div>
 
         <label className="block text-sm font-bold mb-1">الویت</label>
