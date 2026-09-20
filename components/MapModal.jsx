@@ -902,8 +902,7 @@ if (inferredType === '__IGNORE__') { say('این لایه «نادیده» اس�
           <style>{`
             .mapzoom-wrap{width:100%;height:100%;background:#fff;}
             .mapzoom-wrap svg{width:100%;height:100%;display:block;background:#fff;shape-rendering:geometricPrecision;}
-            .mapzoom-wrap svg line,.mapzoom-wrap svg path,.mapzoom-wrap svg polyline,.mapzoom-wrap svg polygon,.mapzoom-wrap svg circle,.mapzoom-wrap svg ellipse{stroke:#1f2937 !important;}
-            .mapzoom-wrap svg text{font-weight:600;}
+        .mapzoom-wrap svg line,.mapzoom-wrap svg path,.mapzoom-wrap svg polyline,.mapzoom-wrap svg polygon,.mapzoom-wrap svg circle,.mapzoom-wrap svg ellipse{stroke:#1f2937 !important;vector-effect:non-scaling-stroke;}            .mapzoom-wrap svg text{font-weight:600;}
             .mapzoom-wrap svg text[data-tag]{font-weight:800;}
           `}</style>
           <div className="absolute top-2 left-2 z-20 flex flex-col gap-1 bg-white/90 rounded shadow p-1">
@@ -941,11 +940,7 @@ if (inferredType === '__IGNORE__') { say('این لایه «نادیده» اس�
           </div>
           <div
             className="mapzoom-wrap"
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: "0 0",
-              willChange: "transform",
-            }}
+                    style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
             dangerouslySetInnerHTML={{
               __html:
                 svgText ||
