@@ -3,11 +3,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import FileBrowser from './FileBrowser';
 
 const DEFAULT_ASSET_FOLDER = 'D:\\(فنّی)';
-
 const distinct = (arr) =>
   [...new Set(arr.map((x) => (x == null ? '' : String(x))).filter((x) => x !== '' && x !== '-'))]
     .sort((a, b) => a.localeCompare(b, 'fa', { numeric: true }));
-
 const sameVal = (a, b) => {
   const sa = String(a ?? '').trim();
   const sb = String(b ?? '').trim();
@@ -16,15 +14,12 @@ const sameVal = (a, b) => {
   const nb = Number(sb);
   return !isNaN(na) && !isNaN(nb) && sa !== '' && sb !== '' && na === nb;
 };
-
-// ✅ ترتیب آبشاری پیشنهادها (مانند دسکتاپ)
 const CASCADE_ORDER = [
   'Building', 'Block', 'Floor', 'Entrance', 'Location',
   'MechSystem', 'AssetName', 'AssetNumber',
   'Specifications', 'PropertyCode', 'SerialNumber',
 ];
 
-// ✅ کمبوباکس واقعی: input + دکمهٔ ▾ + لیست بازشو + فیلتر زنده با تایپ
 function ComboInput({ value, onChange, options, placeholder, disabled, className }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -47,12 +42,8 @@ function ComboInput({ value, onChange, options, placeholder, disabled, className
         onChange={(e) => { onChange(e.target.value); setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
       />
-      <button
-        type="button"
-        className="combo-btn"
-        disabled={disabled}
-        onClick={() => { setQ(''); setOpen((o) => !o); }}
-      >▾</button>
+      <button type="button" className="combo-btn" disabled={disabled}
+        onClick={() => { setQ(''); setOpen((o) => !o); }}>▾</button>
       {open && (
         <div className="combo-list">
           {shown.length === 0 && <div className="combo-empty">گزینه‌ای نیست</div>}
@@ -89,13 +80,18 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
   }, []);
   useEffect(() => { loadAll(); loadBase(); }, [loadAll, loadBase]);
 
+  // ✅ Esc فقط وقتی FileBrowser باز نیست، خود AssetsModal را می‌بندد
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    const h = (e) => {
+      if (e.key !== 'Escape') return;
+      if (showBrowser) return;
+      onClose();
+    };
     window.addEventListener('keydown', h);
     return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', h); };
-  }, [onClose]);
+  }, [onClose, showBrowser]);
 
   const filtered = all.filter((a) => {
     const q = search.trim();
@@ -107,11 +103,9 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     for (const [k, v] of Object.entries(flt)) if (v && String(a[k] ?? '') !== v) return false;
     return true;
   });
-
   const opt = (key, src) => distinct(src.map((a) => a[key]));
   const setF = (k) => (e) => setFlt({ ...flt, [k]: e.target.value });
 
-  // ✅ گزینه‌های آبشاری هر فیلد بر اساس فیلدهای قبلیِ پرشده
   const cascadeOptions = (field) => {
     if (!form) return [];
     const idx = CASCADE_ORDER.indexOf(field);
@@ -125,8 +119,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     }
     return distinct(rows.map((r) => r[field]));
   };
-
-  // ✅✅ ورودی/دستگاه/سیستم: کل گزینه‌های ممکن در دیتابیس (دستگاه‌ها + کاتالوگ‌ها)
   const allOptions = (field) => {
     if (field === 'MechSystem') {
       return distinct([
@@ -142,8 +134,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     }
     return distinct(all.map((r) => r[field]));
   };
-
-  // ✅ محل: آبشاری تا سطح ساختمان + fallback به کل محل‌ها (تا با تایپ همیشه پیشنهاد باشد)
   const locationOptions = () => {
     if (!form) return [];
     const byBuilding = form.Building ? all.filter((r) => sameVal(r.Building, form.Building)) : all;
@@ -151,13 +141,11 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     if (opts.length === 0) opts = distinct(all.map((r) => r.Location));
     return opts;
   };
-
   const optionsFor = (field) => {
     if (field === 'Location') return locationOptions();
     if (field === 'Entrance' || field === 'MechSystem' || field === 'AssetName') return allOptions(field);
     return cascadeOptions(field);
   };
-
   const setFormField = (k, v) => setForm((f) => (f ? { ...f, [k]: v } : f));
 
   const startAdd = (pre = null) => {
@@ -171,8 +159,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
       Block: pre && pre.Block ? String(pre.Block) : '-',
     });
   };
-
-  // ✅ اگر preset آمده (از نقشه یا پیش‌نویس): مستقیم فرم افزودن با فیلدهای پیش‌پر باز شود
   useEffect(() => {
     if (preset) {
       setTab('devices');
@@ -185,7 +171,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     setEditingId(a.AssetID);
     setForm({ ...a, FolderPath: a.FolderPath || '' });
   };
-
   const save = async () => {
     if (!form.AssetName || !form.Building) { alert('نام دستگاه و ساختمان الزامی است.'); return; }
     setSaving(true);
@@ -212,7 +197,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
     } catch { alert('خطا در ارتباط با سرور'); }
     setSaving(false);
   };
-
   const del = async (id) => {
     if (!confirm('آیا از حذف این دستگاه مطمئن هستید؟')) return;
     try {
@@ -221,7 +205,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
       if (d.success) loadAll(); else alert(d.error);
     } catch {}
   };
-
   const addBase = async (kind, value) => {
     const r = await fetch('/api/base-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, value }) });
     const d = await r.json();
@@ -229,21 +212,19 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
   };
 
   const inp = 'search-input w-full';
-
   return (
     <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-3"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1150px] max-w-[98vw] max-h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-3 border-b border-teal-700">
           <h3 className="font-bold">مدیریت دستگاه‌ها و اطلاعات پایه</h3>
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
-
         <div className="flex gap-2 px-6 py-2 border-b border-teal-700">
           <button className={tab === 'devices' ? 'btn-success' : 'btn-primary'} onClick={() => { setTab('devices'); setForm(null); }}>دستگاه‌ها</button>
           <button className={tab === 'base' ? 'btn-success' : 'btn-primary'} onClick={() => setTab('base')}>اطلاعات پایه</button>
         </div>
-
         <div className="p-5 overflow-auto overscroll-contain">
           {tab === 'devices' && form === null && (
             <>
@@ -303,7 +284,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
               </div>
             </>
           )}
-
           {tab === 'devices' && form !== null && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[700px]">
               {preset && !editingId && (
@@ -311,7 +291,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                   🗺 این دستگاه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید یا انصراف بزنید.
                 </div>
               )}
-
               <div>
                 <label className="text-sm font-bold">ساختمان *</label>
                 <ComboInput className={inp} value={form.Building} onChange={(v) => setFormField('Building', v)} options={optionsFor('Building')} />
@@ -328,7 +307,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                 <label className="text-sm font-bold">ورودی</label>
                 <ComboInput className={inp} value={form.Entrance} onChange={(v) => setFormField('Entrance', v)} options={optionsFor('Entrance')} />
               </div>
-
               <div>
                 <label className="text-sm font-bold">محل</label>
                 <ComboInput className={inp} value={form.Location} onChange={(v) => setFormField('Location', v)} options={optionsFor('Location')} placeholder="تایپ کنید تا پیشنهاد داده شود..." />
@@ -345,7 +323,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                 <label className="text-sm font-bold">شماره</label>
                 <ComboInput className={inp} value={form.AssetNumber} onChange={(v) => setFormField('AssetNumber', v)} options={optionsFor('AssetNumber')} />
               </div>
-
               <div>
                 <label className="text-sm font-bold">کد اموال</label>
                 <ComboInput className={inp} value={form.PropertyCode} onChange={(v) => setFormField('PropertyCode', v)} options={optionsFor('PropertyCode')} />
@@ -358,7 +335,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                 <label className="text-sm font-bold">مشخصات</label>
                 <ComboInput className={inp} value={form.Specifications} onChange={(v) => setFormField('Specifications', v)} options={optionsFor('Specifications')} />
               </div>
-
               <div className="md:col-span-4">
                 <label className="text-sm font-bold">مسیر پوشه</label>
                 <div className="flex gap-2">
@@ -366,14 +342,12 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
                   <button type="button" className="btn-primary whitespace-nowrap" onClick={() => setShowBrowser(true)}>مرور پوشه‌ها...</button>
                 </div>
               </div>
-
               <div className="md:col-span-4 flex gap-2 mt-2">
                 <button className="btn-success" disabled={saving} onClick={save}>{saving ? '...' : 'ذخیره'}</button>
                 <button className="btn-danger" onClick={() => { setForm(null); setEditingId(null); }}>انصراف</button>
               </div>
             </div>
           )}
-
           {tab === 'base' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -400,7 +374,6 @@ export default function AssetsModal({ onClose, onNewTaskWithAsset, onSelectAsset
           )}
         </div>
       </div>
-
       {showBrowser && (
         <FileBrowser
           mode="folder"
