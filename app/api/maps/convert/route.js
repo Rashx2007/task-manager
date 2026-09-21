@@ -227,8 +227,19 @@ export async function POST(request) {
     const dir = pJoin(process.cwd(), "public", "maps");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const version = (map.Version || 0) + 1;
-    const svgName = `map_${map.MapID}_v${version}.svg`;
+    const safeBase = String(`${map.Building || "map"}_${map.Block || "X"}_${map.Floor || "0"}`)
+      .replace(/[\\/:*?"<>|]+/g, "_")
+      .replace(/\s+/g, "_")
+      .trim();
+    const svgName = `${safeBase}.svg`;
     fs.writeFileSync(pJoin(dir, svgName), svg, "utf8");
+    // ✅ حذف فایل قدیمی همان نقشه تا فقط یک SVG استاندارد بماند
+    if (map.SvgPath && map.SvgPath !== "/maps/" + svgName) {
+      try {
+        const oldFile = pJoin(process.cwd(), "public", String(map.SvgPath).replace(/^\//, ""));
+        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      } catch {}
+    }
 
     await query(`DELETE FROM MapText_tbl WHERE MapID=?`, [map.MapID]);
     for (const t of texts) {

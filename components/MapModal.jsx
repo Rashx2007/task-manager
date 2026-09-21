@@ -134,11 +134,7 @@ const fixText = (s) => {
 function Sec({ k, title, badge, open, onToggle, children, color = "bg-[#F7C4A5]" }) {
   return (
     <div className={`mb-2 ${color} rounded`}>
-      <button
-        type="button"
-        onClick={() => onToggle(k)}
-        className="w-full flex items-center justify-between px-2 py-1 font-bold text-sm"
-      >
+      <button type="button" onClick={() => onToggle(k)} className="w-full flex items-center justify-between px-2 py-1 font-bold text-sm">
         <span>
           {title}
           {badge ? <span className="mr-2 bg-white/70 rounded px-1 text-xs">{badge}</span> : null}
@@ -154,7 +150,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [building, setBuilding] = useState(defaults.building || "");
   const [block, setBlock] = useState(defaults.block || "");
   const [floor, setFloor] = useState(defaults.floor || "");
-    const [typeOptions, setTypeOptions] = useState([]);
+  const [typeOptions, setTypeOptions] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [typesOpen, setTypesOpen] = useState(false);
   const deviceType = selectedTypes.length ? selectedTypes[0] : "";
@@ -209,7 +205,6 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         if (d.success) setAssets(d.data || []);
       })
       .catch(() => {});
-    
   }, []);
 
   const distinct = (arr) =>
@@ -229,6 +224,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     [assets, building, block],
   );
 
+  // ✅ بستن منوی نوع دستگاه با کلیک بیرون
   useEffect(() => {
     if (!typesOpen) return;
     const h = (e) => {
@@ -237,7 +233,6 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [typesOpen]);
-
 
   const fetchSvg = async (url) => {
     try {
@@ -291,7 +286,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       let svgOk = false;
       if (d.map && d.svgUrl) svgOk = await fetchSvg(d.svgUrl);
       else setSvgText("");
-      if (d.map && d.hashChanged && (!d.map.SvgPath || !svgOk)) {
+      if (d.map && (!d.map.SvgPath || !svgOk || d.hashChanged)) {
         const c = await fetch("/api/maps/convert", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -484,6 +479,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     alert("دستگاه‌های حذف‌شده از نقشه، «ناموجود» علامت‌گذاری شدند (سابقه حفظ شد).");
   };
 
+  // ✅ رندر/فیلتر لایه‌ها + پر شدن خودکار گزینه‌های کمبوباکس از لایه‌های همان نقشه
   useEffect(() => {
     const box = boxRef.current;
     if (!box) return;
@@ -508,8 +504,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       const l = g.getAttribute("data-layer");
       const isB = rules.some((r) => r.IsBase && likeTest(r.LayerLike, l));
       const r = ruleForLayer(rules, l);
-      g.style.display =
-        isB || (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ? "" : "none";
+      g.style.display = isB || (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ? "" : "none";
     });
     box.querySelectorAll("text[data-tag]").forEach((t) => {
       t.style.cursor = "pointer";
@@ -717,19 +712,11 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <h3 className="font-bold">نقشهٔ طبقه — انتخاب دستگاه</h3>
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
+
         <div className="flex flex-wrap gap-2 items-end mb-2">
-                    <label className="text-xs font-bold">
+          <label className="text-xs font-bold">
             ساختمان
-            <input
-              className={inp}
-              list="map-buildings"
-              value={building}
-              onChange={(e) => {
-                setBuilding(e.target.value);
-                setBlock("");
-                setFloor("");
-              }}
-            />
+            <input className={inp} list="map-buildings" value={building} onChange={(e) => setBuilding(e.target.value)} />
             <datalist id="map-buildings">
               {sugBuildings.map((v) => (
                 <option key={v} value={v} />
@@ -738,15 +725,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </label>
           <label className="text-xs font-bold">
             بلوک
-            <input
-              className={inp}
-              list="map-blocks"
-              value={block}
-              onChange={(e) => {
-                setBlock(e.target.value);
-                setFloor("");
-              }}
-            />
+            <input className={inp} list="map-blocks" value={block} onChange={(e) => setBlock(e.target.value)} />
             <datalist id="map-blocks">
               {sugBlocks.map((v) => (
                 <option key={v} value={v} />
@@ -765,14 +744,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <label className="text-xs font-bold">
             نوع دستگاه
             <div className="relative" data-types-menu>
-              <button
-                type="button"
-                className={inp}
-                style={{ textAlign: "right" }}
-                onClick={() => setTypesOpen((o) => !o)}
-              >
-                {selectedTypes.length ? selectedTypes.join("، ") : "(همه)"}{" "}
-                <span style={{ float: "left" }}>▾</span>
+              <button type="button" className={inp} style={{ textAlign: "right" }} onClick={() => setTypesOpen((o) => !o)}>
+                {selectedTypes.length ? selectedTypes.join("، ") : "(همه)"} <span style={{ float: "left" }}>▾</span>
               </button>
               {typesOpen && (
                 <div className="absolute z-30 mt-1 w-56 max-h-64 overflow-auto bg-white border border-gray-300 rounded shadow p-1">
@@ -784,19 +757,13 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
                       <input
                         type="checkbox"
                         checked={selectedTypes.includes(t)}
-                        onChange={() =>
-                          setSelectedTypes((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]))
-                        }
+                        onChange={() => setSelectedTypes((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]))}
                       />
                       <span>{t}</span>
                     </label>
                   ))}
                   <div className="border-t mt-1 pt-1">
-                    <button
-                      type="button"
-                      className="btn-primary px-2 py-0.5 text-[11px]"
-                      onClick={() => setSelectedTypes([])}
-                    >
+                    <button type="button" className="btn-primary px-2 py-0.5 text-[11px]" onClick={() => setSelectedTypes([])}>
                       نمایش همه (پاک‌کردن تیک‌ها)
                     </button>
                   </div>
@@ -830,9 +797,9 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
             </button>
           )}
         </div>
-        {statusMsg && (
-          <div className="mb-2 bg-teal-100 text-teal-900 rounded px-2 py-1 text-sm font-bold">{statusMsg}</div>
-        )}
+
+        {statusMsg && <div className="mb-2 bg-teal-100 text-teal-900 rounded px-2 py-1 text-sm font-bold">{statusMsg}</div>}
+
         {unknown.length > 0 && (
           <Sec k="unknown" open={open.unknown} onToggle={toggleSec} title="⚠ لایه‌های ناشناخته" badge={unknown.length}>
             {unknown.map((l) => (
@@ -863,6 +830,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
             </button>
           </Sec>
         )}
+
         {newOnMap.length > 0 && (
           <Sec k="newOnMap" open={open.newOnMap} onToggle={toggleSec} title="🆕 دستگاه‌های جدید روی نقشه (بدون ثبت)" badge={newOnMap.length}>
             <div className="max-h-40 overflow-auto">
@@ -886,6 +854,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
             </button>
           </Sec>
         )}
+
         {orphan.length > 0 && (
           <Sec k="orphan" open={open.orphan} onToggle={toggleSec} title="⚠ در دیتابیس هستند ولی روی نقشه نیستند" badge={orphan.length} color="bg-[#FC7470]/30">
             {orphan.map((o) => (
@@ -898,6 +867,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
             </button>
           </Sec>
         )}
+
         <div
           ref={boxRef}
           className="relative bg-white rounded border border-gray-400 overflow-hidden select-none"
