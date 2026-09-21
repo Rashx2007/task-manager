@@ -23,7 +23,6 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
     return () => { document.body.style.overflow = prev; };
   }, []);
 
-  // بارگذاری رکورد Folder_tbl + پیش‌فرض هوشمند (پوشهٔ دستگاه + زیرپوشهٔ کار)
   useEffect(() => {
     (async () => {
       try {
@@ -47,8 +46,13 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
     })();
   }, [taskId]);
 
+  // ✅ Esc فقط وقتی FileBrowser باز نیست، خود FolderModal را می‌بندد
   useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') handleClose(); };
+    const h = (e) => {
+      if (e.key !== 'Escape') return;
+      if (showFolderBrowser || showFileBrowser) return;
+      handleClose();
+    };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   });
@@ -57,40 +61,30 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
     const f = (folderPath || '').trim();
     const n = (fileName || '').trim();
     if (!n) return f;
-    if (/^([A-Za-z]:[\\/]|\\\\)/.test(n)) return n;
+    if (/^([A-Za-z]:[\/]|\\)/.test(n)) return n;
     if (!f) return n;
-    const base = /[\\/]$/.test(f) ? f.slice(0, -1) : f;
+    const base = /[\/]$/.test(f) ? f.slice(0, -1) : f;
     if (base.endsWith(n)) return base;
     return base + '\\' + n;
   };
-
-const openPath = async (p) => {
-  try {
-    const res = await fetch('/api/open-path', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: p }),
-    });
-    const d = await res.json();
-    if (!d.success) alert('خطا: ' + d.error);
-    else if (d.adjusted)
-      alert('پوشهٔ دقیق روی دیسک یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n' + d.opened);
-  } catch {
-    alert('خطا در ارتباط با سرور');
-  }
-};
-
+  const openPath = async (p) => {
+    try {
+      const res = await fetch('/api/open-path', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
+      const d = await res.json();
+      if (!d.success) alert('خطا: ' + d.error);
+      else if (d.adjusted) alert('پوشهٔ دقیق روی دیسک یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n' + d.opened);
+    } catch { alert('خطا در ارتباط با سرور'); }
+  };
   const copyPath = async () => {
     const p = fullPath();
     if (!p) { alert('مسیری برای کپی وجود ندارد.'); return; }
     try { await navigator.clipboard.writeText(p); alert('مسیر در کلیپ‌بورد کپی شد.'); }
     catch { alert('کپی ممکن نشد.'); }
   };
-
   const copyMirror = async (destDir) => {
     const f = (folderPath || '').trim();
     const n = (fileName || '').trim();
-    const src = f || (/^([A-Za-z]:[\\/]|\\\\)/.test(n) ? n : '');
+    const src = f || (/^([A-Za-z]:[\/]|\\)/.test(n) ? n : '');
     if (!src) { alert('مسیری برای کپی وجود ندارد.'); return; }
     try {
       const res = await fetch('/api/copy-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sources: [src], destDir, mirrorDir: true }) });
@@ -99,14 +93,12 @@ const openPath = async (p) => {
       else alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
   };
-
   const handleCopyClick = async () => {
     setAsked(true);
     if (!confirm('کل محتوای پوشه در مقصد آینه‌ای کپی شود؟')) return;
     const d = prompt('پوشهٔ مقصد برای کپی:', SHARE_FOLDER);
     if (d) await copyMirror(d);
   };
-
   const save = async () => {
     setSaving(true);
     try {
@@ -122,7 +114,6 @@ const openPath = async (p) => {
     } catch { alert('خطا در ارتباط با سرور'); }
     setSaving(false);
   };
-
   const handleClose = () => {
     const has = (folderPath || '').trim() || (fileName || '').trim();
     if (has && !asked) {
@@ -131,7 +122,6 @@ const openPath = async (p) => {
     }
     onClose();
   };
-
   const openFolderBrowser = async () => {
     let initial = (folderPath || '').trim();
     try {
@@ -153,20 +143,18 @@ const openPath = async (p) => {
     setBrowserInitial(initial || DEFAULT_ASSET_FOLDER);
     setShowFolderBrowser(true);
   };
-
   const openFileBrowser = () => {
     setBrowserInitial((folderPath || '').trim() || DEFAULT_ASSET_FOLDER);
     setShowFileBrowser(true);
   };
 
   const inp = 'search-input w-full';
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
-      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}>
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) handleClose(); }}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) handleClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[680px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">پوشهٔ ضمائم — کد کار: {taskId}</h3>
-
         <div className="mb-3">
           <label className="block text-sm font-bold mb-1">مسیر پوشه</label>
           <div className="flex gap-2">
@@ -174,7 +162,6 @@ const openPath = async (p) => {
             <button type="button" className="btn-primary whitespace-nowrap" onClick={openFolderBrowser}>انتخاب پوشه...</button>
           </div>
         </div>
-
         <div className="mb-3">
           <label className="block text-sm font-bold mb-1">نام فایل</label>
           <div className="flex gap-2">
@@ -182,12 +169,10 @@ const openPath = async (p) => {
             <button type="button" className="btn-primary whitespace-nowrap" onClick={openFileBrowser}>انتخاب فایل...</button>
           </div>
         </div>
-
         <label className="flex items-center gap-2 mb-4 cursor-pointer">
           <input type="checkbox" checked={allowCopy} onChange={(e) => setAllowCopy(e.target.checked)} className="w-4 h-4" />
           <span className="text-sm font-bold">اجازه کپی فایل‌ها در پوشهٔ اشتراکی</span>
         </label>
-
         <div className="flex flex-wrap gap-2">
           <button onClick={save} disabled={saving} className="btn-success">{saving ? '...' : 'ذخیره'}</button>
           <button onClick={() => openPath(folderPath)} disabled={!folderPath} className="btn-primary">بازکردن پوشه</button>
@@ -197,7 +182,6 @@ const openPath = async (p) => {
           <button onClick={handleClose} className="btn-danger">بستن</button>
         </div>
       </div>
-
       {showFolderBrowser && (
         <FileBrowser
           mode="folder"

@@ -36,6 +36,13 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
     load(defaultPath || '');
   }, [defaultPath, load]);
 
+  // ✅ Esc فقط همین مودال را می‌بندد (بالاترین لایه است)
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
   const up = () => {
     if (!path) { load(''); return; }
     const parts = path.replace(/[\\/]+$/, '').split(/[\\/]+/);
@@ -44,7 +51,6 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
     load(parts.join('\\'));
   };
 
-  // ✅ انتخاب با دیالوگ بومی ویندوز → سرور مسیر واقعی را resolve می‌کند
   const pickNative = async (e) => {
     const f = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -67,13 +73,13 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10001] flex items-center justify-center p-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1000px] max-w-full max-h-[92vh] flex flex-col p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">انتخاب فایل نقشه (DWG)</h3>
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
-
         <div className="flex gap-2 items-center mb-2">
           <button type="button" className="btn-primary px-3" title="یک سطح بالا" onClick={up}>↑</button>
           <button type="button" className="btn-primary px-3" title="به‌روزآوری" onClick={() => load(path)}>🔄</button>
@@ -85,15 +91,12 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
             onClick={() => nativeRef.current && nativeRef.current.click()}>🗔 دیالوگ ویندوز</button>
           <input ref={nativeRef} type="file" accept=".dwg" style={{ display: 'none' }} onChange={pickNative} />
         </div>
-
         <div className="flex flex-wrap gap-2 mb-2">
           {roots.map((r) => (
             <button key={r} type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => load(r)}>{r}</button>
           ))}
         </div>
-
         {msg && <div className="mb-2 bg-red-100 text-red-800 rounded px-2 py-1 text-sm font-bold">{msg}</div>}
-
         <div className="flex-1 min-h-[300px] overflow-auto bg-white rounded border border-gray-400">
           {busy && <div className="p-3 text-sm font-bold">در حال خواندن…</div>}
           {!busy && dirs.length === 0 && files.length === 0 && (
@@ -116,7 +119,6 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
             </div>
           ))}
         </div>
-
         <div className="flex gap-2 mt-3">
           <button type="button" className="btn-success" disabled={!sel} onClick={() => sel && onSelect(sel)}>انتخاب این نقشه</button>
           <button type="button" className="btn-danger" onClick={onClose}>انصراف</button>

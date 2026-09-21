@@ -5,7 +5,6 @@ const IMG_EXT = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
 const extOf = (name) => (name.includes('.') ? name.split('.').pop().toLowerCase() : '');
 const FILE_BADGE = { pdf: '📕', doc: '📘', docx: '📘', rtf: '📘', xls: '📗', xlsx: '📗', csv: '📗', ppt: '📙', pptx: '📙', dwg: '📐', dxf: '📐', zip: '🗜️', rar: '🗜️', txt: '📝', mp4: '🎬', avi: '🎬', mkv: '🎬', mp3: '🎵' };
 
-// ✅ کارت پوشه با بندانگشتیِ اولین تصویر داخل آن
 function FolderThumb({ path, name, onClick }) {
   const [prev, setPrev] = useState(null);
   useEffect(() => {
@@ -27,7 +26,6 @@ function FolderThumb({ path, name, onClick }) {
   );
 }
 
-// ✅ کارت فایل: تصویر برای عکس‌ها، نشان برای PDF/Word/Excel/نقشه
 function FileThumb({ f, active, onClick }) {
   const ext = extOf(f.name);
   const isImg = IMG_EXT.includes(ext);
@@ -68,6 +66,7 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
 
   useEffect(() => { load(initial || ''); }, [initial, load]);
 
+  // ✅ Esc فقط همین مودال را می‌بندد (بالاترین لایه است)
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
@@ -75,15 +74,12 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
   }, [onClose]);
 
   const goInput = () => { const p = pathInput.trim(); if (p) load(p); };
-
   const pasteFromClipboard = async () => {
     try {
       const t = await navigator.clipboard.readText();
       if (t) { setPathInput(t.trim()); load(t.trim()); }
     } catch { alert('دسترسی به کلیپ‌بورد ممکن نشد؛ داخل کادر Ctrl+V بزنید.'); }
   };
-
-  // ✅ بازکردن پوشه یا اجرای فایل خارج از برنامه (ویندوز)
   const openOutside = async (p) => {
     if (!p) return;
     try {
@@ -92,7 +88,6 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
       if (!d.success) alert('خطا: ' + d.error);
     } catch { alert('خطا در ارتباط با سرور'); }
   };
-
   const confirmSel = () => {
     if (mode === 'folder') { if (current) onSelect(current); }
     else if (selected) onSelect(selected.path);
@@ -100,13 +95,13 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10001] flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[780px] max-w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700">
           <h3 className="font-bold">{title || (mode === 'folder' ? 'انتخاب پوشه' : 'انتخاب فایل')}</h3>
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
-
         <div className="p-4 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <button className="btn-primary px-3" onClick={() => load(parent)} disabled={!current} title="یک سطح بالا">↑</button>
@@ -124,11 +119,9 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
               {mode === 'file' && selected ? '▶' : '🗔'}
             </button>
           </div>
-
           <div className="overflow-y-auto bg-white rounded border border-gray-300" style={{ minHeight: 260, maxHeight: 420 }}>
             {loading && <div className="p-3 text-sm">در حال بارگذاری...</div>}
             {!loading && err && <div className="p-3 text-sm text-red-600">{err}</div>}
-
             {!loading && !err && view === 'list' && (
               <>
                 <div className="px-3 py-1 bg-teal-100 text-xs font-bold">پوشه‌ها</div>
@@ -153,7 +146,6 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
                 )}
               </>
             )}
-
             {!loading && !err && view === 'thumb' && (
               <div className="p-3 flex flex-wrap gap-2">
                 {folders.map((f) => (
@@ -168,7 +160,6 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
               </div>
             )}
           </div>
-
           <div className="flex gap-2">
             <button className="btn-success" onClick={confirmSel} disabled={mode === 'folder' ? !current : !selected}>
               {mode === 'folder' ? 'انتخاب این پوشه' : 'انتخاب این فایل'}
