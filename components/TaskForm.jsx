@@ -272,8 +272,33 @@ export default function TaskForm({ initial = null, defaultAssetId = null, onClos
                 }}
               />
               <button type="button" className="btn-primary px-3" onClick={() => setShowAssetPicker(true)}>...</button>
-              <button type="button" className="btn-primary px-3" title="نقشهٔ طبقه" onClick={() => setShowMap(true)}>🗺</button>
-            </div>
+              <button
+                type="button"
+                className="btn-primary px-2"
+                title="نقشهٔ طبقه (پلان AutoCAD)"
+                onClick={() => setShowMap(true)}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="1.5" />
+                  <path d="M3 10h10" />
+                  <path d="M13 3v7" />
+                  <path d="M13 14v7" />
+                  <path d="M13 14a4 4 0 0 1 4 4" />
+                  <path d="M17 10h4" />
+                  <path d="M17 3v3" />
+                </svg>
+              </button>            </div>
             <datalist id="assets-list">{assets.map((a) => <option key={a.AssetID} value={assetSpec(a)} />)}</datalist>
             {form.AssetID && <div className="text-xs text-gray-700 mt-1">کد دستگاه: {form.AssetID}</div>}
           </div>
