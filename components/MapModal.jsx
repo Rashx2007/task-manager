@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import DwgBrowser from "./DwgBrowser";
 
 const likeTest = (pattern, s) => {
@@ -173,6 +173,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [showBrowse, setShowBrowse] = useState(false);
   const [chosenDwg, setChosenDwg] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
+  const [assets, setAssets] = useState([]);
+  const [baseNames, setBaseNames] = useState([]);
   const [open, setOpen] = useState({ unknown: true, newOnMap: true, orphan: true });
   const toggleSec = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const [zoom, setZoom] = useState(1);
@@ -197,6 +199,41 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose, showBrowse]);
+
+  useEffect(() => {
+    fetch("/api/assets")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setAssets(d.data || []);
+      })
+      .catch(() => {});
+    fetch("/api/base-info")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setBaseNames((d.names || []).map((n) => n.AssetName));
+      })
+      .catch(() => {});
+  }, []);
+
+  const distinct = (arr) =>
+    [...new Set(arr.map((x) => (x == null ? "" : String(x))).filter((x) => x !== "" && x !== "-"))].sort((a, b) =>
+      a.localeCompare(b, "fa", { numeric: true }),
+    );
+  const sugBuildings = useMemo(() => distinct(assets.map((a) => a.Building)), [assets]);
+  const sugBlocks = useMemo(
+    () => distinct(assets.filter((a) => !building || a.Building === building).map((a) => a.Block)),
+    [assets, building],
+  );
+  const sugFloors = useMemo(
+    () =>
+      distinct(
+        assets.filter((a) => (!building || a.Building === building) && (!block || a.Block === block)).map((a) => a.Floor),
+      ),
+    [assets, building, block],
+  );
+  const sugTypes = useMemo(() => distinct([...deviceTypes, ...baseNames]), [deviceTypes, baseNames]);
+
+  const fetchSvg = async (url) => {
 
   const fetchSvg = async (url) => {
     try {
@@ -663,28 +700,47 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
         <div className="flex flex-wrap gap-2 items-end mb-2">
-          <label className="text-xs font-bold">
+                    <label className="text-xs font-bold">
             ساختمان
-            <input className={inp} value={building} onChange={(e) => setBuilding(e.target.value)} />
+            <input className={inp} list="map-buildings" value={building} onChange={(e) => setBuilding(e.target.value)} />
+            <datalist id="map-buildings">
+              {sugBuildings.map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
           </label>
           <label className="text-xs font-bold">
             بلوک
-            <input className={inp} value={block} onChange={(e) => setBlock(e.target.value)} />
+            <input className={inp} list="map-blocks" value={block} onChange={(e) => setBlock(e.target.value)} />
+            <datalist id="map-blocks">
+              {sugBlocks.map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
           </label>
           <label className="text-xs font-bold">
             طبقه
-            <input className={inp} value={floor} onChange={(e) => setFloor(e.target.value)} />
+            <input className={inp} list="map-floors" value={floor} onChange={(e) => setFloor(e.target.value)} />
+            <datalist id="map-floors">
+              {sugFloors.map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
           </label>
           <label className="text-xs font-bold">
             نوع دستگاه
-            <select className={inp} value={deviceType} onChange={(e) => setDeviceType(e.target.value)}>
-              <option value="">(انتخاب)</option>
-              {deviceTypes.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+            <input
+              className={inp}
+              list="map-types"
+              value={deviceType}
+              onChange={(e) => setDeviceType(e.target.value)}
+              placeholder="(انتخاب یا تایپ)"
+            />
+            <datalist id="map-types">
+              {sugTypes.map((v) => (
+                <option key={v} value={v} />
               ))}
-            </select>
+            </datalist>
           </label>
           <button className="btn-primary" onClick={() => load()}>
             بارگذاری
