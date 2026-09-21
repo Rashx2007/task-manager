@@ -157,7 +157,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     const [typeOptions, setTypeOptions] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [typesOpen, setTypesOpen] = useState(false);
-  const deviceType = selectedTypes.length === 1 ? selectedTypes[0] : "";
+  const deviceType = selectedTypes.length ? selectedTypes[0] : "";
   const [map, setMap] = useState(null);
   const [rules, setRules] = useState([]);
   const [deviceTypes, setDeviceTypes] = useState([]);
@@ -286,6 +286,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       setMap(d.map || null);
       setTags(d.tags || []);
       setHashChanged(!!d.hashChanged);
+      setSelectedTypes([]);
       setCenter(d.map && d.map.CenterX != null ? { x: d.map.CenterX, y: d.map.CenterY } : null);
       let svgOk = false;
       if (d.map && d.svgUrl) svgOk = await fetchSvg(d.svgUrl);
@@ -719,7 +720,16 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         <div className="flex flex-wrap gap-2 items-end mb-2">
                     <label className="text-xs font-bold">
             ساختمان
-            <input className={inp} list="map-buildings" value={building} onChange={(e) => setBuilding(e.target.value)} />
+            <input
+              className={inp}
+              list="map-buildings"
+              value={building}
+              onChange={(e) => {
+                setBuilding(e.target.value);
+                setBlock("");
+                setFloor("");
+              }}
+            />
             <datalist id="map-buildings">
               {sugBuildings.map((v) => (
                 <option key={v} value={v} />
@@ -728,7 +738,15 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </label>
           <label className="text-xs font-bold">
             بلوک
-            <input className={inp} list="map-blocks" value={block} onChange={(e) => setBlock(e.target.value)} />
+            <input
+              className={inp}
+              list="map-blocks"
+              value={block}
+              onChange={(e) => {
+                setBlock(e.target.value);
+                setFloor("");
+              }}
+            />
             <datalist id="map-blocks">
               {sugBlocks.map((v) => (
                 <option key={v} value={v} />
