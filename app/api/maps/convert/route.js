@@ -19,14 +19,14 @@ const normName = (s) =>
     .toLowerCase()
     .replace(/[\u200c\u200e\u200f\u064b-\u0652]/g, "")
     .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
-    .replace(/[٠-٩]/g, (d) => String("٠١٢٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
     .replace(/\s+/g, " ")
     .trim();
 
 // ✅ تجزیهٔ نام فایل نقشه (قرارداد جدید + قدیمی)
 function parseDwgName(name) {
   let base = String(name || "")
-    .replace(/.dwg$/i, "")
+    .replace(/\.dwg$/i, "")
     .replace(/[ـ‌‍‎‏‪‫]/g, "")
     .trim();
   const out = { building: "", block: "", floor: "" };
@@ -44,7 +44,7 @@ function parseDwgName(name) {
     out.floor = String(Number(s));
     return out;
   }
-  const mFloor = base.match(/(-?\d+(?:.\d+)?)\s*$/);
+  const mFloor = base.match(/(-?\d+(?:\.\d+)?)\s*$/);
   if (mFloor) {
     out.floor = String(Number(mFloor[1]));
     base = base.slice(0, mFloor.index);
@@ -68,22 +68,17 @@ const normFa = (s) =>
 // ✅ جست‌وجوی DWG: ۱) نزدیک مسیر قدیمی بر اساس نام ۲) زیر ریشه‌ها بر اساس ساختمان/بلوک/طبقه
 function fuzzyFindDwg(savedPath, map) {
   try {
-    const isDwg = (f) =>
-      f.toLowerCase().endsWith(".dwg") && !/_recover.dwg$/i.test(f);
+    const isDwg = (f) => f.toLowerCase().endsWith(".dwg") && !/_recover\.dwg$/i.test(f);
     const base = normName(pBasename(savedPath || ""));
     if (savedPath) {
       const dirs = [pDirname(savedPath), pDirname(pDirname(savedPath))];
       for (const d of dirs) {
         if (!fs.existsSync(d)) continue;
-        const hit = fs
-          .readdirSync(d)
-          .find((f) => isDwg(f) && normName(f) === base);
+        const hit = fs.readdirSync(d).find((f) => isDwg(f) && normName(f) === base);
         if (hit) return pJoin(d, hit);
       }
     }
-    const roots = String(
-      process.env.MAP_DWG_ROOTS || "E:\\(Work)\\نقشه فن‌کویل‌ها\\C\\DWG",
-    )
+    const roots = String(process.env.MAP_DWG_ROOTS || "E:\\(Work)\\نقشه فن‌کویل‌ها\\C\\DWG")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
@@ -108,8 +103,9 @@ function fuzzyFindDwg(savedPath, map) {
             normFa(pn.building) === want.building &&
             (pn.block || "") === (want.block || "") &&
             String(Number(pn.floor)) === want.floor
-          )
+          ) {
             return pJoin(dir, en.name);
+          }
         }
       }
       for (const en of entries) {
@@ -132,75 +128,118 @@ function fuzzyFindDwg(savedPath, map) {
 export async function POST(request) {
   try {
     const { mapId, force } = await request.json();
-    const maps = await query(`SELECT * FROM Map_tbl WHERE MapID=?`, [
-      Number(mapId),
-    ]);
-    if (!maps.length)
-      return NextResponse.json(
-        { success: false, error: "نقشه یافت نشد." },
-        { status: 404 },
-      );
+    const maps = await query(`SELECT * FROM Map_tbl WHERE MapID=?`, [Number(mapId)]);
+    if (!maps.length) {
+      return NextResponse.json({ success: false, error: "نقشه یافت نشد." }, { status: 404 });
+    }
     const map = maps[0];
 
     let dwgPath = map.DwgPath;
-    if (!dwgPath || !fs.existsSync(dwgPath))
-      dwgPath = fuzzyFindDwg(map.DwgPath, map);
+    if (!dwgPath || !fs.existsSync(dwgPath)) dwgPath = fuzzyFindDwg(map.DwgPath, map);
     if (!dwgPath || !fs.existsSync(dwgPath)) {
-      return NextResponse.json(
-        { success: false, error: "فایل DWG پیدا نشد: " + map.DwgPath },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, error: "فایل DWG پیدا نشد: " + map.DwgPath }, { status: 404 });
     }
     if (dwgPath !== map.DwgPath) {
-      await query("UPDATE Map_tbl SET DwgPath = ? WHERE MapID = ?", [
-        dwgPath,
-        map.MapID,
-      ]);
-      // ✅ همگام‌سازی شیء با دیتابیس تا hashFile روی مسیر_null_ خطا ندهد
+      await query("UPDATE Map_tbl SET DwgPath = ? WHERE MapID = ?", [dwgPath, map.MapID]);
       map.DwgPath = dwgPath;
     }
 
-    map.DwgPath = dwgPath; // ✅ همگام‌سازی شیء با DB تا hashFile روی مسیر قدیمی/null خطا ندهد
-
     const hash = hashFile(map.DwgPath);
-    if (!force && hash === map.FileHash)
+    if (!force && hash === map.FileHash) {
       return NextResponse.json({ success: true, unchanged: true });
+    }
 
     const rules = await query(`SELECT * FROM MapLayerRule_tbl`);
     const basePatterns = rules.filter((r) => r.IsBase).map((r) => r.LayerLike);
-    const { svg, texts, layers, center } = dxfToSvg(
-      ensureDxf(map.DwgPath),
-      basePatterns,
-    );
+    const { svg, texts, layers, center } = dxfToSvg(ensureDxf(map.DwgPath), basePatterns);
 
-    const isBase = (l) =>
-      rules.some((r) => r.IsBase && likeToRegex(r.LayerLike).test(l));
-    const isKnown = (l) =>
-      rules.some((r) => !r.IsBase && likeToRegex(r.LayerLike).test(l));
+    const isBase = (l) => rules.some((r) => r.IsBase && likeToRegex(r.LayerLike).test(l));
+    const isKnown = (l) => rules.some((r) => !r.IsBase && likeToRegex(r.LayerLike).test(l));
+
     const unknownLayers = layers.filter(
       (l) => !isBase(l) && !isKnown(l) && texts.some((t) => t.layer === l),
     );
 
-    // ✅✅ اصلاح اصلی: pJoin به‌جای path.join (ماژول path پیش‌فرض ایمپورت نشده بود → ReferenceError)
+    // ✅✅ غنی‌سازی برچسب‌های دستگاه:
+    //   محل      = نزدیک‌ترین متنِ لایه Location در شعاع
+    //   شماره    = عددِ بعد از # (اول هم‌گروه، بعد نزدیک‌ترین در شعاع)
+    //   توضیحات  = سایر متن‌های هم‌گروه (یا هم‌جوار) به‌جز خود برچسب و عدد #
+    const LOC_RX = new RegExp(process.env.MAP_LOCATION_LAYER || "Location", "i");
+    const RADIUS = Number(process.env.MAP_NEIGHBOR_RADIUS || 40);
+    const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+    const numOf = (t) => {
+      const m = String(t.text).match(/#(\d+)/);
+      return m ? m[1] : null;
+    };
+    const locTexts = texts.filter((t) => LOC_RX.test(t.layer || ""));
+
+    const enriched = texts.map((t) => {
+      const dr = rules.find((r) => !r.IsBase && likeToRegex(r.LayerLike).test(t.layer || ""));
+      if (!dr) return { ...t, assetNumber: null, specifications: "", location: "" };
+
+      let num = numOf(t);
+      let groupTexts = t.groupId
+        ? texts.filter((o) => o.groupId && o.groupId === t.groupId && o !== t)
+        : [];
+      if (!num && t.groupId) {
+        const g = groupTexts.find((o) => numOf(o));
+        if (g) num = numOf(g);
+      }
+      if (!num) {
+        let best = null;
+        let bd = Infinity;
+        for (const o of texts) {
+          if (!numOf(o)) continue;
+          const d = dist2(o, t);
+          if (d < bd) {
+            bd = d;
+            best = o;
+          }
+        }
+        if (best && bd <= RADIUS * RADIUS) num = numOf(best);
+      }
+      if (!groupTexts.length) {
+        groupTexts = texts.filter((o) => o !== t && dist2(o, t) <= RADIUS * RADIUS);
+      }
+      const specifications = groupTexts
+        .filter((o) => !numOf(o) && !LOC_RX.test(o.layer || ""))
+        .map((o) => o.text)
+        .join(" ")
+        .trim();
+
+      let location = "";
+      if (locTexts.length) {
+        let best = null;
+        let bd = Infinity;
+        for (const o of locTexts) {
+          const d = dist2(o, t);
+          if (d < bd) {
+            bd = d;
+            best = o;
+          }
+        }
+        if (best && bd <= RADIUS * RADIUS) location = best.text;
+      }
+      return { ...t, assetNumber: num, specifications, location };
+    });
+
+    // ✅ نوشتن SVG (رفع باگ path.join → pJoin)
     const dir = pJoin(process.cwd(), "public", "maps");
-if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-const version = (map.Version || 0) + 1;
-const svgName = `map_${map.MapID}_v${version}.svg`;
-fs.writeFileSync(pJoin(dir, svgName), svg, "utf8");
-// ✅ پاک‌کردن فایل SVG قبلی (حذف نسخهٔ قدیمی پس از ذخیرهٔ نسخهٔ جدید)
-if (map.SvgPath) {
-  try {
-    const oldFile = pJoin(process.cwd(), "public", String(map.SvgPath).replace(/^\//, ""));
-    if (fs.existsSync(oldFile) && oldFile !== pJoin(dir, svgName)) fs.unlinkSync(oldFile);
-  } catch {}
-}
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const version = (map.Version || 0) + 1;
+    const svgName = `map_${map.MapID}_v${version}.svg`;
+    fs.writeFileSync(pJoin(dir, svgName), svg, "utf8");
 
     await query(`DELETE FROM MapText_tbl WHERE MapID=?`, [map.MapID]);
-    for (const t of texts)
-      await query(
-        `INSERT INTO MapText_tbl (MapID, Layer, TagText, X, Y) VALUES (?,?,?,?,?)`,
-        [map.MapID, t.layer, t.text, t.x, t.y],
-      );
+    for (const t of texts) {
+      await query(`INSERT INTO MapText_tbl (MapID, Layer, TagText, X, Y) VALUES (?,?,?,?,?)`, [
+        map.MapID,
+        t.layer,
+        t.text,
+        t.x,
+        t.y,
+      ]);
+    }
     await query(
       `UPDATE Map_tbl SET FileHash=?, Version=?, SvgPath=?, ConvertedAt=GETDATE(), CenterX=?, CenterY=? WHERE MapID=?`,
       [hash, version, "/maps/" + svgName, center.x, center.y, map.MapID],
@@ -212,13 +251,17 @@ if (map.SvgPath) {
     );
     const assetTags = new Set(assets.map((a) => a.MapTag).filter(Boolean));
     const mapTags = new Set(texts.map((t) => t.text));
-    const isIgnore = (l) => {
-  const r = rules.find((x) => !x.IsBase && likeToRegex(x.LayerLike).test(l));
-  return !!r && String(r.DeviceType) === '__IGNORE__';
-};
-const newOnMap = texts
-  .filter((t) => isKnown(t.layer) && !isIgnore(t.layer) && !assetTags.has(t.text))
-  .map((t) => ({ text: t.text, layer: t.layer }));
+
+    const newOnMap = enriched
+      .filter((t) => isKnown(t.layer) && !assetTags.has(t.text))
+      .map((t) => ({
+        text: t.text,
+        layer: t.layer,
+        assetNumber: t.assetNumber,
+        specifications: t.specifications,
+        location: t.location,
+      }));
+
     const orphanInDb = assets
       .filter((a) => a.MapTag && !mapTags.has(a.MapTag))
       .map((a) => ({ assetId: a.AssetID, tag: a.MapTag }));
@@ -232,9 +275,6 @@ const newOnMap = texts
       version,
     });
   } catch (e) {
-    return NextResponse.json(
-      { success: false, error: e.message },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }

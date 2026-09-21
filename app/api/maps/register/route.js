@@ -1,6 +1,6 @@
 // maps/register/route.js
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
 
 export async function POST(request) {
   try {
@@ -8,13 +8,26 @@ export async function POST(request) {
     const ids = [];
     for (const it of items || []) {
       if (it.deactivate) {
-        await query(`UPDATE Asset_2_tbl SET IsActive=0 WHERE AssetID=?`, [Number(it.assetId)]); // هرگز حذف نمی‌شود
+        await query(`UPDATE Asset_2_tbl SET IsActive=0 WHERE AssetID=?`, [Number(it.assetId)]);
       } else if (it.assetId) {
         await query(`UPDATE Asset_2_tbl SET MapTag=? WHERE AssetID=?`, [it.text, Number(it.assetId)]);
         ids.push(Number(it.assetId));
       } else {
-        const r = await query(`INSERT INTO Asset_2_tbl (AssetName, Building, Block, Floor, Entrance, Location, AssetNumber, MapTag, IsActive) OUTPUT INSERTED.AssetID VALUES (?,?,?,?,?,?,?,?,1)`,
-          [it.deviceType, building, block || '', floor, it.entrance || null, it.location || null, it.assetNumber || null, it.text]);
+        const r = await query(
+          `INSERT INTO Asset_2_tbl (AssetName, Building, Block, Floor, Entrance, Location, AssetNumber, Specifications, MapTag, IsActive)
+           OUTPUT INSERTED.AssetID VALUES (?,?,?,?,?,?,?,?,?,1)`,
+          [
+            it.deviceType,
+            building,
+            block || "",
+            floor,
+            it.entrance || null,
+            it.location || null,
+            it.assetNumber != null ? Number(it.assetNumber) : null,
+            it.specifications || null,
+            it.text,
+          ],
+        );
         ids.push(r[0].AssetID);
       }
     }
