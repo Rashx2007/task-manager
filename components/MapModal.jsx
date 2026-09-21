@@ -154,7 +154,10 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [building, setBuilding] = useState(defaults.building || "");
   const [block, setBlock] = useState(defaults.block || "");
   const [floor, setFloor] = useState(defaults.floor || "");
-  const [deviceType, setDeviceType] = useState(defaults.deviceType || "");
+    const [typeOptions, setTypeOptions] = useState([]);
+  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [typesOpen, setTypesOpen] = useState(false);
+  const deviceType = selectedTypes.length === 1 ? selectedTypes[0] : "";
   const [map, setMap] = useState(null);
   const [rules, setRules] = useState([]);
   const [deviceTypes, setDeviceTypes] = useState([]);
@@ -174,7 +177,6 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [chosenDwg, setChosenDwg] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [assets, setAssets] = useState([]);
-  const [baseNames, setBaseNames] = useState([]);
   const [open, setOpen] = useState({ unknown: true, newOnMap: true, orphan: true });
   const toggleSec = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const [zoom, setZoom] = useState(1);
@@ -207,12 +209,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         if (d.success) setAssets(d.data || []);
       })
       .catch(() => {});
-    fetch("/api/base-info")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) setBaseNames((d.names || []).map((n) => n.AssetName));
-      })
-      .catch(() => {});
+    
   }, []);
 
   const distinct = (arr) =>
@@ -231,9 +228,16 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       ),
     [assets, building, block],
   );
-  const sugTypes = useMemo(() => distinct([...deviceTypes, ...baseNames]), [deviceTypes, baseNames]);
 
-  const fetchSvg = async (url) => {
+  useEffect(() => {
+    if (!typesOpen) return;
+    const h = (e) => {
+      if (!e.target.closest("[data-types-menu]")) setTypesOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [typesOpen]);
+
 
   const fetchSvg = async (url) => {
     try {
@@ -487,11 +491,24 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       if (fixed !== t.textContent) t.textContent = fixed;
       if (t.hasAttribute("data-tag")) t.setAttribute("data-tag", fixed);
     });
+    const present = [...box.querySelectorAll("g[data-layer]")].map((g) => g.getAttribute("data-layer"));
+    const types = [
+      ...new Set(
+        present
+          .map((l) => {
+            const r = ruleForLayer(rules, l);
+            return r ? r.DeviceType : null;
+          })
+          .filter(Boolean),
+      ),
+    ];
+    setTypeOptions(types);
     box.querySelectorAll("g[data-layer]").forEach((g) => {
       const l = g.getAttribute("data-layer");
       const isB = rules.some((r) => r.IsBase && likeTest(r.LayerLike, l));
       const r = ruleForLayer(rules, l);
-      g.style.display = isB || (r && (!deviceType || r.DeviceType === deviceType)) ? "" : "none";
+      g.style.display =
+        isB || (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ? "" : "none";
     });
     box.querySelectorAll("text[data-tag]").forEach((t) => {
       t.style.cursor = "pointer";
@@ -542,7 +559,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         svgEl.appendChild(g);
       }
     }
-  }, [svgText, rules, deviceType, center, map, centerMode]);
+  }, [svgText, rules, selectedTypes, center, map, centerMode]);
 
   useEffect(() => {
     const box = boxRef.current;
@@ -729,18 +746,45 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </label>
           <label className="text-xs font-bold">
             نوع دستگاه
-            <input
-              className={inp}
-              list="map-types"
-              value={deviceType}
-              onChange={(e) => setDeviceType(e.target.value)}
-              placeholder="(انتخاب یا تایپ)"
-            />
-            <datalist id="map-types">
-              {sugTypes.map((v) => (
-                <option key={v} value={v} />
-              ))}
-            </datalist>
+            <div className="relative" data-types-menu>
+              <button
+                type="button"
+                className={inp}
+                style={{ textAlign: "right" }}
+                onClick={() => setTypesOpen((o) => !o)}
+              >
+                {selectedTypes.length ? selectedTypes.join("، ") : "(همه)"}{" "}
+                <span style={{ float: "left" }}>▾</span>
+              </button>
+              {typesOpen && (
+                <div className="absolute z-30 mt-1 w-56 max-h-64 overflow-auto bg-white border border-gray-300 rounded shadow p-1">
+                  {typeOptions.length === 0 && (
+                    <div className="text-[11px] text-gray-500 p-1">لایه‌ای با نگاشت دستگاه نیست</div>
+                  )}
+                  {typeOptions.map((t) => (
+                    <label key={t} className="flex items-center gap-2 px-2 py-1 hover:bg-teal-50 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedTypes.includes(t)}
+                        onChange={() =>
+                          setSelectedTypes((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]))
+                        }
+                      />
+                      <span>{t}</span>
+                    </label>
+                  ))}
+                  <div className="border-t mt-1 pt-1">
+                    <button
+                      type="button"
+                      className="btn-primary px-2 py-0.5 text-[11px]"
+                      onClick={() => setSelectedTypes([])}
+                    >
+                      نمایش همه (پاک‌کردن تیک‌ها)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </label>
           <button className="btn-primary" onClick={() => load()}>
             بارگذاری
