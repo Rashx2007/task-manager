@@ -163,8 +163,21 @@ export default function TaskTable({
     if (onFiltersChange) onFiltersChange(draft != null ? {} : filters);
   }, [filters, onFiltersChange, draft]);
 
-  const fmtFa = (v) =>
-    v ? new Date(v).toLocaleString("fa-IR", { timeZone: "UTC" }) : "-";
+    const fmtFa = (v) => (v ? new Date(v).toLocaleString("fa-IR", { timeZone: "UTC" }) : "-");
+  const submitTip = (t) => {
+    if (!t.Submit_Date) return "زمان ثبت: -";
+    const d = new Date(t.Submit_Date);
+    const date = d.toLocaleDateString("fa-IR", { timeZone: "UTC" });
+    const isMidnight =
+      d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
+    if (isMidnight) return `زمان ثبت: ${date}`;
+    const time = d.toLocaleTimeString("fa-IR", {
+      timeZone: "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `زمان ثبت: ${date}\nساعت: ${time}`;
+  };
   const draftActive = draft != null;
   const centralDraft = isCentral(draft?.Building);
 
@@ -506,17 +519,11 @@ export default function TaskTable({
               }
               style={{ cursor: "pointer" }}
             >
-              <td>
-                <Tip tip={`زمان ثبت: ${fmtFa(t.Submit_Date)}`}>
-                  {startNumber + i + 1}
-                </Tip>
+                            <td>
+                <Tip tip={submitTip(t)}>{startNumber + i + 1}</Tip>
               </td>
-              <td>
-                <Tip
-                  tip={`ثبت: ${fmtFa(t.Submit_Date)}\nاولویت: ${t.Priorities || "-"}`}
-                >
-                  {t.TaskID}
-                </Tip>
+                            <td>
+                <Tip tip={`${submitTip(t)}\nاولویت: ${t.Priorities || "-"}`}>{t.TaskID}</Tip>
               </td>
               <td>
                 <Tip tip={assetSpec(t)}>{t.AssetName || "-"}</Tip>
