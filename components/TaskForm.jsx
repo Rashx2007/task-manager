@@ -88,6 +88,7 @@ export default function TaskForm({
     new Promise((resolve) => setCompleteAsk({ resolve }));
   const [functorName, setFunctorName] = useState("");
   const [assetQuery, setAssetQuery] = useState("");
+  const [subjectSugs, setSubjectSugs] = useState([]);
   const [form, setForm] = useState({
     TaskTtl: "",
     Descriptions: "",
@@ -220,6 +221,42 @@ export default function TaskForm({
       const a = assets.find((x) => String(x.AssetID) === String(form.AssetID));
       if (a) setAssetQuery(assetSpec(a));
     } else setAssetQuery("");
+  }, [form.AssetID, assets]);
+
+  // ✅ پیشنهاد موضوع بر اساس نوع دستگاه: سابقهٔ کارهای همان دستگاه + الگوهای رایج
+  useEffect(() => {
+    const a = assets.find((x) => String(x.AssetID) === String(form.AssetID));
+    const name = a ? a.AssetName : "";
+    if (!name) {
+      setSubjectSugs([]);
+      return;
+    }
+    const verbs = [
+      "کنترل",
+      "تعمیر",
+      "بازدید",
+      "شستشو",
+      "تعویض",
+      "بررسی",
+      "سرویس",
+      "نصب",
+      "راه‌اندازی",
+      "رفع نشتی",
+    ];
+    const combos = verbs.map((v) => `${v} ${name}`);
+    fetch(
+      `/api/load-data?type=daily&offset=0&limit=500&filters=${encodeURIComponent(
+        JSON.stringify({ AssetName: [name] }),
+      )}`,
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        const past = d.success
+          ? [...new Set((d.data || []).map((t) => t.TaskTtl).filter(Boolean))]
+          : [];
+        setSubjectSugs([...past, ...combos.filter((c) => !past.includes(c))]);
+      })
+      .catch(() => setSubjectSugs(combos));
   }, [form.AssetID, assets]);
 
   const handleChange = (e) => {
@@ -371,14 +408,20 @@ export default function TaskForm({
           {isEdit ? `ویرایش کار — کد: ${currentTaskId}` : "ثبت کار جدید"}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
+                    <div className="md:col-span-2">
             <label className="block text-sm font-bold mb-1">موضوع *</label>
             <input
               name="TaskTtl"
               value={form.TaskTtl}
               onChange={handleChange}
               className={inp}
+              list="subject-sugs"
             />
+            <datalist id="subject-sugs">
+              {subjectSugs.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </div>
           <div className="md:col-span-2">
             <div className="flex items-center justify-between mb-1">
