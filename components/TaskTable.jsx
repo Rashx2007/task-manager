@@ -269,7 +269,8 @@ export default function TaskTable({
   };
 
   const isChecked = (key, v) => staged == null || staged.has(v);
-  const allChecked = (key) => staged == null;
+  const allChecked = (key) =>
+    staged == null || (shownValues.length > 0 && shownValues.every((v) => staged.has(v)));
   const toggleFilterValue = (key, value) => {
     setStaged((prev) => {
       const base = prev == null ? new Set(menuValues || []) : new Set(prev);
@@ -388,7 +389,9 @@ export default function TaskTable({
     ? COLUMNS.find((c) => c.key === menu.key) ||
     PLACE_COLS.find((c) => c.key === menu.key)
     : null;
-    const shownValues = menuValues || [];
+    const shownValues = !menuQuery
+    ? menuValues || []
+    : (menuValues || []).filter((v) => String(v).includes(menuQuery));
   
 
   return (
