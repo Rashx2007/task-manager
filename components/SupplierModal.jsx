@@ -4,7 +4,6 @@ import DatePicker, { DateObject } from "react-multi-date-picker";
 import persian from "react-date-object/calendars/persian";
 import persian_fa from "react-date-object/locales/persian_fa";
 
-// ✅ گزینه‌ها از دیتابیس می‌آیند، ولی ترتیب نمایش همیشه ثابت و برابر این فهرست است:
 const STATUS_ORDER = [
   "لغو",
   "درخواست کالا و خدمات",
@@ -32,14 +31,14 @@ const fromPicker = (d) => {
   const p = (n) => String(n).padStart(2, "0");
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 };
+const todayStr = () => fromPicker(new DateObject({ calendar: persian, locale: persian_fa }));
 
 export default function SupplierModal({ taskId, onClose, onSaved }) {
   const [form, setForm] = useState(null);
-  const [persons, setPersons] = useState([]);
+  const [buyers, setBuyers] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // ✅ شماره خرید: سه قسمت، هر کدام حداکثر ۵ رقم
   const [regParts, setRegParts] = useState(["", "", ""]);
   const regEditedRef = useRef(false);
 
@@ -57,9 +56,9 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
         if (d.success) setForm(d.data || {});
       } catch {}
       try {
-        const r = await fetch("/api/persons");
-        const pd = await r.json();
-        if (pd.success) setPersons(pd.data || []);
+        const r = await fetch("/api/buyers");
+        const bd = await r.json();
+        if (bd.success) setBuyers(bd.buyers || []);
       } catch {}
       try {
         const s = await fetch("/api/purchase-statuses");
@@ -69,13 +68,15 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
     })();
   }, [taskId]);
 
-  // ✅ تجزیهٔ مقدار قبلی RegisterNumber به سه خانه (تا وقتی کاربر ویرایش نکرده باشد)
+  // ✅ پر شدن سه خانه از سه ستون عددی دیتابیس
   useEffect(() => {
     if (regEditedRef.current) return;
-    const cur = String(form?.RegisterNumber ?? "");
-    const parts = cur.split(/[-/]/);
-    setRegParts([parts[0] || "", parts[1] || "", parts[2] || ""]);
-  }, [form?.RegisterNumber]);
+    setRegParts([
+      form?.RegisterNumber1 != null ? String(form.RegisterNumber1) : "",
+      form?.RegisterNumber2 != null ? String(form.RegisterNumber2) : "",
+      form?.RegisterNumber3 != null ? String(form.RegisterNumber3) : "",
+    ]);
+  }, [form?.RegisterNumber1, form?.RegisterNumber2, form?.RegisterNumber3]);
 
   const changeRegPart = (i, v) => {
     regEditedRef.current = true;
@@ -86,17 +87,8 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
       return n;
     });
   };
-  const regNumberValue = () => regParts.filter((x) => x !== "").join("/");
 
-  // ✅ کشِ گزینه‌ها تا هر ضربه کلید، صدها <option> را دوباره نسازد (رفع کندی تایپ)
-  const personOptions = useMemo(
-    () =>
-      persons.map((p) => {
-        const label = typeof p === "string" ? p : p.PersonName || p.FullName || p.Name || "";
-        return label ? <option key={label} value={label} /> : null;
-      }),
-    [persons],
-  );
+  const buyerOptions = useMemo(() => buyers.map((b) => <option key={b} value={b} />), [buyers]);
   const orderedStatuses = useMemo(
     () => [
       ...STATUS_ORDER.filter((s) => statuses.includes(s)),
@@ -104,15 +96,17 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
     ],
     [statuses],
   );
-  const statusOptions = useMemo(
-    () => orderedStatuses.map((s) => <option key={s} value={s}>{s}</option>),
-    [orderedStatuses],
-  );
+  const statusOptions = useMemo(() => orderedStatuses.map((s) => <option key={s} value={s}>{s}</option>), [orderedStatuses]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const payload = { ...form, RegisterNumber: regNumberValue() };
+      const payload = {
+        ...form,
+        RegisterNumber1: regParts[0] || "",
+        RegisterNumber2: regParts[1] || "",
+        RegisterNumber3: regParts[2] || "",
+      };
       const res = await fetch("/api/supplier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,11 +114,18 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
       });
       const d = await res.json();
       if (d.success) {
+        if (payload.BuyerName) {
+          fetch("/api/buyers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: payload.BuyerName }),
+          }).catch(() => {});
+        }
         alert("ذخیره شد.");
         if (onSaved) onSaved();
         onClose();
-      } else alert("خطا: " + d.error);
-    } catch {
+      } else alert("خطا: " + (d.error || "نامشخص"));
+    } catch (e) {
       alert("خطا در ارتباط با سرور");
     }
     setSaving(false);
@@ -132,6 +133,12 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
 
   const inp = "search-input w-full";
   if (!form) return null;
+
+  const todayButton = (field) => (
+    <button type="button" className="dp-today" onClick={() => setForm({ ...form, [field]: todayStr() })}>
+      امروز
+    </button>
+  );
 
   return (
     <div
@@ -144,7 +151,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[640px] max-w-[95vw] max-h-[92vh] overflow-y-auto p-6">
+      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[640px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">تأمین‌کننده / خرید — کد کار: {taskId}</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -161,32 +168,32 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-2">شماره خرید</label>
+            <label className="block text-sm font-bold mb-1">شماره خرید</label>
             <div className="flex items-center gap-1 md:gap-2">
               <input
-                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 py-2 text-center"
+                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 text-center"
                 dir="ltr"
                 inputMode="numeric"
                 maxLength={5}
-                value={regParts[0] || ""}
+                value={regParts[0]}
                 onChange={(e) => changeRegPart(0, e.target.value)}
               />
-              <span className="shrink-0 font-bold text-lg">-</span>
+              <span className="shrink-0 font-bold">-</span>
               <input
-                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 py-2 text-center"
+                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 text-center"
                 dir="ltr"
                 inputMode="numeric"
                 maxLength={5}
-                value={regParts[1] || ""}
+                value={regParts[1]}
                 onChange={(e) => changeRegPart(1, e.target.value)}
               />
-              <span className="shrink-0 font-bold text-lg">-</span>
+              <span className="shrink-0 font-bold">-</span>
               <input
-                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 py-2 text-center"
+                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 text-center"
                 dir="ltr"
                 inputMode="numeric"
                 maxLength={5}
-                value={regParts[2] || ""}
+                value={regParts[2]}
                 onChange={(e) => changeRegPart(2, e.target.value)}
               />
             </div>
@@ -201,19 +208,21 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
               locale={persian_fa}
               format="YYYY/MM/DD"
               inputClass={inp}
-            />
+            >
+              {todayButton("RequestDate")}
+            </DatePicker>
           </div>
 
           <div>
             <label className="block text-sm font-bold mb-1">کارپرداز</label>
             <input
               className={inp}
-              list="supplier-persons"
-              value={form.Agent ?? ""}
-              onChange={(e) => setForm({ ...form, Agent: e.target.value })}
+              list="supplier-buyers"
+              value={form.BuyerName ?? ""}
+              onChange={(e) => setForm({ ...form, BuyerName: e.target.value })}
               placeholder="انتخاب از لیست یا تایپ نام جدید..."
             />
-            <datalist id="supplier-persons">{personOptions}</datalist>
+            <datalist id="supplier-buyers">{buyerOptions}</datalist>
           </div>
 
           <div>
@@ -240,7 +249,9 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
               locale={persian_fa}
               format="YYYY/MM/DD"
               inputClass={inp}
-            />
+            >
+              {todayButton("CreditDate")}
+            </DatePicker>
           </div>
         </div>
 

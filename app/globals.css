@@ -626,17 +626,24 @@ body {
   transform: translateY(-1px);
 }
 
-.row-action-done {
-  background: #16a34a;
-}
+.row-action-done { background: #16a34a; }
+.row-action-copy { background: #f59e0b; }
+.row-action-edit { background: #3b82f6; }
 
-.row-action-copy {
-  background: #f59e0b;
+/* ✅ دکمهٔ «امروز» داخل تقویم DatePicker */
+.dp-today {
+  margin-top: 6px;
+  width: 100%;
+  border: none;
+  background: #1095ad;
+  color: #fff;
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
-
-.row-action-edit {
-  background: #3b82f6;
-}
+.dp-today:hover { background: #0d7f93; }
 
 /* ✅ نوار صفحه‌بندی: فاصلهٔ بالا/پایین متقارن + خط جداکنندهٔ ظریف از جدول */
 .pager-bar {
