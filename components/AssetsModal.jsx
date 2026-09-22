@@ -138,7 +138,7 @@ export default function AssetsModal({
       const r = await fetch("/api/assets");
       const d = await r.json();
       if (d.success) setAll(d.data || []);
-    } catch {}
+    } catch { }
   }, []);
   const loadBase = useCallback(async () => {
     try {
@@ -146,7 +146,7 @@ export default function AssetsModal({
       const d = await r.json();
       if (d.success)
         setBase({ names: d.names || [], systems: d.systems || [] });
-    } catch {}
+    } catch { }
   }, []);
   useEffect(() => {
     loadAll();
@@ -281,6 +281,16 @@ export default function AssetsModal({
     setEditingId(a.AssetID);
     setForm({ ...a, FolderPath: a.FolderPath || "" });
   };
+  const toEnDigits = (s) =>
+    String(s ?? "")
+      .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+      .replace(/[٠-٩]/g, (d) => "٠١٣٤٥٧٨٩".indexOf(d));
+  const numOrNull = (s) => {
+    const t = toEnDigits(s).trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isNaN(n) ? null : n;
+  };
   const save = async () => {
     if (!form.AssetName || !form.Building) {
       alert("نام دستگاه و ساختمان الزامی است.");
@@ -288,17 +298,16 @@ export default function AssetsModal({
     }
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        AssetNumber: numOrNull(form.AssetNumber),
+        PropertyCode: numOrNull(form.PropertyCode),
+        SerialNumber: numOrNull(form.SerialNumber),
+        Floor: numOrNull(form.Floor),
+      };
       const res = editingId
-        ? await fetch(`/api/assets/${editingId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
-          })
-        : await fetch("/api/assets", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
-          });
+        ? await fetch(`/api/assets/${editingId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        : await fetch("/api/assets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const d = await res.json();
       if (d.success) {
         alert("ذخیره شد.");
@@ -313,7 +322,7 @@ export default function AssetsModal({
               }),
             });
           }
-        } catch {}
+        } catch { }
         if (onAssetSaved) onAssetSaved(newId, form);
         if (preset) {
           onClose();
@@ -335,7 +344,7 @@ export default function AssetsModal({
       const d = await r.json();
       if (d.success) loadAll();
       else alert(d.error);
-    } catch {}
+    } catch { }
   };
   const addBase = async (kind, value) => {
     const r = await fetch("/api/base-info", {
@@ -711,7 +720,7 @@ export default function AssetsModal({
                 >ب
                   {saving ? "..." : "ذخیره"}
                 </button>
-                                <button
+                <button
                   className="btn-danger"
                   onClick={() => {
                     if (preset) {
