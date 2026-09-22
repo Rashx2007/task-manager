@@ -149,11 +149,18 @@ export default function TaskTable({
   const [menuValues, setMenuValues] = useState(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuQuery, setMenuQuery] = useState("");
+  const [staged, setStaged] = useState(null);
+
+  // بعد از stateهای موجود، این‌ها رو اضافه کنید:
+  const [pendingFilters, setPendingFilters] = useState(null); // null یعنی از filters اصلی استفاده کن
+  const [originalFilters, setOriginalFilters] = useState(null); // برای ذخیره وضعیت قبل از باز کردن منو
 
   useEffect(() => {
     const handler = (e) => {
-      if (!e.target.closest(".col-menu") && !e.target.closest(".col-menu-btn"))
+      if (!e.target.closest(".col-menu") && !e.target.closest(".col-menu-btn")) {
         setMenu(null);
+        setStaged(null);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -163,7 +170,7 @@ export default function TaskTable({
     if (onFiltersChange) onFiltersChange(draft != null ? {} : filters);
   }, [filters, onFiltersChange, draft]);
 
-    const fmtFa = (v) => (v ? new Date(v).toLocaleString("fa-IR", { timeZone: "UTC" }) : "-");
+  const fmtFa = (v) => (v ? new Date(v).toLocaleString("fa-IR", { timeZone: "UTC" }) : "-");
   const submitTip = (t) => {
     if (!t.Submit_Date) return "زمان ثبت: -";
     const d = new Date(t.Submit_Date);
@@ -227,9 +234,13 @@ export default function TaskTable({
         }),
       });
       const d = await res.json();
-      setMenuValues(d.success ? d.values : []);
+      const vals = d.success ? d.values : [];
+      setMenuValues(vals);
+      const cur = filters[col.key];
+      setStaged(cur == null ? null : new Set(cur));
     } catch {
       setMenuValues([]);
+      setStaged(null);
     }
     setMenuLoading(false);
   };
@@ -237,16 +248,10 @@ export default function TaskTable({
   const openMenu = (e, col) => {
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
-    const next =
-      menu && menu.key === col.key
-        ? null
-        : {
-            key: col.key,
-            y: Math.min(r.bottom + 2, window.innerHeight - 340),
-            right: window.innerWidth - r.right,
-          };
+    const next = (menu && menu.key === col.key) ? null : { key: col.key, y: Math.min(r.bottom + 2, window.innerHeight - 480), right: window.innerWidth - r.right };
     setMenuQuery("");
     setMenu(next);
+    if (!next) setStaged(null);
     if (next && (col.filterable || col.assignable)) loadMenuValues(col);
   };
 
@@ -263,23 +268,39 @@ export default function TaskTable({
     }
   };
 
-  const isChecked = (key, v) => filters[key] == null || filters[key].has(v);
-  const allChecked = (key) => filters[key] == null;
+  const isChecked = (key, v) => staged == null || staged.has(v);
+  const allChecked = (key) => staged == null;
   const toggleFilterValue = (key, value) => {
-    setFilters((prev) => {
-      let cur = prev[key];
-      if (cur == null) cur = new Set(menuValues || []);
-      const next = new Set(cur);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return {
-        ...prev,
-        [key]: menuValues && next.size === menuValues.length ? null : next,
-      };
+    setStaged((prev) => {
+      const base = prev == null ? new Set(menuValues || []) : new Set(prev);
+      if (base.has(value)) base.delete(value);
+      else base.add(value);
+      return base;
     });
   };
-  const setAllChecked = (key, checked) =>
-    setFilters((prev) => ({ ...prev, [key]: checked ? null : new Set() }));
+  const setAllChecked = (key, checked) => setStaged(checked ? null : new Set());
+  const applyStaged = (key) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]:
+        staged == null ||
+          staged.size === 0 ||
+          (menuValues && staged.size === menuValues.length)
+          ? null
+          : staged,
+    }));
+    setMenu(null);
+    setStaged(null);
+  };
+  const cancelMenu = () => {
+    setMenu(null);
+    setStaged(null);
+  };
+  const onSearchChange = (v) => {
+    setMenuQuery(v);
+    if (!v) setStaged(null);
+    else setStaged(new Set((menuValues || []).filter((x) => String(x).includes(v))));
+  };
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
   const sorted = [...(tasks || [])].sort((a, b) => {
@@ -365,11 +386,10 @@ export default function TaskTable({
 
   const menuCol = menu
     ? COLUMNS.find((c) => c.key === menu.key) ||
-      PLACE_COLS.find((c) => c.key === menu.key)
+    PLACE_COLS.find((c) => c.key === menu.key)
     : null;
-  const shownValues = (menuValues || []).filter(
-    (v) => !menuQuery || String(v).includes(menuQuery),
-  );
+    const shownValues = menuValues || [];
+  
 
   return (
     <div className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
@@ -519,10 +539,10 @@ export default function TaskTable({
               }
               style={{ cursor: "pointer" }}
             >
-                            <td>
+              <td>
                 <Tip tip={submitTip(t)}>{startNumber + i + 1}</Tip>
               </td>
-                            <td>
+              <td>
                 <Tip tip={`${submitTip(t)}\nاولویت: ${t.Priorities || "-"}`}>{t.TaskID}</Tip>
               </td>
               <td>
@@ -646,12 +666,7 @@ export default function TaskTable({
                 </div>
                 {menuCol.assignable ? (
                   <>
-                    <input
-                      className="col-menu-search"
-                      placeholder="تایپ برای جستجو در گزینه‌ها…"
-                      value={menuQuery}
-                      onChange={(e) => setMenuQuery(e.target.value)}
-                    />
+                                     <input className="col-menu-search" placeholder="تایپ = تیک‌زدن منطبق‌ها…" value={menuQuery} onChange={(e) => onSearchChange(e.target.value)} />
                     {menuLoading && (
                       <div className="col-menu-empty">
                         در حال خواندن گزینه‌ها…
@@ -767,14 +782,21 @@ export default function TaskTable({
                 )}
               </>
             )}
-            <div className="col-menu-section" style={{ borderBottom: "none" }}>
-              <button
-                type="button"
-                onClick={() => setMenu(null)}
-                style={{ background: "#e5e7eb" }}
-              >
-                بستن
-              </button>
+            <div className="col-menu-footer">
+              {menuCol.filterable ? (
+                <>
+                  <button type="button" className="col-menu-ok" onClick={() => applyStaged(menuCol.key)}>
+                    اعمال فیلتر
+                  </button>
+                  <button type="button" className="col-menu-cancel" onClick={cancelMenu}>
+                    انصراف
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="col-menu-cancel" onClick={cancelMenu}>
+                  بستن
+                </button>
+              )}
             </div>
           </div>,
           document.body,
