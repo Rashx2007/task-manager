@@ -9,7 +9,6 @@ const DB = process.env.DB_NAME || "WorkDB";
 
 const esc = (p) => String(p).replace(/'/g, "''");
 
-// ✅ استخراج مقاوم پیام خطا از msnodesql (آرایه/شیء/رشته) تا هرگز undefined نباشد
 const errMsg = (e) => {
   if (!e) return "خطای نامشخص";
   if (Array.isArray(e))
@@ -30,7 +29,7 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: "فایل .bak یافت نشد: " + full }, { status: 404 });
     }
 
-    // ✅ همه در یک batch روی یک اتصال: تک‌کاربره → RESTORE با REPLACE → چندنکاره
+    // ✅ یک batch روی همان اتصالِ lib/db (همان درایور معتبر بقیهٔ برنامه)
     const batch =
       `ALTER DATABASE [${DB}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;\n` +
       `RESTORE DATABASE [${DB}] FROM DISK = '${esc(full)}' WITH REPLACE, STATS = 10;\n` +
@@ -39,7 +38,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, message: "بازگردانی با موفقیت انجام شد." });
   } catch (e) {
-    // ✅ تلاش ایمن برای برگرداندن حالت چندنکاره اگر batch نیمه‌کاره ماند
     try {
       await query(`ALTER DATABASE [${DB}] SET MULTI_USER;`);
     } catch {}
