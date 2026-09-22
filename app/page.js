@@ -526,7 +526,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="p-3 flex-1 min-h-0 flex flex-col">
+      <div className="p-3 pb-6 flex-1 min-h-0 flex flex-col">
         <FullHeight>
           <TaskTable
             tasks={tasks}
