@@ -44,7 +44,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
 
   const toEnDigits = (s) =>
     String(s ?? "")
-      .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+      .replace(/[۰-۹]/g, (d) => "۰۱۳۴۵۶۷۸۹".indexOf(d))
       .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
   const digitsOnly = (s, max) => toEnDigits(s).replace(/\D/g, "").slice(0, max);
 
@@ -68,15 +68,13 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
     })();
   }, [taskId]);
 
-  // ✅ پر شدن سه خانه از سه ستون عددی دیتابیس
+  // ✅ تجزیهٔ RegisterNumber تک‌ستونی به سه خانه (با - یا /)
   useEffect(() => {
     if (regEditedRef.current) return;
-    setRegParts([
-      form?.RegisterNumber1 != null ? String(form.RegisterNumber1) : "",
-      form?.RegisterNumber2 != null ? String(form.RegisterNumber2) : "",
-      form?.RegisterNumber3 != null ? String(form.RegisterNumber3) : "",
-    ]);
-  }, [form?.RegisterNumber1, form?.RegisterNumber2, form?.RegisterNumber3]);
+    const cur = String(form?.RegisterNumber ?? "");
+    const parts = cur.split(/[-/]/);
+    setRegParts([parts[0] || "", parts[1] || "", parts[2] || ""]);
+  }, [form?.RegisterNumber]);
 
   const changeRegPart = (i, v) => {
     regEditedRef.current = true;
@@ -86,6 +84,26 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
       n[i] = clean;
       return n;
     });
+  };
+  const regNumberValue = () => regParts.filter((x) => x !== "").join("-");
+
+  // ✅ کارپرداز جدید: به‌محض بلور، پرسش و در صورت تأیید ذخیره در Buyer_tbl
+  const handleBuyerBlur = async () => {
+    const name = String(form?.Buyer ?? "").trim();
+    if (!name || buyers.includes(name)) return;
+    if (!confirm(`کارپرداز «${name}» در فهرست نیست؛ در دیتابیس ذخیره شود؟`)) return;
+    try {
+      const res = await fetch("/api/buyers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const d = await res.json();
+      if (d.success) setBuyers((b) => [...b, name].sort((a, c) => a.localeCompare(c, "fa")));
+      else alert("خطا: " + (d.error || "نامشخص"));
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
   };
 
   const buyerOptions = useMemo(() => buyers.map((b) => <option key={b} value={b} />), [buyers]);
@@ -101,12 +119,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
   const save = async () => {
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        RegisterNumber1: regParts[0] || "",
-        RegisterNumber2: regParts[1] || "",
-        RegisterNumber3: regParts[2] || "",
-      };
+      const payload = { ...form, RegisterNumber: regNumberValue() };
       const res = await fetch("/api/supplier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,18 +127,11 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
       });
       const d = await res.json();
       if (d.success) {
-        if (payload.BuyerName) {
-          fetch("/api/buyers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: payload.BuyerName }),
-          }).catch(() => {});
-        }
         alert("ذخیره شد.");
         if (onSaved) onSaved();
         onClose();
       } else alert("خطا: " + (d.error || "نامشخص"));
-    } catch (e) {
+    } catch {
       alert("خطا در ارتباط با سرور");
     }
     setSaving(false);
@@ -218,8 +224,9 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
             <input
               className={inp}
               list="supplier-buyers"
-              value={form.BuyerName ?? ""}
-              onChange={(e) => setForm({ ...form, BuyerName: e.target.value })}
+              value={form.Buyer ?? ""}
+              onChange={(e) => setForm({ ...form, Buyer: e.target.value })}
+              onBlur={handleBuyerBlur}
               placeholder="انتخاب از لیست یا تایپ نام جدید..."
             />
             <datalist id="supplier-buyers">{buyerOptions}</datalist>
@@ -243,14 +250,14 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
           <div>
             <label className="block text-sm font-bold mb-1">تاریخ تأمین اعتبار</label>
             <DatePicker
-              value={toPicker(form.CreditDate)}
-              onChange={(d) => setForm({ ...form, CreditDate: fromPicker(d) })}
+              value={toPicker(form.FundingDate)}
+              onChange={(d) => setForm({ ...form, FundingDate: fromPicker(d) })}
               calendar={persian}
               locale={persian_fa}
               format="YYYY/MM/DD"
               inputClass={inp}
             >
-              {todayButton("CreditDate")}
+              {todayButton("FundingDate")}
             </DatePicker>
           </div>
         </div>
