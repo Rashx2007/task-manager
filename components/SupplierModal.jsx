@@ -1,5 +1,8 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import DatePicker, { DateObject } from "react-multi-date-picker";
+import persian from "react-date-object/calendars/persian";
+import persian_fa from "react-date-object/locales/persian_fa";
 
 // ✅ گزینه‌ها از دیتابیس می‌آیند، ولی ترتیب نمایش همیشه ثابت و برابر این فهرست است:
 const STATUS_ORDER = [
@@ -15,6 +18,21 @@ const STATUS_ORDER = [
   "نهایی",
 ];
 
+const toPicker = (wallStr) => {
+  if (!wallStr) return null;
+  const m = String(wallStr).match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d+))?/);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  if (isNaN(d.getTime())) return null;
+  return new DateObject({ date: d, calendar: persian, locale: persian_fa });
+};
+const fromPicker = (d) => {
+  if (!d) return "";
+  const dt = d.toDate();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+};
+
 export default function SupplierModal({ taskId, onClose, onSaved }) {
   const [form, setForm] = useState(null);
   const [persons, setPersons] = useState([]);
@@ -28,7 +46,8 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
   const toEnDigits = (s) =>
     String(s ?? "")
       .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
-      .replace(/[٠-٩]/g, (d) => "٠١٣٤٥٧٨٩".indexOf(d));
+      .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  const digitsOnly = (s, max) => toEnDigits(s).replace(/\D/g, "").slice(0, max);
 
   useEffect(() => {
     (async () => {
@@ -60,15 +79,35 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
 
   const changeRegPart = (i, v) => {
     regEditedRef.current = true;
-    const clean = toEnDigits(v).replace(/\D/g, "").slice(0, 5);
+    const clean = digitsOnly(v, 5);
     setRegParts((p) => {
       const n = [...p];
       n[i] = clean;
       return n;
     });
   };
-
   const regNumberValue = () => regParts.filter((x) => x !== "").join("/");
+
+  // ✅ کشِ گزینه‌ها تا هر ضربه کلید، صدها <option> را دوباره نسازد (رفع کندی تایپ)
+  const personOptions = useMemo(
+    () =>
+      persons.map((p) => {
+        const label = typeof p === "string" ? p : p.PersonName || p.FullName || p.Name || "";
+        return label ? <option key={label} value={label} /> : null;
+      }),
+    [persons],
+  );
+  const orderedStatuses = useMemo(
+    () => [
+      ...STATUS_ORDER.filter((s) => statuses.includes(s)),
+      ...statuses.filter((s) => !STATUS_ORDER.includes(s)).sort((a, b) => a.localeCompare(b, "fa")),
+    ],
+    [statuses],
+  );
+  const statusOptions = useMemo(
+    () => orderedStatuses.map((s) => <option key={s} value={s}>{s}</option>),
+    [orderedStatuses],
+  );
 
   const save = async () => {
     setSaving(true);
@@ -91,13 +130,6 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
     setSaving(false);
   };
 
-  const orderedStatuses = [
-    ...STATUS_ORDER.filter((s) => statuses.includes(s)),
-    ...statuses
-      .filter((s) => !STATUS_ORDER.includes(s))
-      .sort((a, b) => a.localeCompare(b, "fa")),
-  ];
-
   const inp = "search-input w-full";
   if (!form) return null;
 
@@ -112,48 +144,45 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[640px] max-w-[95vw] p-6">
-        <h3 className="text-lg font-bold mb-4">
-          تأمین‌کننده / خرید — کد کار: {taskId}
-        </h3>
+      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[640px] max-w-[95vw] max-h-[92vh] overflow-y-auto p-6">
+        <h3 className="text-lg font-bold mb-4">تأمین‌کننده / خرید — کد کار: {taskId}</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-bold mb-1">
-              شماره درخواست
-            </label>
+            <label className="block text-sm font-bold mb-1">شماره درخواست</label>
             <input
-              className={inp}
+              className={inp + " text-center"}
+              dir="ltr"
+              inputMode="numeric"
+              maxLength={5}
               value={form.RequestNumber ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, RequestNumber: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, RequestNumber: digitsOnly(e.target.value, 5) })}
             />
           </div>
 
           <div>
             <label className="block text-sm font-bold mb-2">شماره خرید</label>
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 md:gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <input
-                className="search-input w-full md:w-24 px-3 py-2 text-center font-mono"
+                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 py-2 text-center"
                 dir="ltr"
                 inputMode="numeric"
                 maxLength={5}
                 value={regParts[0] || ""}
                 onChange={(e) => changeRegPart(0, e.target.value)}
               />
-              <span className="font-bold text-lg hidden md:inline">-</span>
+              <span className="shrink-0 font-bold text-lg">-</span>
               <input
-                className="search-input w-full md:w-24 px-3 py-2 text-center font-mono"
+                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 py-2 text-center"
                 dir="ltr"
                 inputMode="numeric"
                 maxLength={5}
                 value={regParts[1] || ""}
                 onChange={(e) => changeRegPart(1, e.target.value)}
               />
-              <span className="font-bold text-lg hidden md:inline">-</span>
+              <span className="shrink-0 font-bold text-lg">-</span>
               <input
-                className="search-input w-full md:w-24 px-3 py-2 text-center font-mono"
+                className="search-input flex-1 min-w-0 md:max-w-[7rem] px-2 py-2 text-center"
                 dir="ltr"
                 inputMode="numeric"
                 maxLength={5}
@@ -164,15 +193,14 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-1">
-              تاریخ درخواست
-            </label>
-            <input
-              className={inp}
-              value={form.RequestDate ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, RequestDate: e.target.value })
-              }
+            <label className="block text-sm font-bold mb-1">تاریخ درخواست</label>
+            <DatePicker
+              value={toPicker(form.RequestDate)}
+              onChange={(d) => setForm({ ...form, RequestDate: fromPicker(d) })}
+              calendar={persian}
+              locale={persian_fa}
+              format="YYYY/MM/DD"
+              inputClass={inp}
             />
           </div>
 
@@ -185,13 +213,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
               onChange={(e) => setForm({ ...form, Agent: e.target.value })}
               placeholder="انتخاب از لیست یا تایپ نام جدید..."
             />
-            <datalist id="supplier-persons">
-              {persons.map((p) => {
-                const label =
-                  typeof p === "string" ? p : p.FullName || p.Name || String(p);
-                return <option key={label} value={label} />;
-              })}
-            </datalist>
+            <datalist id="supplier-persons">{personOptions}</datalist>
           </div>
 
           <div>
@@ -202,11 +224,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
               onChange={(e) => setForm({ ...form, Status: e.target.value })}
             >
               <option value="">(انتخاب کنید)</option>
-              {orderedStatuses.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+              {statusOptions}
               {form.Status && !orderedStatuses.includes(form.Status) && (
                 <option value={form.Status}>{form.Status}</option>
               )}
@@ -214,13 +232,14 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-1">
-              تاریخ تأمین اعتبار
-            </label>
-            <input
-              className={inp}
-              value={form.CreditDate ?? ""}
-              onChange={(e) => setForm({ ...form, CreditDate: e.target.value })}
+            <label className="block text-sm font-bold mb-1">تاریخ تأمین اعتبار</label>
+            <DatePicker
+              value={toPicker(form.CreditDate)}
+              onChange={(d) => setForm({ ...form, CreditDate: fromPicker(d) })}
+              calendar={persian}
+              locale={persian_fa}
+              format="YYYY/MM/DD"
+              inputClass={inp}
             />
           </div>
         </div>
