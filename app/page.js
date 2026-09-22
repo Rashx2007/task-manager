@@ -546,7 +546,7 @@ export default function Home() {
             onFiltersChange={handleFiltersChange}
           />
         </FullHeight>
-        <div className="pager-bar shrink-0 flex items-center justify-center gap-2 pt-2 pb-1">
+        <div className="pager-bar shrink-0 flex items-center justify-center gap-2 py-2">
           <button
             type="button"
             className="btn-primary px-3 py-1 text-xs"
