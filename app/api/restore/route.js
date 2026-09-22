@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { query } from "@/lib/db";
+import { queryMaster } from "@/lib/db";
 
 const ROOT = process.env.DB_BACKUP_ROOT || "F:\\(Task)\\Projects\\DBBackups";
 const DB = process.env.DB_NAME || "WorkDB";
@@ -29,17 +29,18 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: "فایل .bak یافت نشد: " + full }, { status: 404 });
     }
 
-    // ✅ یک batch روی همان اتصالِ lib/db (همان درایور معتبر بقیهٔ برنامه)
+    // ✅ از master اجرا می‌شود تا وضعیت SINGLE_USER هرگز اتصالِ خودِ عملیات را قطع نکند
     const batch =
       `ALTER DATABASE [${DB}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;\n` +
       `RESTORE DATABASE [${DB}] FROM DISK = '${esc(full)}' WITH REPLACE, STATS = 10;\n` +
       `ALTER DATABASE [${DB}] SET MULTI_USER;`;
-    await query(batch);
+    await queryMaster(batch);
 
     return NextResponse.json({ success: true, message: "بازگردانی با موفقیت انجام شد." });
   } catch (e) {
+    // ✅ تلاش ایمن برای خروج از SINGLE_USER حتی اگر batch شکست خورد
     try {
-      await query(`ALTER DATABASE [${DB}] SET MULTI_USER;`);
+      await queryMaster(`ALTER DATABASE [${DB}] SET MULTI_USER WITH ROLLBACK IMMEDIATE;`);
     } catch {}
     return NextResponse.json({ success: false, error: errMsg(e) }, { status: 500 });
   }
