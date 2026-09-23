@@ -414,23 +414,27 @@ export default function Home() {
   };
 
   // ✅ دکمهٔ پوشه ضمائم: بازکردن مستقیم پوشه در ویندوز (بدون مودال)
-  const openFolderDirect = async (t) => {
+    const openFolderDirect = async (t) => {
     try {
       const res = await fetch(`/api/folder?taskId=${t.TaskID}`);
       const d = await res.json();
-      const folder = d?.data?.FolderPath || "";
-      const file = d?.data?.FileName || "";
+      const folder = String(d?.data?.FolderPath || "").trim();
+      const file = String(d?.data?.FileName || "").trim();
+
+      // ✅ اولویت فقط با خودِ پوشه است؛ اگر پوشه نبود، پوشهٔ حاوی فایل (نه خود فایل)
       let p = folder;
-      if (file)
-        p = /^([A-Za-z]:[\/\\])/.test(file)
-          ? file
-          : folder
-            ? folder.replace(/[\/\\]$/, "") + "\\" + file
-            : file;
+      if (!p && file) {
+        const abs = /^([A-Za-z]:[\/\\])/.test(file) ? file : "";
+        p = abs ? abs.replace(/[^\/\\]+$/, "") : "";
+      }
+
       if (!p) {
-        showToast("پوشه‌ای برای این کار ثبت نشده است.", "warn");
+        if (confirm("برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟")) {
+          setFolderTask(t);
+        }
         return;
       }
+
       const r2 = await fetch("/api/open-path", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
