@@ -1,229 +1,163 @@
-'use client';
-import { useState, useEffect } from 'react';
-import FileBrowser from './FileBrowser';
-import { showToast } from '@/lib/toast';
+"use client";
+import { useState, useEffect } from "react";
+import FileBrowser from "./FileBrowser";
+import { showToast } from "@/lib/toast";
 
-const DEFAULT_ASSET_FOLDER = 'D:\\(فنّی)';
-const SHARE_FOLDER = 'E:\\Share(Tasks)\\Elhami';
+const SHARE_FOLDER = "E:\\Share(Tasks)";
+
+const isAbs = (p) => /^([A-Za-z]:[\/\\]|[\/\\][\/\\])/.test(String(p || ""));
+// ✅ هرگز مسیر مطلق را به پوشه نمی‌چسبانیم
+const joinPath = (folder, file) => {
+  const f = String(file || "").trim();
+  const d = String(folder || "").trim();
+  if (!f) return d;
+  if (isAbs(f)) return f;
+  if (!d) return f;
+  return d.replace(/[\/\\]+$/, "") + "\\" + f;
+};
 
 export default function FolderModal({ taskId, onClose, onSaved }) {
-  const [fileName, setFileName] = useState('');
-  const [folderPath, setFolderPath] = useState('');
+  const [folder, setFolder] = useState("");
+  const [file, setFile] = useState("");
   const [saving, setSaving] = useState(false);
-  const [asked, setAsked] = useState(false);
-  const [allowCopy, setAllowCopy] = useState(true);
-  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
-  const [showFileBrowser, setShowFileBrowser] = useState(false);
-  const [browserInitial, setBrowserInitial] = useState('');
-  const [waitingAssetFolder, setWaitingAssetFolder] = useState(false);
-  const [assetId, setAssetId] = useState(null);
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
+  const [browse, setBrowse] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`/api/folder?taskId=${taskId}`);
-        const d = await r.json();
+        const res = await fetch(`/api/folder?taskId=${taskId}`);
+        const d = await res.json();
         if (d.success && d.data) {
-          setFileName(d.data.FileName || '');
-          if (d.data.FolderPath) { setFolderPath(d.data.FolderPath); return; }
-        }
-        const res = await fetch(`/api/task-folder?taskId=${taskId}`);
-        const t = await res.json();
-        if (!t.success) return;
-        setAssetId(t.assetId);
-        if (t.assetFolder) { setFolderPath(t.subPath); return; }
-        if (confirm('پوشه‌ای برای این دستگاه تعیین نشده است. ابتدا پوشهٔ دستگاه را تعیین می‌کنید؟')) {
-          setWaitingAssetFolder(true);
-          setBrowserInitial(DEFAULT_ASSET_FOLDER);
-          setShowFolderBrowser(true);
+          setFolder(String(d.data.FolderPath || ""));
+          setFile(String(d.data.FileName || ""));
         }
       } catch {}
     })();
   }, [taskId]);
 
-  // ✅ Esc فقط وقتی FileBrowser باز نیست، خود FolderModal را می‌بندد
-  useEffect(() => {
-    const h = (e) => {
-      if (e.key !== 'Escape') return;
-      if (showFolderBrowser || showFileBrowser) return;
-      handleClose();
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  });
-
-  const fullPath = () => {
-    const f = (folderPath || '').trim();
-    const n = (fileName || '').trim();
-    if (!n) return f;
-    if (/^([A-Za-z]:[\/]|\\)/.test(n)) return n;
-    if (!f) return n;
-    const base = /[\/]$/.test(f) ? f.slice(0, -1) : f;
-    if (base.endsWith(n)) return base;
-    return base + '\\' + n;
+  const callOpen = async (p, select) => {
+    const res = await fetch("/api/open-path", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: p, select }),
+    });
+    return res.json();
   };
-  const openPath = async (p) => {
+
+  const openFolder = async () => {
+    const p = String(folder || "").trim();
+    if (!p) { showToast("مسیر پوشه ثبت نشده است.", "warn"); return; }
     try {
-      const res = await fetch("/api/open-path", {
+      const d = await callOpen(p, false);
+      if (!d.success) showToast(d.error || "بازکردن پوشه ممکن نشد.", "error");
+      else if (d.adjusted) showToast("مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d.opened, "warn");
+      else showToast("پوشه باز شد.", "success", 2500);
+    } catch { showToast("خطا در ارتباط با سرور.", "error"); }
+  };
+
+  const openFile = async () => {
+    if (!file) { showToast("فایلی ثبت نشده است.", "warn"); return; }
+    const p = joinPath(folder, file);
+    try {
+      const d = await callOpen(p, true);
+      if (!d.success) showToast(d.error || "بازکردن فایل ممکن نشد.", "error");
+      else if (d.adjusted) showToast("مسیر دقیق یافت نشد؛ نزدیک‌ترین مسیر موجود باز شد:\n" + d.opened, "warn");
+      else showToast("فایل باز شد.", "success", 2500);
+    } catch { showToast("خطا در ارتباط با سرور.", "error"); }
+  };
+
+  const copyPath = async () => {
+    const p = joinPath(folder, file);
+    if (!p) { showToast("مسیری برای کپی وجود ندارد.", "warn"); return; }
+    try {
+      await navigator.clipboard.writeText(p);
+      showToast("مسیر در کلیپ‌بورد کپی شد.", "success", 2500);
+    } catch { showToast("کپی ممکن نشد.", "error"); }
+  };
+
+  const copyMirror = async () => {
+    const src = String(folder || "").trim();
+    if (!src) { showToast("پوشهٔ مبدأ ثبت نشده است.", "warn"); return; }
+    if (!confirm("کل محتوای پوشه به‌صورت آینه‌ای در مقصد اشتراکی کپی شود؟")) return;
+    try {
+      const res = await fetch("/api/folder/mirror", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: p }),
+        body: JSON.stringify({ src, dest: SHARE_FOLDER }),
       });
-      const d = await res.json();
-      if (!d.success) showToast(d.error || "بازکردن مسیر ممکن نشد.", "error");
-      else if (d.adjusted)
-        showToast("مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d.opened, "warn");
-      else showToast("مسیر در ویندوز باز شد.", "success", 2500);
-    } catch {
-      showToast("خطا در ارتباط با سرور.", "error");
-    }
-  };
-  const copyPath = async () => {
-    const p = fullPath();
-    if (!p) { showToast('مسیری برای کپی وجود ندارد.', 'warn'); return; }
-    try { await navigator.clipboard.writeText(p); showToast('مسیر در کلیپ‌بورد کپی شد.', 'success', 2500); }
-    catch { showToast('کپی ممکن نشد.', 'error'); }
-  };
-  const copyMirror = async (destDir) => {
-    const f = (folderPath || '').trim();
-    const n = (fileName || '').trim();
-    const src = f || (/^([A-Za-z]:[\/]|\\)/.test(n) ? n : '');
-    if (!src) { alert('مسیری برای کپی وجود ندارد.'); return; }
-    try {
-      const res = await fetch('/api/copy-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sources: [src], destDir, mirrorDir: true }) });
       const d = await res.json();
       if (d.success) showToast("کل محتوای پوشه به‌صورت آینه‌ای کپی شد به:\n" + d.dest, "success");
       else showToast("خطا: " + (d.error || "نامشخص"), "error");
     } catch { showToast("خطا در ارتباط با سرور.", "error"); }
   };
-  const handleCopyClick = async () => {
-    setAsked(true);
-    if (!confirm('کل محتوای پوشه در مقصد آینه‌ای کپی شود؟')) return;
-    const d = prompt('پوشهٔ مقصد برای کپی:', SHARE_FOLDER);
-    if (d) await copyMirror(d);
-  };
+
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch('/api/folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId, fileName, folderPath }) });
+      const res = await fetch("/api/folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId,
+          FolderPath: String(folder || "").trim(),
+          FileName: String(file || "").trim(),
+        }),
+      });
       const d = await res.json();
       if (d.success) {
-        setAsked(true);
-        if (allowCopy) await copyMirror(SHARE_FOLDER);
-        showToast('ذخیره شد.', 'success', 2500);
-                if (onSaved) onSaved();
+        showToast("ذخیره شد.", "success", 2500);
+        if (onSaved) onSaved();
         onClose();
-      } else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
-    } catch { showToast('خطا در ارتباط با سرور.', 'error'); }
+      } else showToast("خطا: " + (d.error || "نامشخص"), "error");
+    } catch { showToast("خطا در ارتباط با سرور.", "error"); }
     setSaving(false);
   };
-  const handleClose = () => {
-    const has = (folderPath || '').trim() || (fileName || '').trim();
-    if (has && !asked) {
-      setAsked(true);
-      if (allowCopy && confirm('طبق تیک «اجازه کپی»، محتوا در پوشهٔ اشتراکی کپی شود؟')) copyMirror(SHARE_FOLDER);
-    }
-    onClose();
-  };
-  const openFolderBrowser = async () => {
-    let initial = (folderPath || '').trim();
-    try {
-      const res = await fetch(`/api/task-folder?taskId=${taskId}`);
-      const d = await res.json();
-      if (d.success) {
-        setAssetId(d.assetId);
-        if (!d.assetFolder) {
-          if (confirm('پوشه‌ای برای این دستگاه تعیین نشده است. ابتدا پوشهٔ دستگاه را تعیین می‌کنید؟')) {
-            setWaitingAssetFolder(true);
-            setBrowserInitial(DEFAULT_ASSET_FOLDER);
-            setShowFolderBrowser(true);
-          }
-          return;
-        }
-        initial = d.subPath || initial;
-      }
-    } catch {}
-    setBrowserInitial(initial || DEFAULT_ASSET_FOLDER);
-    setShowFolderBrowser(true);
-  };
-  const openFileBrowser = () => {
-    setBrowserInitial((folderPath || '').trim() || DEFAULT_ASSET_FOLDER);
-    setShowFileBrowser(true);
-  };
 
-  const inp = 'search-input w-full';
+  const inp = "search-input w-full";
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
-      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) handleClose(); }}
-      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) handleClose(); }}>
-      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[680px] max-w-[95vw] p-6">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[560px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">پوشهٔ ضمائم — کد کار: {taskId}</h3>
-        <div className="mb-3">
-          <label className="block text-sm font-bold mb-1">مسیر پوشه</label>
-          <div className="flex gap-2">
-            <input className={inp} dir="ltr" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
-            <button type="button" className="btn-primary whitespace-nowrap" onClick={openFolderBrowser}>انتخاب پوشه...</button>
-          </div>
+
+        <label className="block text-sm font-bold mb-1">مسیر پوشه</label>
+        <div className="flex gap-2 mb-3">
+          <input className={inp} dir="ltr" value={folder} onChange={(e) => setFolder(e.target.value)} />
+          <button type="button" className="btn-primary whitespace-nowrap" onClick={() => setBrowse(true)}>
+            📂 مرور
+          </button>
         </div>
-        <div className="mb-3">
-          <label className="block text-sm font-bold mb-1">نام فایل</label>
-          <div className="flex gap-2">
-            <input className={inp} dir="ltr" value={fileName} onChange={(e) => setFileName(e.target.value)} />
-            <button type="button" className="btn-primary whitespace-nowrap" onClick={openFileBrowser}>انتخاب فایل...</button>
-          </div>
+
+        <label className="block text-sm font-bold mb-1">فایل انتخابی (اختیاری)</label>
+        <input
+          className={inp + " mb-4"}
+          dir="ltr"
+          value={file}
+          onChange={(e) => setFile(e.target.value)}
+          placeholder="نام فایل داخل پوشه، یا مسیر کامل فایل"
+        />
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button type="button" className="btn-primary" onClick={openFolder}>📁 بازکردن پوشه</button>
+          <button type="button" className="btn-primary" onClick={openFile}>📄 بازکردن فایل</button>
+          <button type="button" className="btn-primary" onClick={copyPath}>⧉ کپی مسیر</button>
+          <button type="button" className="btn-primary" onClick={copyMirror}>🪞 کپی آینه‌ای</button>
         </div>
-        <label className="flex items-center gap-2 mb-4 cursor-pointer">
-          <input type="checkbox" checked={allowCopy} onChange={(e) => setAllowCopy(e.target.checked)} className="w-4 h-4" />
-          <span className="text-sm font-bold">اجازه کپی فایل‌ها در پوشهٔ اشتراکی</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={save} disabled={saving} className="btn-success">{saving ? '...' : 'ذخیره'}</button>
-          <button onClick={() => openPath(folderPath)} disabled={!folderPath} className="btn-primary">بازکردن پوشه</button>
-          <button onClick={() => openPath(fullPath())} disabled={!folderPath && !fileName} className="btn-primary">بازکردن فایل</button>
-          <button onClick={copyPath} disabled={!folderPath && !fileName} className="btn-primary">کپی مسیر</button>
-          <button onClick={handleCopyClick} disabled={!folderPath && !fileName} className="btn-primary">کپی فایل</button>
-          <button onClick={handleClose} className="btn-danger">بستن</button>
+
+        <div className="flex gap-2 justify-end">
+          <button className="btn-success" disabled={saving} onClick={save}>ذخیره</button>
+          <button className="btn-danger" onClick={onClose}>بستن</button>
         </div>
       </div>
-      {showFolderBrowser && (
+
+      {browse && (
         <FileBrowser
-          mode="folder"
-          initial={browserInitial || DEFAULT_ASSET_FOLDER}
-          title={waitingAssetFolder ? 'تعیین پوشهٔ دستگاه' : 'انتخاب پوشهٔ ضمائم'}
-          onSelect={async (p) => {
-            setShowFolderBrowser(false);
-            if (waitingAssetFolder) {
-              setWaitingAssetFolder(false);
-              if (assetId) {
-                try {
-                  await fetch('/api/asset-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetId, folderPath: p }) });
-                  const res = await fetch(`/api/task-folder?taskId=${taskId}`);
-                  const d = await res.json();
-                  setFolderPath(d.subPath || p);
-                  return;
-                } catch {}
-              }
-              setFolderPath(p);
-            } else {
-              setFolderPath(p);
-            }
-          }}
-          onClose={() => { setShowFolderBrowser(false); setWaitingAssetFolder(false); }}
-        />
-      )}
-      {showFileBrowser && (
-        <FileBrowser
-          mode="file"
-          initial={browserInitial || folderPath}
-          title="انتخاب فایل ضمیمه"
-          onSelect={(p) => { setFileName(p); setShowFileBrowser(false); }}
-          onClose={() => setShowFileBrowser(false)}
+          defaultPath={folder || "D:\\"}
+          onClose={() => setBrowse(false)}
+          onSelect={(p) => { setFolder(p); setBrowse(false); }}
         />
       )}
     </div>

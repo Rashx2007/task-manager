@@ -32,8 +32,9 @@ export async function POST(request) {
       adjusted = true;
     }
 
+    p = p.trim();
     const isDir = fs.statSync(p).isDirectory();
-    const args = select && !isDir ? ["/select,", p] : [isDir ? p + "\\" : p];
+    const args = select && !isDir ? ["/select,", p] : [p];
 
     // ✅ spawn بدون شل → پرانتز/فاصله امن؛ و به کد خروج explorer توجه نمی‌کنیم
     const child = spawn("explorer", args, { detached: true, stdio: "ignore" });
