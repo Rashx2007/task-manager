@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import FileBrowser from './FileBrowser';
+import { showToast } from '@/lib/toast';
 
 const DEFAULT_ASSET_FOLDER = 'D:\\(فنّی)';
 const SHARE_FOLDER = 'E:\\Share(Tasks)\\Elhami';
@@ -69,11 +70,19 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
   };
   const openPath = async (p) => {
     try {
-      const res = await fetch('/api/open-path', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
+      const res = await fetch("/api/open-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: p }),
+      });
       const d = await res.json();
-      if (!d.success) alert('خطا: ' + d.error);
-      else if (d.adjusted) alert('پوشهٔ دقیق روی دیسک یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n' + d.opened);
-    } catch { alert('خطا در ارتباط با سرور'); }
+      if (!d.success) showToast(d.error || "بازکردن مسیر ممکن نشد.", "error");
+      else if (d.adjusted)
+        showToast("مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d.opened, "warn");
+      else showToast("مسیر در ویندوز باز شد.", "success", 2500);
+    } catch {
+      showToast("خطا در ارتباط با سرور.", "error");
+    }
   };
   const copyPath = async () => {
     const p = fullPath();
