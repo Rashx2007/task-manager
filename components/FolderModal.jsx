@@ -86,9 +86,9 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
   };
   const copyPath = async () => {
     const p = fullPath();
-    if (!p) { alert('مسیری برای کپی وجود ندارد.'); return; }
-    try { await navigator.clipboard.writeText(p); alert('مسیر در کلیپ‌بورد کپی شد.'); }
-    catch { alert('کپی ممکن نشد.'); }
+    if (!p) { showToast('مسیری برای کپی وجود ندارد.', 'warn'); return; }
+    try { await navigator.clipboard.writeText(p); showToast('مسیر در کلیپ‌بورد کپی شد.', 'success', 2500); }
+    catch { showToast('کپی ممکن نشد.', 'error'); }
   };
   const copyMirror = async (destDir) => {
     const f = (folderPath || '').trim();
@@ -98,9 +98,9 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
     try {
       const res = await fetch('/api/copy-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sources: [src], destDir, mirrorDir: true }) });
       const d = await res.json();
-      if (d.success) alert('کل محتوای پوشه به‌صورت آینه‌ای کپی شد به:\n' + d.dest);
-      else alert('خطا: ' + d.error);
-    } catch { alert('خطا در ارتباط با سرور'); }
+      if (d.success) showToast("کل محتوای پوشه به‌صورت آینه‌ای کپی شد به:\n" + d.dest, "success");
+      else showToast("خطا: " + (d.error || "نامشخص"), "error");
+    } catch { showToast("خطا در ارتباط با سرور.", "error"); }
   };
   const handleCopyClick = async () => {
     setAsked(true);
@@ -116,11 +116,11 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
       if (d.success) {
         setAsked(true);
         if (allowCopy) await copyMirror(SHARE_FOLDER);
-        alert('ذخیره شد.');
-        if (onSaved) onSaved();
+        showToast('ذخیره شد.', 'success', 2500);
+                if (onSaved) onSaved();
         onClose();
-      } else alert('خطا: ' + d.error);
-    } catch { alert('خطا در ارتباط با سرور'); }
+      } else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
+    } catch { showToast('خطا در ارتباط با سرور.', 'error'); }
     setSaving(false);
   };
   const handleClose = () => {
