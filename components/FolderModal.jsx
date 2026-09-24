@@ -84,8 +84,33 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
     if (isAbs(n)) return n;
     if (!f) return n;
     const base = /[\/\\]$/.test(f) ? f.slice(0, -1) : f;
-    if (base.endsWith(n)) return base;
-    return base + "\\" + n;
+        if (base.endsWith(n)) return base;
+    return base + '\\' + n;
+  };
+
+  // ✅ بازکردن پوشهٔ آینه‌ای: چند نامزد می‌فرستیم و سرور اولین مسیر موجود را باز می‌کند
+  const openShareMirror = async () => {
+    const f = String(folderPath || '').trim();
+    if (!f) { showToast('مسیر پوشه ثبت نشده است.', 'warn'); return; }
+    const rel = f.replace(/^[A-Za-z]:/, '').replace(/\//g, '\\');
+    const base = f.replace(/[\/\\]+$/, '').split(/[\/\\]/).pop();
+    const candidates = [
+      SHARE_FOLDER + (rel.startsWith('\\') ? rel : '\\' + rel), // ساختار کامل نسبی
+      SHARE_FOLDER + '\\' + base, // فقط نام پوشهٔ آخر
+      SHARE_FOLDER, // ریشهٔ اشتراکی
+    ];
+    try {
+      const res = await fetch('/api/open-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidates }),
+      });
+      const d = await res.json();
+      if (!d.success) showToast(d.error || 'بازکردن مسیر ممکن نشد.', 'error');
+      else if (d.adjusted)
+        showToast('پوشهٔ آینه‌ای این کار یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n' + d.opened, 'warn');
+      else showToast('پوشهٔ آینه‌ای این کار باز شد.', 'success', 2500);
+    } catch { showToast('خطا در ارتباط با سرور.', 'error'); }
   };
 
   const openPath = async (p) => {
@@ -339,10 +364,11 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
           </button>
           <button
             type="button"
-            onClick={() => openPath(SHARE_FOLDER)}
+            onClick={openShareMirror}
+            disabled={!folderPath}
             className="btn-primary w-full sm:col-span-2"
           >
-            📂 بازکردن پوشهٔ اشتراکی
+            📂 بازکردن پوشهٔ اشتراکی (آینهٔ این کار)
           </button>
         </div>
 

@@ -16,12 +16,17 @@ function nearestExisting(p) {
 
 export async function POST(request) {
   try {
-    const { path: target, select } = await request.json();
-    let p = String(target || "").trim();
-    if (!p) return NextResponse.json({ success: false, error: "مسیری ارسال نشد." }, { status: 400 });
-
-        let adjusted = false;
-    // ✅ نرمال‌سازی: حذف نیم‌فاصله/علائت جهت‌دار، یکسان‌سازی ی/ک عربی و فاصله‌ها
+        const { path: target, select, candidates } = await request.json();
+    const norm = (s) => String(s || "").trim();
+    const list =
+      Array.isArray(candidates) && candidates.length
+        ? candidates.map(norm).filter(Boolean)
+        : [norm(target)].filter(Boolean);
+    if (!list.length)
+      return NextResponse.json({ success: false, error: "مسیری ارسال نشد." }, { status: 400 });
+    let adjusted = false;
+    // ✅ اولین نامزدِ موجود برنده است؛ وگرنه نامزد اول معیارِ fallback می‌شود
+    let p = list.find((c) => fs.existsSync(c)) || list[0];
     if (!fs.existsSync(p)) {
       const candidates = [
         p.replace(/[\u200b\u200c\u200d\u200e\u200f]/g, ""),
