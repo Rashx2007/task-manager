@@ -1,3 +1,4 @@
+//app/page.js
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Toolbar from "@/components/Toolbar";
