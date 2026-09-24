@@ -20,9 +20,17 @@ export async function POST(request) {
     let p = String(target || "").trim();
     if (!p) return NextResponse.json({ success: false, error: "مسیری ارسال نشد." }, { status: 400 });
 
-    let adjusted = false;
-
-    // ✅ مسیر وجود ندارد → نزدیک‌ترین والد موجود
+        let adjusted = false;
+    // ✅ نرمال‌سازی: حذف نیم‌فاصله/علائت جهت‌دار، یکسان‌سازی ی/ک عربی و فاصله‌ها
+    if (!fs.existsSync(p)) {
+      const candidates = [
+        p.replace(/[\u200b\u200c\u200d\u200e\u200f]/g, ""),
+        p.replace(/ي/g, "ی").replace(/ك/g, "ک"),
+        p.replace(/\s+/g, " "),
+      ];
+      const hit = candidates.find((c) => c && fs.existsSync(c));
+      if (hit) p = hit;
+    }
     if (!fs.existsSync(p)) {
       const near = nearestExisting(p);
       if (!near)
