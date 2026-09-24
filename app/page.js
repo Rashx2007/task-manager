@@ -14,6 +14,7 @@ import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
 import { placeRules } from "@/lib/assetRules";
+import { showToast } from "@/lib/toast";
 
 const PAGE_SIZE = 10;
 
@@ -413,6 +414,43 @@ export default function Home() {
     }
   };
 
+  // ✅ دکمهٔ پوشه ضمائم: بازکردن مستقیم پوشه در ویندوز (بدون مودال)
+    const openFolderDirect = async (t) => {
+    try {
+      const res = await fetch(`/api/folder?taskId=${t.TaskID}`);
+      const d = await res.json();
+      const folder = String(d?.data?.FolderPath || "").trim();
+      const file = String(d?.data?.FileName || "").trim();
+
+      // ✅ اولویت فقط با خودِ پوشه است؛ اگر پوشه نبود، پوشهٔ حاوی فایل (نه خود فایل)
+      let p = folder;
+      if (!p && file) {
+        const abs = /^([A-Za-z]:[\/\\])/.test(file) ? file : "";
+        p = abs ? abs.replace(/[^\/\\]+$/, "") : "";
+      }
+
+      if (!p) {
+        if (confirm("برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟")) {
+          setFolderTask(t);
+        }
+        return;
+      }
+
+      const r2 = await fetch("/api/open-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: p }),
+      });
+      const d2 = await r2.json();
+      if (!d2.success) showToast(d2.error || "بازکردن مسیر ممکن نشد.", "error");
+      else if (d2.adjusted)
+        showToast("مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d2.opened, "warn");
+      else showToast("پوشهٔ ضمائم باز شد.", "success", 2500);
+    } catch {
+      showToast("خطا در ارتباط با سرور.", "error");
+    }
+  };
+
   const openNew = () => {
     setEditTask(null);
     setNewTaskAssetId(null);
@@ -540,7 +578,7 @@ export default function Home() {
             onComplete={handleComplete}
             onEdit={openEdit}
             onCopy={handleCopyTask}
-            onFolder={setFolderTask}
+            onFolder={openFolderDirect}
             selectedTask={selectedTask}
             draft={draft}
             onDraftChange={changeDraft}
