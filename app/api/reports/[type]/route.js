@@ -2,7 +2,12 @@
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import * as R from '@/lib/reports';
-import { makeTextFileName, makeExcelFileName } from '@/lib/shamsi';
+import {
+  makeTextFileName,
+  makeExcelFileName,
+  toShamsiString,
+  toShamsiDateTimeString,
+} from '@/lib/shamsi';
 import * as S from '@/lib/excel-styles';
 
 export async function GET(request, { params }) {
