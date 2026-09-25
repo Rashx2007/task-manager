@@ -1,6 +1,6 @@
 // components/ReportViewer.jsx
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import DatePicker from "react-multi-date-picker";
 import { showToast } from "@/lib/toast";
 import persian from "react-date-object/calendars/persian";
@@ -14,7 +14,19 @@ export default function ReportViewer({ config, onClose }) {
   const [end, setEnd] = useState(null);
   const [withTaskId, setWithTaskId] = useState(false);
   const [assetName, setAssetName] = useState("");
+  const [assetNames, setAssetNames] = useState([]);
   const bufferRef = useRef(null);
+
+  // ✅ پیشنهاد نام دستگاه‌ها برای گزارش‌های needsAsset
+  useEffect(() => {
+    if (!config.needsAsset) return;
+    fetch("/api/asset-names")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setAssetNames(d.names || []);
+      })
+      .catch(() => {});
+  }, [config.needsAsset]);
 
   const generate = async () => {
     setLoading(true);
@@ -180,17 +192,21 @@ export default function ReportViewer({ config, onClose }) {
               <span className="text-sm font-bold">با کد کار</span>
             </label>
           )}
-          {config.needsAsset && (
+                   {config.needsAsset && (
             <div>
-              <label className="block text-xs font-bold mb-1">
-                دستگاه/مجموعه (اختیاری)
-              </label>
+              <label className="block text-xs font-bold mb-1">دستگاه/مجموعه (اختیاری)</label>
               <input
                 className={inp}
+                list="report-asset-names"
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
-                placeholder="مثلاً فن‌کویل"
+                placeholder="تایپ کنید یا از لیست انتخاب کنید"
               />
+              <datalist id="report-asset-names">
+                {assetNames.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
             </div>
           )}
           <button onClick={generate} disabled={loading} className="btn-primary">
