@@ -39,8 +39,10 @@ export default function SearchPanel({ onResult, onClose }) {
   };
 
   const onKey = (e) => {
-    if (e.key === 'Enter' && e.shiftKey) doSearch();
-    else if (e.key === 'Escape') onClose();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doSearch();
+    } else if (e.key === 'Escape') onClose();
   };
 
   const inp = 'search-input w-full';
@@ -87,7 +89,7 @@ export default function SearchPanel({ onResult, onClose }) {
           className="btn-primary whitespace-nowrap"
           onClick={doSearch}
           disabled={busy || (!hasTask && !hasReq && !hasProp)}
-          title="Shift + Enter"
+          title="Enter"
         >
           {busy ? '...' : 'جستجو'}
         </button>
