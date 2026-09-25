@@ -138,6 +138,55 @@ export async function GET(request, { params }) {
       });
     }
 
+    // ✅ گزارش لیست کارهای ثابت (Excel) — معادل Create_All_Fixed_Time_List_Excel_File + ستون موضوع
+    if (type === 'fixed-tasks-excel') {
+      const data = await R.getAllFixedTasks();
+      const wb = new ExcelJS.Workbook();
+      S.buildStyledSheet(wb, 'لیست کارهای زمان ثابت',
+        ['کد', 'موضوع', 'الویت', 'طول بازه', 'زمان شروع', 'زمان پایان', 'وضعیت'],
+        data.map(r => [r.TaskID, r.TaskTtl, r.Priorities, r.Durationtime, r.DueDateTime, r.EndDateTime, r.Complited]),
+        {
+          tabColor: 'FFFFFF00',
+          headerFill: S.FILL_PINK_HEADER,
+          oddFill: S.FILL_LIGHT_PINK,
+          widths: [10, 40, 12, 10, 16, 16, 10],
+          freeze: { x: 1, y: 1 },
+        });
+      const buf = await wb.xlsx.writeBuffer();
+      return new NextResponse(buf, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'X-File-Name': makeExcelFileName('Tasks List'),
+        },
+      });
+    }
+
+    // ✅ گزارش کارهای انجام‌شده بر اساس تاریخ و دستگاه (Excel) — معادل Create_Asset_Date_Tasks_List_Excel_File
+    if (type === 'asset-date-excel') {
+      if (!start || !end) return NextResponse.json({ success: false, error: 'بازه زمانی لازم است.' }, { status: 400 });
+      const assetName = url.searchParams.get('assetName') || '';
+      const data = await R.getAssetDateTasks(start, end, assetName);
+      const wb = new ExcelJS.Workbook();
+      S.buildStyledSheet(wb, 'لیست کارها',
+        ['کد', 'دستگاه/مجموعه', 'شماره', 'ساختمان', 'محل', 'بلوک', 'طبقه', 'موضوع', 'توضیحات', 'زمان انجام', 'وضعیت'],
+        data.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.TaskTtl, r.Descriptions, r.Finish_DateTime, r.Complited]),
+        {
+          tabColor: 'FFFF0000',
+          headerFill: S.FILL_PINK_HEADER,
+          oddFill: S.FILL_LIGHT_PINK,
+          widths: [10, 27, 8, 16, 25, 6, 6, 50, 100, 16, 16],
+          hiddenCols: [1, 9],
+          freeze: { x: 1, y: 1 },
+        });
+      const buf = await wb.xlsx.writeBuffer();
+      return new NextResponse(buf, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'X-File-Name': makeExcelFileName('Tasks List'),
+        },
+      });
+    }
+
     if (type === 'all-tasks-excel') {
       if (!start || !end) return NextResponse.json({ success: false, error: 'بازه زمانی لازم است.' }, { status: 400 });
       const data = await R.getAllTasksExcelByDate(start, end);

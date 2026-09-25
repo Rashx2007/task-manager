@@ -13,6 +13,7 @@ export default function ReportViewer({ config, onClose }) {
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
   const [withTaskId, setWithTaskId] = useState(false);
+  const [assetName, setAssetName] = useState('');
   const bufferRef = useRef(null);
 
   const generate = async () => {
@@ -25,6 +26,7 @@ export default function ReportViewer({ config, onClose }) {
         params.set('end', end.toDate().toISOString());
       }
       if (config.withTaskIdToggle) params.set('withTaskId', withTaskId ? '1' : '0');
+      if (config.needsAsset && assetName.trim()) params.set('assetName', assetName.trim());
 
       const res = await fetch(`/api/reports/${config.type}?${params}`);
       if (!res.ok) {
@@ -111,6 +113,12 @@ export default function ReportViewer({ config, onClose }) {
               <input type="checkbox" checked={withTaskId} onChange={(e) => setWithTaskId(e.target.checked)} />
               <span className="text-sm font-bold">با کد کار</span>
             </label>
+          )}
+          {config.needsAsset && (
+            <div>
+              <label className="block text-xs font-bold mb-1">دستگاه/مجموعه (اختیاری)</label>
+              <input className={inp} value={assetName} onChange={(e) => setAssetName(e.target.value)} placeholder="مثلاً فن‌کویل" />
+            </div>
           )}
           <button onClick={generate} disabled={loading} className="btn-primary">
             {loading ? 'در حال تولید...' : 'تولید گزارش'}
