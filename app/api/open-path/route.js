@@ -16,7 +16,7 @@ function nearestExisting(p) {
 
 export async function POST(request) {
   try {
-        const { path: target, select, candidates } = await request.json();
+    const { path: target, select, candidates } = await request.json();
     const norm = (s) => String(s || "").trim();
     const list =
       Array.isArray(candidates) && candidates.length
@@ -24,18 +24,21 @@ export async function POST(request) {
         : [norm(target)].filter(Boolean);
     if (!list.length)
       return NextResponse.json({ success: false, error: "مسیری ارسال نشد." }, { status: 400 });
+
     let adjusted = false;
-    // ✅ اولین نامزدِ موجود برنده است؛ وگرنه نامزد اول معیارِ fallback می‌شود
     let p = list.find((c) => fs.existsSync(c)) || list[0];
+
+    // ✅ نرمال‌سازی یونیکد قبل از fallback (نیم‌فاصله، علائم جهت، ی/ک عربی، فاصله‌ها)
     if (!fs.existsSync(p)) {
-      const candidates = [
+      const cands = [
         p.replace(/[\u200b\u200c\u200d\u200e\u200f]/g, ""),
         p.replace(/ي/g, "ی").replace(/ك/g, "ک"),
         p.replace(/\s+/g, " "),
       ];
-      const hit = candidates.find((c) => c && fs.existsSync(c));
+      const hit = cands.find((c) => c && fs.existsSync(c));
       if (hit) p = hit;
     }
+
     if (!fs.existsSync(p)) {
       const near = nearestExisting(p);
       if (!near)
@@ -47,14 +50,7 @@ export async function POST(request) {
       adjusted = true;
     }
 
-    let isDir = fs.statSync(p).isDirectory();
-    // ✅ برای «بازکردن پوشه» اگر مسیر یک فایل بود، پوشهٔ حاوی آن باز شود
-    if (!select && !isDir) {
-      p = path.dirname(p);
-      isDir = true;
-      adjusted = true;
-    }
-
+    const isDir = fs.statSync(p).isDirectory();
     const args = select && !isDir ? ["/select,", p] : [p];
     const child = spawn("explorer", args, { detached: true, stdio: "ignore" });
     child.unref();
