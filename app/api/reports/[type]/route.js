@@ -60,7 +60,7 @@ export async function GET(request, { params }) {
       const wb = new ExcelJS.Workbook();
       S.buildStyledSheet(wb, 'لیست کارها',
         ['کد', 'دستگاه/مجموعه', 'شماره', 'ساختمان', 'محل', 'بلوک', 'طبقه', 'موضوع', 'توضیحات', 'الویت', 'زمان', 'وضعیت'],
-        data.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.TaskTtl, r.Descriptions, r.Priorities, r.DueDateTime, r.Complited]),
+        data.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.TaskTtl, r.Descriptions, r.Priorities, toShamsiDateTimeString(r.DueDateTime), r.Complited]),
         {
           tabColor: 'FFFF0000', headerFill: S.FILL_PINK_HEADER, oddFill: S.FILL_LIGHT_PINK,
           widths: [10, 27, 8, 16, 25, 6, 6, 50, 100, 16, 16, 16],
@@ -86,13 +86,13 @@ export async function GET(request, { params }) {
       // شیت ۱: خریدهای انجام‌نشده
       S.buildStyledSheet(wb, 'خریدهای انجام‌نشده',
         ['کد درخواست', 'کد کار', 'شماره درخواست', 'شماره ثبت', 'محل', 'موضوع', 'شرح', 'تاریخ درخواست', 'کارپرداز', 'وضعیت', 'تاریخ تأمین اعتبار', 'وضعیت اتمام', 'الویت'],
-        undoneReq.map(r => [r.RequestID, r.TaskID, r.RequestNumber, r.RegisterNumber, r.Location, r.TaskTtl, r.Descriptions, r.RequestDate, r.Buyer, r.Status, r.FundingDate, r.Complited, r.Priorities]),
+        undoneReq.map(r => [r.RequestID, r.TaskID, r.RequestNumber, r.RegisterNumber, r.Location, r.TaskTtl, r.Descriptions, toShamsiString(r.RequestDate), r.Buyer, r.Status, toShamsiString(r.FundingDate), r.Complited, r.Priorities]),
         { tabColor: 'FFFF0000', headerFill: S.FILL_PINK_HEADER, oddFill: S.FILL_LIGHT_PINK, widths: [10, 10, 12, 12, 20, 50, 50, 11.5, 12, 12, 12, 10, 10], hiddenCols: [1, 2], freeze: { x: 1, y: 1 } });
 
       // شیت ۲: خریدهای انجام‌شده
       S.buildStyledSheet(wb, 'خریدهای انجام‌شده',
         ['کد درخواست', 'کد کار', 'شماره درخواست', 'شماره ثبت', 'موضوع', 'شرح', 'تاریخ درخواست', 'کارپرداز', 'وضعیت', 'تاریخ تأمین اعتبار', 'وضعیت اتمام'],
-        doneReq.map(r => [r.RequestID, r.TaskID, r.RequestNumber, r.RegisterNumber, r.TaskTtl, r.Descriptions, r.RequestDate, r.Buyer, r.Status, r.FundingDate, r.Complited]),
+        doneReq.map(r => [r.RequestID, r.TaskID, r.RequestNumber, r.RegisterNumber, r.TaskTtl, r.Descriptions, toShamsiString(r.RequestDate), r.Buyer, r.Status, toShamsiString(r.FundingDate), r.Complited]),
         { tabColor: 'FF00FF00', headerFill: S.FILL_GREEN_DONE, oddFill: S.FILL_HONEYDEW, widths: [10, 10, 12, 12, 50, 50, 11.5, 12, 12, 12, 10], hiddenCols: [1, 2], freeze: { x: 1, y: 1 } });
 
       // شیت ۳: کارهای بدون درخواست
@@ -104,13 +104,13 @@ export async function GET(request, { params }) {
       // شیت ۴: کارهای در حال انجام
       S.buildStyledSheet(wb, 'کارهای در حال انجام',
         ['کد کار', 'نام تجهیز', 'شماره تجهیز', 'ساختمان', 'محل', 'عنوان', 'شرح', 'الویت', 'تاریخ شروع', 'تاریخ اتمام'],
-        undoneTask.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, r.Priorities, r.DueDateTime, r.EndDateTime]),
+        undoneTask.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, r.Priorities, toShamsiDateTimeString(r.DueDateTime), toShamsiDateTimeString(r.EndDateTime)]),
         { tabColor: 'FF8B0000', headerFill: S.FILL_DARK_SALMON, oddFill: S.FILL_LIGHT_SALMON, widths: [10, 25, 11, 11.5, 16, 50, 50, 11, 11, 11], hiddenCols: [1, 2], freeze: { x: 1, y: 1 } });
 
       // شیت ۵: کارهای اتمام‌یافته
       S.buildStyledSheet(wb, 'کارهای اتمام‌یافته',
         ['کد کار', 'نام تجهیز', 'شماره تجهیز', 'ساختمان', 'محل', 'عنوان', 'شرح', 'الویت', 'تاریخ شروع', 'تاریخ اتمام'],
-        doneTask.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, r.Priorities, r.DueDateTime, r.EndDateTime]),
+        doneTask.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, r.Priorities, toShamsiDateTimeString(r.DueDateTime), toShamsiDateTimeString(r.EndDateTime)]),
         { tabColor: 'FF006400', headerFill: S.FILL_DARK_SEA_GREEN, oddFill: S.FILL_LIGHT_GREEN, widths: [10, 25, 11, 11.5, 16, 50, 50, 11, 11, 11], hiddenCols: [1, 2], freeze: { x: 1, y: 1 } });
 
       const buf = await wb.xlsx.writeBuffer();
@@ -127,7 +127,7 @@ export async function GET(request, { params }) {
       const wb = new ExcelJS.Workbook();
       S.buildStyledSheet(wb, 'کارها-انجام‌دهنده‌ها',
         ['کد', 'انجام‌دهنده', 'دستگاه/مجموعه', 'شماره', 'ساختمان', 'محل', 'بلوک', 'طبقه', 'الویت', 'موضوع', 'توضیحات', 'نوبت', 'تاریخ ثبت'],
-        data.map(r => [r.TaskID, r.PersonName, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.Priorities, r.TaskTtl, r.Descriptions, r.DueDateTime, r.Submit_Date]),
+        data.map(r => [r.TaskID, r.PersonName, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.Priorities, r.TaskTtl, r.Descriptions, toShamsiDateTimeString(r.DueDateTime), toShamsiDateTimeString(r.Submit_Date)]),
         { tabColor: 'FF008000', headerFill: S.FILL_GREEN_HEADER, oddFill: S.FILL_LIGHT_GREEN, widths: [10, 14.43, 16.71, 6.14, 11.57, 11.29, 5.29, 5.29, 7.86, 40, 40, 15.57, 15.57], hiddenCols: [1, 9], freeze: { x: 1, y: 1 } });
       const buf = await wb.xlsx.writeBuffer();
       return new NextResponse(buf, {
@@ -144,7 +144,7 @@ export async function GET(request, { params }) {
       const wb = new ExcelJS.Workbook();
       S.buildStyledSheet(wb, 'لیست کارهای زمان ثابت',
         ['کد', 'موضوع', 'الویت', 'طول بازه', 'زمان شروع', 'زمان پایان', 'وضعیت'],
-        data.map(r => [r.TaskID, r.TaskTtl, r.Priorities, r.Durationtime, r.DueDateTime, r.EndDateTime, r.Complited]),
+        data.map(r => [r.TaskID, r.TaskTtl, r.Priorities, r.Durationtime, toShamsiDateTimeString(r.DueDateTime), toShamsiDateTimeString(r.EndDateTime), r.Complited]),
         {
           tabColor: 'FFFFFF00',
           headerFill: S.FILL_PINK_HEADER,
@@ -169,7 +169,7 @@ export async function GET(request, { params }) {
       const wb = new ExcelJS.Workbook();
       S.buildStyledSheet(wb, 'لیست کارها',
         ['کد', 'دستگاه/مجموعه', 'شماره', 'ساختمان', 'محل', 'بلوک', 'طبقه', 'موضوع', 'توضیحات', 'زمان انجام', 'وضعیت'],
-        data.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.TaskTtl, r.Descriptions, r.Finish_DateTime, r.Complited]),
+        data.map(r => [r.TaskID, r.AssetName, r.AssetNumber, r.Building, r.Location, r.Block, r.Floor, r.TaskTtl, r.Descriptions, toShamsiDateTimeString(r.Finish_DateTime), r.Complited]),
         {
           tabColor: 'FFFF0000',
           headerFill: S.FILL_PINK_HEADER,
@@ -193,7 +193,7 @@ export async function GET(request, { params }) {
       const wb = new ExcelJS.Workbook();
       S.buildStyledSheet(wb, 'گزارش کل کارها',
         ['کد', 'اقدام/پروژه', 'دستگاه/مجموعه', 'شماره', 'ساختمان', 'محل', 'عنوان', 'شرح', 'تاریخ ثبت', 'تاریخ انجام', 'وضعیت اتمام کار'],
-        data.map(r => [r.TaskID, r.IsConsiderableAction, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, r.Submit_Date, r.Finish_DateTime, r.Complited]),
+        data.map(r => [r.TaskID, r.IsConsiderableAction, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, toShamsiDateTimeString(r.Submit_Date), toShamsiDateTimeString(r.Finish_DateTime), r.Complited]),
         { tabColor: 'FFED7A2B', headerFill: S.FILL_ORANGE_HEADER, oddFill: S.FILL_ORANGE_LIGHT, widths: [10, 7.6, 16.7, 7.25, 16.7, 16.7, 30, 50, 11.8, 17, 9], hiddenCols: [1, 9], freeze: { x: 1, y: 1 } });
       const buf = await wb.xlsx.writeBuffer();
       return new NextResponse(buf, {
@@ -210,7 +210,7 @@ export async function GET(request, { params }) {
       const wb = new ExcelJS.Workbook();
       S.buildStyledSheet(wb, 'گزارش کارهای اتمام‌یافته',
         ['کد', 'اقدام/پروژه', 'دستگاه/مجموعه', 'شماره', 'ساختمان', 'محل', 'عنوان', 'شرح', 'تاریخ ثبت', 'تاریخ اتمام', 'وضعیت اتمام کار'],
-        data.map(r => [r.TaskID, r.IsConsiderableAction, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, r.Submit_Date, r.Finish_DateTime, r.Complited]),
+        data.map(r => [r.TaskID, r.IsConsiderableAction, r.AssetName, r.AssetNumber, r.Building, r.Location, r.TaskTtl, r.Descriptions, toShamsiDateTimeString(r.Submit_Date), toShamsiDateTimeString(r.Finish_DateTime), r.Complited]),
         { tabColor: 'FF69FF69', headerFill: S.FILL_GREEN_DONE, oddFill: S.FILL_GREEN_LIGHT, widths: [10, 7.6, 16.7, 7.25, 16.7, 16.7, 30, 50, 11.8, 17, 9], hiddenCols: [1, 9], freeze: { x: 1, y: 1 } });
       const buf = await wb.xlsx.writeBuffer();
       return new NextResponse(buf, {

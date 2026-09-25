@@ -71,6 +71,13 @@ export default function ReportViewer({ config, onClose }) {
         const w = await handle.createWritable();
         await w.write(data);
         await w.close();
+        showToast('فایل ذخیره شد.', 'success', 2500);
+        onClose(); // ✅ بستن مودال پس از ذخیره
+        // ✅ باز کردن فایل Text در تب جدید (Excel در مرورگر باز نمی‌شود)
+        if (content.kind === 'text') {
+          const url = URL.createObjectURL(data);
+          window.open(url, '_blank');
+        }
         return;
       } catch (e) { if (e.name === 'AbortError') return; }
     }
@@ -80,6 +87,12 @@ export default function ReportViewer({ config, onClose }) {
     a.href = url; a.download = fileName;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    showToast('فایل دانلود شد.', 'success', 2500);
+    onClose(); // ✅ بستن مودال پس از دانلود
+    // ✅ باز کردن فایل Text در تب جدید
+    if (content.kind === 'text') {
+      window.open(url, '_blank');
+    }
   };
 
   const inp = 'search-input w-full';
