@@ -61,6 +61,8 @@ export default function Home() {
   const [showPersons, setShowPersons] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
+  // ✅ آیا جدول فعلاً نتیجهٔ جستجو را نشان می‌دهد؟
+  const [isSearchView, setIsSearchView] = useState(false);
 
   // ✅ پیش‌نویس (ایجاد از فیلتر)
   const [draft, setDraft] = useState(null);
@@ -69,7 +71,7 @@ export default function Home() {
     try {
       const raw = localStorage.getItem("task_draft");
       if (raw) setDraft(JSON.parse(raw));
-    } catch { }
+    } catch {}
   }, []);
 
   const startDraft = () => setDraft((d) => d || {});
@@ -164,7 +166,7 @@ export default function Home() {
       try {
         localStorage.setItem("task_draft", JSON.stringify(d));
         alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-      } catch { }
+      } catch {}
     }
   };
 
@@ -174,15 +176,15 @@ export default function Home() {
     setDraftAssetPreset(
       draft && !draft.AssetID
         ? {
-          AssetName: draft.AssetName || "",
-          AssetNumber: draft.AssetNumber || "",
-          Building: draft.Building || "",
-          Block: draft.Block || "-",
-          Floor: draft.Floor != null ? String(draft.Floor) : "",
-          Entrance: draft.Entrance || "",
-          Location: draft.Location || "",
-          MechSystem: draft.MechSystem || "",
-        }
+            AssetName: draft.AssetName || "",
+            AssetNumber: draft.AssetNumber || "",
+            Building: draft.Building || "",
+            Block: draft.Block || "-",
+            Floor: draft.Floor != null ? String(draft.Floor) : "",
+            Entrance: draft.Entrance || "",
+            Location: draft.Location || "",
+            MechSystem: draft.MechSystem || "",
+          }
         : null,
     );
     setShowTaskForm(true);
@@ -191,7 +193,7 @@ export default function Home() {
     setDraft(null);
     try {
       localStorage.removeItem("task_draft");
-    } catch { }
+    } catch {}
   };
 
   // ✅ صفحه‌بندی + فیلتر سمت سرور
@@ -340,18 +342,31 @@ export default function Home() {
     else alert("ابتدا یک کار را انتخاب کنید.");
   };
   // ✅ معادل «بروزرسانی» دسکتاپ: بازچینش زمان کارهای جاری + بارگذاری مجدد جدول
-const handleRefresh = async () => {
-  try {
-    const res = await fetch("/api/update-schedule", { method: "POST" });
-    const d = await res.json();
-    if (d.success) {
-      showToast(`بروزرسانی انجام شد؛ ${d.updated} کار بازچینی شد.`, "success");
-      setReloadKey((k) => k + 1);
-    } else showToast("خطا: " + (d.error || "نامشخص"), "error");
-  } catch {
-    showToast("خطا در ارتباط با سرور.", "error");
-  }
-};
+  const handleRefresh = async () => {
+    try {
+      const res = await fetch("/api/update-schedule", { method: "POST" });
+      const d = await res.json();
+      if (d.success) {
+        showToast(
+          `بروزرسانی انجام شد؛ ${d.updated} کار بازچینی شد.`,
+          "success",
+        );
+        setReloadKey((k) => k + 1);
+      } else showToast("خطا: " + (d.error || "نامشخص"), "error");
+    } catch {
+      showToast("خطا در ارتباط با سرور.", "error");
+    }
+  };
+
+  // ✅ معادل دکمهٔ «پاک‌کردن» دسکتاپ: بازگشت به نمای اولیه (کارهای روز) پس از جستجو
+  const handleResetView = () => {
+    loadTypeRef.current = "daily";
+    searchRowsRef.current = [];
+    setIsSearchView(false);
+    setActiveFilters({});
+    setPage(1);
+    setReloadKey((k) => k + 1);
+  };
 
   const handleReschedule = async () => {
     if (!confirm("مرتب‌سازی «بدون کارهای زمان ثابت» انجام شود؟")) return;
@@ -427,7 +442,7 @@ const handleRefresh = async () => {
   };
 
   // ✅ دکمهٔ پوشه ضمائم: بازکردن مستقیم پوشه در ویندوز (بدون مودال)
-    const openFolderDirect = async (t) => {
+  const openFolderDirect = async (t) => {
     try {
       const res = await fetch(`/api/folder?taskId=${t.TaskID}`);
       const d = await res.json();
@@ -442,7 +457,11 @@ const handleRefresh = async () => {
       }
 
       if (!p) {
-        if (confirm("برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟")) {
+        if (
+          confirm(
+            "برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟",
+          )
+        ) {
           setFolderTask(t);
         }
         return;
@@ -456,7 +475,10 @@ const handleRefresh = async () => {
       const d2 = await r2.json();
       if (!d2.success) showToast(d2.error || "بازکردن مسیر ممکن نشد.", "error");
       else if (d2.adjusted)
-        showToast("مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d2.opened, "warn");
+        showToast(
+          "مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d2.opened,
+          "warn",
+        );
       else showToast("پوشهٔ ضمائم باز شد.", "success", 2500);
     } catch {
       showToast("خطا در ارتباط با سرور.", "error");
@@ -501,7 +523,7 @@ const handleRefresh = async () => {
       });
       setShowTaskForm(true);
     } catch {
-      alert('خطا در ارتباط با سرور');
+      alert("خطا در ارتباط با سرور");
     }
   };
 
@@ -544,6 +566,7 @@ const handleRefresh = async () => {
                 setTasks((rows || []).slice(0, PAGE_SIZE));
                 setTotalFiltered((rows || []).length);
                 setPage(1);
+                setIsSearchView(true);
               }}
               onClose={() => setShowSearch(false)}
             />
@@ -557,6 +580,7 @@ const handleRefresh = async () => {
                 setTasks((rows || []).slice(0, PAGE_SIZE));
                 setTotalFiltered((rows || []).length);
                 setPage(1);
+                setIsSearchView(true);
               }}
               onClose={() => setShowComprehensive(false)}
             />
@@ -564,20 +588,34 @@ const handleRefresh = async () => {
         </div>
       )}
 
-      {loadError && (
-        <div className="mx-3 mt-2 bg-red-100 border border-red-400 text-red-800 rounded p-2 text-sm font-bold flex items-center gap-2">
-          <span>⚠️ خطا در بارگذاری: {loadError}</span>
-          <button
-            type="button"
-            className="btn-primary px-2 py-1 text-xs"
-            onClick={() => setLoadError("")}
-          >
-            بستن
-          </button>
-        </div>
-      )}
+        {loadError && (
+     <div className="mx-3 mt-2 bg-red-100 border border-red-400 text-red-800 rounded p-2 text-sm font-bold flex items-center gap-2">
+       <span>⚠️ خطا در بارگذاری: {loadError}</span>
+       <button
+         type="button"
+         className="btn-primary px-2 py-1 text-xs"
+         onClick={() => setLoadError("")}
+       >
+         بستن
+       </button>
+     </div>
+   )}
+   {isSearchView && (
+     <div className="mx-3 mt-2 flex items-center gap-2">
+       <span className="text-xs font-bold bg-amber-100 border border-amber-400 text-amber-800 rounded px-2 py-1">
+         📌 نمایش فعلی: نتیجهٔ جستجو
+       </span>
+       <button
+         type="button"
+         className="btn-primary px-3 py-1 text-xs"
+         onClick={handleResetView}
+       >
+         ↩ بازگشت به نمای اولیه (کارهای روز)
+       </button>
+     </div>
+   )}
 
-{/* فاصلهٔ بالا و پایین نوار صفحه‌بندی متقارن است و
+      {/* فاصلهٔ بالا و پایین نوار صفحه‌بندی متقارن است و
  یک خط جداکنندهٔ ظریف از جدول دارد. این باعث می‌شود 
  که نوار صفحه‌بندی به وضوح از جدول جدا شود و
   در عین حال فضای کافی برای تعامل کاربر فراهم کند. */}
