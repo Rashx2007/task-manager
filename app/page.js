@@ -339,7 +339,19 @@ export default function Home() {
     if (selectedTask) openEdit(selectedTask);
     else alert("ابتدا یک کار را انتخاب کنید.");
   };
-  const handleRefresh = () => setReloadKey((k) => k + 1);
+  // ✅ معادل «بروزرسانی» دسکتاپ: بازچینش زمان کارهای جاری + بارگذاری مجدد جدول
+const handleRefresh = async () => {
+  try {
+    const res = await fetch("/api/update-schedule", { method: "POST" });
+    const d = await res.json();
+    if (d.success) {
+      showToast(`بروزرسانی انجام شد؛ ${d.updated} کار بازچینی شد.`, "success");
+      setReloadKey((k) => k + 1);
+    } else showToast("خطا: " + (d.error || "نامشخص"), "error");
+  } catch {
+    showToast("خطا در ارتباط با سرور.", "error");
+  }
+};
 
   const handleReschedule = async () => {
     if (!confirm("مرتب‌سازی «بدون کارهای زمان ثابت» انجام شود؟")) return;
