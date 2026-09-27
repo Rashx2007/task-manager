@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
-import DwgBrowser from "./DwgBrowser";
+// ✅ مودال مرورگر سفارشی حذف شد؛ فقط دیالوگ بومی ویندوز (route: /api/open-dwg-dialog)
 
 // ✅ هم‌معنا با likeToRegex سمت سرور: % یعنی «هر رشته»
 const likeTest = (pattern, s) => {
@@ -176,8 +176,28 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [newNames, setNewNames] = useState({});
   const [busy, setBusy] = useState(false);
   const [centerMode, setCenterMode] = useState(false);
-  const [showBrowse, setShowBrowse] = useState(false);
   const [chosenDwg, setChosenDwg] = useState("");
+  // ✅ میانبر مسیرهای قبلی نقشه
+  const RECENT_KEY = "map_recent_dwgs";
+  const [recents, setRecents] = useState([]);
+  const lastDirRef = useRef("");
+  useEffect(() => {
+    try {
+      const list = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+      setRecents(Array.isArray(list) ? list : []);
+      if (list[0]) lastDirRef.current = String(list[0]).replace(/[^\\\/]+$/, "");
+    } catch {}
+  }, []);
+  const rememberDwg = (p) => {
+    lastDirRef.current = String(p).replace(/[^\\\/]+$/, "");
+    setRecents((r) => {
+      const next = [p, ...r.filter((x) => x !== p)].slice(0, 8);
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
   const [statusMsg, setStatusMsg] = useState("");
   const [assets, setAssets] = useState([]);
   const [baseHidden, setBaseHidden] = useState({}); // ✅ لایه پایه خاموش/روشن (default روشن)
@@ -200,12 +220,11 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   useEffect(() => {
     const h = (e) => {
       if (e.key !== "Escape") return;
-      if (showBrowse) return;
       onClose();
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, showBrowse]);
+  }, [onClose]);
 
   useEffect(() => {
     fetch("/api/assets")
@@ -350,13 +369,36 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     setBusy(false);
   };
 
+  // ✅ فقط و فقط دیالوگ فایل بومی ویندوز (بدون مودال سفارشی، بدون محدودیت پوشه)
+  const pickDwgNative = async () => {
+    try {
+      const res = await fetch("/api/open-dwg-dialog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initialDir: lastDirRef.current || "" }),
+      });
+      const d = await res.json();
+      if (d.cancelled) {
+        say("انتخاب فایل نقشه لغو شد.", 3000);
+        return;
+      }
+      if (!d.success) {
+        alert("خطا: " + (d.error || "نامشخص"));
+        return;
+      }
+      rememberDwg(d.path);
+      await selectDwg(d.path);
+    } catch (e) {
+      alert("خطا در بازکردن دیالوگ ویندوز: " + e.message);
+    }
+  };
+
   const selectDwg = async (full) => {
     const nm = parseMapInfo(full);
     if (nm.building) setBuilding(nm.building);
     if (nm.block) setBlock(nm.block);
     if (nm.floor) setFloor(nm.floor);
     setChosenDwg(full);
-    setShowBrowse(false);
     const b = nm.building || building;
     const bl = nm.block || block;
     const f = nm.floor || floor;
@@ -835,9 +877,30 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <button className="btn-primary" onClick={() => load()}>
             بارگذاری
           </button>
-          <button className="btn-success" onClick={() => setShowBrowse(true)}>
-            📂 مرور فایل نقشه…
-          </button>
+                 <button className="btn-success" onClick={pickDwgNative} title="دیالوگ انتخاب فایل ویندوز (بدون محدودیت پوشه)">
+         📂 مرور فایل نقشه…
+       </button>
+       {recents.length > 0 && (
+         <select
+           className={inp}
+           style={{ maxWidth: 240 }}
+           value=""
+           title="مسیرهای اخیر نقشه (میانبر)"
+           onChange={(e) => {
+             const p = e.target.value;
+             if (!p) return;
+             rememberDwg(p);
+             selectDwg(p);
+           }}
+         >
+           <option value="">🕘 مسیرهای اخیر…</option>
+           {recents.map((p) => (
+             <option key={p} value={p}>
+               {p}
+             </option>
+           ))}
+         </select>
+       )}
           {map && hashChanged && (
             <button className="btn-danger" disabled={busy} onClick={() => convert()}>
               ⚠ همگام‌سازی
@@ -984,7 +1047,6 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           چرخ ماوس = زوم | کشیدن = جابه‌جایی | کلیک روی برچسب قرمز = انتخاب/ثبت | 🎯 نقطهٔ قرمز = مرکز نقشه
         </div>
       </div>
-      {showBrowse && <DwgBrowser defaultPath="D:\\(فنی)" onClose={() => setShowBrowse(false)} onSelect={selectDwg} />}
-    </div>
+   {/* ✅ مودال DwgBrowser حذف شد؛ انتخاب فقط با دیالوگ بومی ویندوز */}    </div>
   );
 }
