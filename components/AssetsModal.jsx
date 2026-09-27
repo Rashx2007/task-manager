@@ -129,6 +129,7 @@ export default function AssetsModal({
   const [saving, setSaving] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [formHint, setFormHint] = useState("");
   const [base, setBase] = useState({ names: [], systems: [] });
   const [newName, setNewName] = useState("");
   const [newSystem, setNewSystem] = useState("");
@@ -244,6 +245,7 @@ export default function AssetsModal({
 
   const startAdd = (pre = null) => {
     setEditingId(null);
+    if (!pre) setFormHint("");
     setForm({
       AssetName: "",
       AssetNumber: "",
@@ -279,7 +281,16 @@ export default function AssetsModal({
 
   const startEdit = (a) => {
     setEditingId(a.AssetID);
+    setFormHint("");
     setForm({ ...a, FolderPath: a.FolderPath || "" });
+  };
+  // ✅ کپی دستگاه: فرم افزودن با مقادیر همین ردیف (بدون AssetID)
+  const copyAsset = (a) => {
+    const { AssetID, ...rest } = a;
+    setFormHint(
+      `⧉ در حال کپی دستگاه «${a.AssetName || ""}» شماره ${a.AssetNumber ?? "-"} — پس از ویرایش/بررسی، ذخیره کنید.`
+    );
+    startAdd(rest);
   };
   const toEnDigits = (s) =>
     String(s ?? "")
@@ -324,13 +335,14 @@ export default function AssetsModal({
           }
         } catch { }
         if (onAssetSaved) onAssetSaved(newId, form);
-        if (preset) {
-          onClose();
-          return;
-        }
-        setForm(null);
-        setEditingId(null);
-        loadAll();
+                  if (preset) {
+            onClose();
+            return;
+          }
+          setForm(null);
+          setEditingId(null);
+          setFormHint("");
+          loadAll();
       } else alert("خطا: " + d.error);
     } catch {
       alert("خطا در ارتباط با سرور");
@@ -475,35 +487,32 @@ export default function AssetsModal({
                   ))}
                 </select>
               </div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {!onSelectAsset && (
-                  <>
-                    <button className="btn-success" onClick={() => startAdd()}>
-                      + دستگاه جدید
-                    </button>
-                    <button
-                      className="btn-primary"
-                      disabled={!selectedAsset}
-                      title={
-                        selectedAsset
-                          ? "ایجاد کار جدید برای: " + selectedAsset.AssetName
-                          : "ابتدا یک دستگاه را از جدول انتخاب کنید"
-                      }
-                      onClick={() =>
-                        onNewTaskWithAsset &&
-                        onNewTaskWithAsset(selectedAsset.AssetID)
-                      }
-                    >
-                      + کار جدید با این دستگاه
-                    </button>
-                  </>
-                )}
-                {onSelectAsset && (
-                  <div className="text-sm font-bold text-teal-800 py-2">
-                    یک دستگاه را انتخاب کنید تا به فرم کار برگردد.
-                  </div>
-                )}
-              </div>
+                     <div className="flex flex-wrap items-center gap-2 mb-3">
+          <button className="btn-success" onClick={() => startAdd()}>
+            + دستگاه جدید
+          </button>
+          {!onSelectAsset && (
+            <button
+              className="btn-primary"
+              disabled={!selectedAsset}
+              title={
+                selectedAsset
+                  ? "ایجاد کار جدید برای: " + selectedAsset.AssetName
+                  : "ابتدا یک دستگاه را از جدول انتخاب کنید"
+              }
+              onClick={() =>
+                onNewTaskWithAsset && onNewTaskWithAsset(selectedAsset.AssetID)
+              }
+            >
+              + کار جدید با این دستگاه
+            </button>
+          )}
+          {onSelectAsset && (
+            <div className="text-sm font-bold text-teal-800 py-2">
+              یک دستگاه را انتخاب کنید تا به فرم کار برگردد؛ یا با «+ دستگاه جدید» همان‌جا ثبتش کنید.
+            </div>
+          )}
+        </div>
               <div
                 className="overflow-auto overscroll-contain rounded border border-gray-300"
                 style={{ maxHeight: "52vh" }}
@@ -557,26 +566,43 @@ export default function AssetsModal({
                         <td>{a.Location}</td>
                         <td>{a.MechSystem}</td>
                         <td>{a.PropertyCode ?? ""}</td>
-                        <td className="whitespace-nowrap">
-                          <button
-                            className="btn-primary px-2 py-1 text-xs ml-1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEdit(a);
-                            }}
-                          >
-                            ویرایش
-                          </button>
-                          <button
-                            className="btn-danger px-2 py-1 text-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              del(a.AssetID);
-                            }}
-                          >
-                            حذف
-                          </button>
-                        </td>
+                                          <td>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        title="ویرایش دستگاه"
+                        className="px-2 py-1 text-xs rounded text-white bg-sky-600 hover:bg-sky-700 whitespace-nowrap"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEdit(a);
+                        }}
+                      >
+                        ✏️ ویرایش
+                      </button>
+                      <button
+                        type="button"
+                        title="کپی دستگاه (نمونهٔ جدید با همین مشخصات)"
+                        className="px-2 py-1 text-xs rounded text-white bg-amber-500 hover:bg-amber-600 whitespace-nowrap"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyAsset(a);
+                        }}
+                      >
+                        ⧉ کپی
+                      </button>
+                      <button
+                        type="button"
+                        title="حذف دستگاه"
+                        className="px-2 py-1 text-xs rounded text-white bg-rose-600 hover:bg-rose-700 whitespace-nowrap"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          del(a.AssetID);
+                        }}
+                      >
+                        🗑 حذف
+                      </button>
+                    </div>
+                  </td>
                       </tr>
                     ))}
                   </tbody>
@@ -586,12 +612,17 @@ export default function AssetsModal({
           )}
           {tab === "devices" && form !== null && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[700px]">
-              {preset && !editingId && (
-                <div className="md:col-span-4 bg-yellow-100 rounded p-2 text-sm font-bold">
-                  🗺 این دستگاه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید
-                  یا انصراف بزنید.
-                </div>
-              )}
+                        {preset && !editingId && (
+            <div className="md:col-span-4 bg-yellow-100 rounded p-2 text-sm font-bold">
+              🗺 این دستگاه پیش‌پر شده است؛ پس از بررسی/ویرایش، ذخیره کنید
+              یا انصراف بزنید.
+            </div>
+          )}
+          {formHint && !editingId && (
+            <div className="md:col-span-4 bg-amber-100 border border-amber-400 rounded p-2 text-sm font-bold">
+              {formHint}
+            </div>
+          )}
               <div>
                 <label className="text-sm font-bold">ساختمان *</label>
                 <ComboInput
@@ -720,19 +751,20 @@ export default function AssetsModal({
                 >ب
                   {saving ? "..." : "ذخیره"}
                 </button>
-                <button
-                  className="btn-danger"
-                  onClick={() => {
-                    if (preset) {
-                      onClose();
-                    } else {
-                      setForm(null);
-                      setEditingId(null);
-                    }
-                  }}
-                >
-                  انصراف
-                </button>
+                              <button
+                className="btn-danger"
+                onClick={() => {
+                  if (preset) {
+                    onClose();
+                  } else {
+                    setForm(null);
+                    setEditingId(null);
+                    setFormHint("");
+                  }
+                }}
+              >
+                انصراف
+              </button>
               </div>
             </div>
           )}
