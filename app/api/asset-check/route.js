@@ -1,3 +1,4 @@
+//app/api/asset-check/route.js
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { normFa } from '@/lib/assetRules';

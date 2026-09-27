@@ -1,3 +1,4 @@
+//app/api/assets/[id]/route.js
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 const num = (v) => (v !== null && v !== undefined && String(v).trim() !== '' ? Number(v) : 0);

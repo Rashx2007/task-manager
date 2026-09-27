@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { rescheduleAll } from '@/lib/scheduler-logic';
 import { formatSqlDateTime, nowWall } from '@/lib/schedule-logic';
-import { nowWall, formatSqlDateTime } from '@/lib/schedule-logic';
 export async function POST() {
   try {
     const rows = await query(`SELECT tsk.TaskID, flw.EndDateTime AS FlwEnd, tsk.Submit_Date, tsk.Submit_Time, tsk.Priorities, tsk.FixedDueTime FROM Tsk_tbl tsk LEFT JOIN Follow_tbl flw ON tsk.TaskID=flw.TaskID WHERE tsk.Complited=0 ORDER BY tsk.TaskID, flw.EndDateTime DESC`);

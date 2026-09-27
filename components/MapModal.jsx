@@ -2,13 +2,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import DwgBrowser from "./DwgBrowser";
 
+// ✅ هم‌معنا با likeToRegex سمت سرور: % یعنی «هر رشته»
 const likeTest = (pattern, s) => {
   const rx = new RegExp(
     "^" +
       String(pattern)
         .split("%")
-        .map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-        .join(".") +
+        .map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*") +
       "$",
     "i",
   );
@@ -128,7 +129,7 @@ const fixText = (s) => {
   try {
     const u = decodeURIComponent(escape(t));
     if (u && /[\u0600-\u06FF]/.test(u)) t = u;
-  } catch {}
+  } catch { }
   return t.replace(/\s+/g, " ").trim();
 };
 function Sec({ k, title, badge, open, onToggle, children, color = "bg-[#F7C4A5]" }) {
@@ -204,7 +205,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       .then((d) => {
         if (d.success) setAssets(d.data || []);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const distinct = (arr) =>
@@ -371,8 +372,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         }
         const ok = confirm(
           `برای ساختمان «${b}» بلوک «${bl || "-"}» طبقه «${f}» قبلاً نقشه‌ای تبدیل و ذخیره شده است (نسخه v${d.version || 1}).\n` +
-            `بین نقشهٔ ذخیره‌شده و فایل جدید اختلاف یافت شد.\n` +
-            `قبلی پاک شود و جدید ذخیره شود؟`,
+          `بین نقشهٔ ذخیره‌شده و فایل جدید اختلاف یافت شد.\n` +
+          `قبلی پاک شود و جدید ذخیره شود؟`,
         );
         if (ok) {
           await fetch("/api/maps", {
@@ -448,7 +449,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         return {
           text: t.text,
           deviceType: r ? r.DeviceType : deviceType || "نامشخص",
-          entrance: detectEntrance(tag),
+          entrance: t.entrance || detectEntrance(tag),
           assetNumber: t.assetNumber || null,
           specifications: t.specifications || "",
           location: t.location || "",
@@ -502,7 +503,9 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     setTypeOptions(types);
     box.querySelectorAll("g[data-layer]").forEach((g) => {
       const l = g.getAttribute("data-layer");
-      const isB = rules.some((r) => r.IsBase && likeTest(r.LayerLike, l));
+      const isB =
+        rules.some((r) => r.IsBase && likeTest(r.LayerLike, l)) ||
+        /wall|partition|دیوار|پارتیشن/i.test(l || "");
       const r = ruleForLayer(rules, l);
       g.style.display = isB || (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ? "" : "none";
     });
@@ -831,7 +834,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           </Sec>
         )}
 
-        {newOnMap.length > 0 && (
+        {/* ✅ به درخواست کاربر: این بخش فعلاً مخفی است (منطق ثبت دست‌نخورده) */}
+     {false && newOnMap.length > 0 && (
           <Sec k="newOnMap" open={open.newOnMap} onToggle={toggleSec} title="🆕 دستگاه‌های جدید روی نقشه (بدون ثبت)" badge={newOnMap.length}>
             <div className="max-h-40 overflow-auto">
               {newOnMap.map((t) => (
