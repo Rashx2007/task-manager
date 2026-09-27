@@ -7,17 +7,7 @@ import { normalizeDigits, normalizeFa } from "@/lib/assetRules";
 export async function POST(request) {
   try {
     const b = await request.json();
-    const {
-      deviceType,
-      deviceNumber,
-      building,
-      block,
-      floor,
-      entrance,
-      location,
-      mechSystem,
-      mapTag,
-    } = b || {};
+        const { deviceType, deviceNumber, building, block, floor, entrance, location, mechSystem, specifications, mapTag } = b || {};
 
     // ✅ نرمال‌سازی اعداد فارسی/عربی قبل از مقایسه
     const normalizedNumber =

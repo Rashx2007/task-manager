@@ -119,6 +119,12 @@ const ruleForLayer = (rules, L) => {
     }) || null
   );
 };
+// ✅ لایه پایه = قواعد IsBase دیتابیس + لایه‌های محور/دیوار رایج (CenterLine و…)
+const isBaseLayer = (rules, l) =>
+  rules.some((r) => r.IsBase && likeTest(r.LayerLike, l)) ||
+  /centerline|center-line|^cl$|axe|axis|wall|partition|دیوار|پارتیشن/i.test(l || "");
+// ✅ لایه‌های توضیحی که همیشه باید دیده شوند (شماره‌ها/متن‌ها/محل‌ها/علائم)
+const isAnnotation = (l) => /num|text|location|sign|label|tag/i.test(l || "");
 const fixText = (s) => {
   if (!s) return s || "";
   let t = String(s);
@@ -174,6 +180,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   const [chosenDwg, setChosenDwg] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [assets, setAssets] = useState([]);
+  const [baseHidden, setBaseHidden] = useState({}); // ✅ لایه پایه خاموش/روشن (default روشن)
+  const [baseLayerList, setBaseLayerList] = useState([]);
   const [open, setOpen] = useState({ unknown: true, newOnMap: true, orphan: true });
   const toggleSec = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const [zoom, setZoom] = useState(1);
@@ -501,13 +509,16 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       ),
     ];
     setTypeOptions(types);
+        setBaseLayerList(present.filter((l) => isBaseLayer(rules, l)));
     box.querySelectorAll("g[data-layer]").forEach((g) => {
       const l = g.getAttribute("data-layer");
-      const isB =
-        rules.some((r) => r.IsBase && likeTest(r.LayerLike, l)) ||
-        /wall|partition|دیوار|پارتیشن/i.test(l || "");
+      const isB = isBaseLayer(rules, l);
       const r = ruleForLayer(rules, l);
-      g.style.display = isB || (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ? "" : "none";
+      const show =
+        (isB && baseHidden[l] !== false) ||
+        (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ||
+        (!r && !isB && isAnnotation(l));
+      g.style.display = show ? "" : "none";
     });
     box.querySelectorAll("text[data-tag]").forEach((t) => {
       t.style.cursor = "pointer";
@@ -558,7 +569,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         svgEl.appendChild(g);
       }
     }
-  }, [svgText, rules, selectedTypes, center, map, centerMode]);
+  }, [svgText, rules, selectedTypes, center, map, centerMode, baseHidden]);
 
   useEffect(() => {
     const box = boxRef.current;
@@ -611,8 +622,54 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         say("این لایه «نادیده» است؛ ثبت دستگاه انجام نمی‌شود.", 3000);
         return;
       }
-      const numMatch = txt.match(/^\s*-?\d+(?:\.\d+)?\s*$/);
-      const deviceNumber = numMatch ? String(parseInt(txt, 10)) : "";
+      // ✅ غنی‌سازی از همهٔ متن‌های نقشه (tags) + دایره‌های SVG:
+      // شماره: «#۵»→۵ > لایه شماره > عدد داخل دایرهٔ مجاور | محل: لایه Location | مشخصات: باقی متن‌های مجاور
+      const R = 60;
+      const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+      const px = Number(tag?.x ?? tag?.X);
+      const py = Number(tag?.y ?? tag?.Y);
+      const norm = (s) => String(s ?? "").trim();
+      const nearTags = tags
+        .map((o) => ({ ...o, x: Number(o.x ?? o.X), y: Number(o.y ?? o.Y) }))
+        .filter((o) => !isNaN(o.x) && !isNaN(o.y) && !(o.x === px && o.y === py && norm(o.text) === txt))
+        .filter((o) => d2(o, { x: px, y: py }) <= R * R);
+      const circles = [...box.querySelectorAll("svg circle")]
+        .map((c) => ({
+          cx: Number(c.getAttribute("cx")),
+          cy: Number(c.getAttribute("cy")),
+          r: Number(c.getAttribute("r")),
+        }))
+        .filter((c) => !isNaN(c.cx) && !isNaN(c.cy) && !isNaN(c.r) && c.r > 0);
+      const inCircle = (o) =>
+        circles.some((c) => (o.x - c.cx) ** 2 + (o.y - c.cy) ** 2 <= (c.r * 1.35) ** 2);
+      const hashNum = (o) => {
+        const m = norm(o.text).match(/#(\d+)/);
+        return m ? m[1] : null;
+      };
+      const pureNum = (o) => (/^\d+$/.test(norm(o.text)) ? norm(o.text) : null);
+      const isNumLayer = (o) => /num|number|nums|code|sign|tag/i.test(o.layer || "");
+      const isLocLayer = (o) => /location|محل/i.test(o.layer || "");
+      const num =
+        hashNum({ text: txt }) ||
+        nearTags.map(hashNum).find(Boolean) ||
+        nearTags.filter(isNumLayer).map(pureNum).find(Boolean) ||
+        nearTags.filter(inCircle).map(pureNum).find(Boolean) ||
+        (inCircle({ x: px, y: py }) ? pureNum({ text: txt }) : null) ||
+        "";
+      const loc = (nearTags.find(isLocLayer) || {}).text || "";
+      const specs = nearTags
+        .filter(
+          (o) =>
+            !isLocLayer(o) &&
+            !hashNum(o) &&
+            !(isNumLayer(o) && pureNum(o)) &&
+            !inCircle(o) &&
+            norm(o.text) !== norm(num),
+        )
+        .map((o) => norm(o.text))
+        .join(" ")
+        .trim();
+      const deviceNumber = num || "";
       try {
         const res = await fetch("/api/assets/match-or-prefill", {
           method: "POST",
@@ -624,8 +681,9 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
             block,
             floor,
             entrance: detectEntrance(tag),
-            location: "",
+            location: loc,
             mechSystem: "",
+            specifications: specs,
             mapTag: txt,
           }),
         });
@@ -801,7 +859,22 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           )}
         </div>
 
-        {statusMsg && <div className="mb-2 bg-teal-100 text-teal-900 rounded px-2 py-1 text-sm font-bold">{statusMsg}</div>}
+        {baseLayerList.length > 0 && (
+       <div className="flex flex-wrap items-center gap-3 mb-2 bg-white/70 border border-teal-300 rounded px-2 py-1 text-[11px] font-bold">
+         <span className="text-teal-800">لایه‌های پایه:</span>
+         {baseLayerList.map((l) => (
+           <label key={l} className="flex items-center gap-1 cursor-pointer">
+             <input
+               type="checkbox"
+               checked={baseHidden[l] !== false}
+               onChange={(e) => setBaseHidden((h) => ({ ...h, [l]: e.target.checked }))}
+             />
+             <span>{l}</span>
+           </label>
+         ))}
+       </div>
+     )}
+     {statusMsg && <div className="mb-2 bg-teal-100 text-teal-900 rounded px-2 py-1 text-sm font-bold">{statusMsg}</div>}
 
         {unknown.length > 0 && (
           <Sec k="unknown" open={open.unknown} onToggle={toggleSec} title="⚠ لایه‌های ناشناخته" badge={unknown.length}>
