@@ -236,12 +236,21 @@ export default function Home() {
         return;
       }
       const offset = (pageNum - 1) * PAGE_SIZE;
-      const filtersStr = Object.keys(filtersObj).length
-        ? `&filters=${encodeURIComponent(JSON.stringify(filtersObj))}`
-        : "";
-      const res = await fetch(
-        `/api/load-data?type=${type}&offset=${offset}&limit=${PAGE_SIZE}${filtersStr}`,
-      );
+      // ✅ POST با بدنهٔ JSON: جلوگیری از بزرگ‌شدن URL و خطای 431
+      const res = await fetch(`/api/load-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          offset,
+          limit: PAGE_SIZE,
+          filters: filtersObj || {},
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`سرور کد ${res.status} برگرداند: ${t.slice(0, 200)}`);
+      }
       const d = await res.json();
       if (d.success) {
         setTasks(d.data || []);

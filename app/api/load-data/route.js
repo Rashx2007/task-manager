@@ -33,13 +33,8 @@ const COLUMN_FILTER_MAP = {
 
 const p2 = (n) => String(n).padStart(2, '0');
 
-export async function GET(request) {
-  const url = new URL(request.url);
-  const type = url.searchParams.get('type') || 'daily';
-  const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
-  const limit = Math.max(1, Number(url.searchParams.get('limit') || 10));
-  let filters = {};
-  try { filters = JSON.parse(url.searchParams.get('filters') || '{}'); } catch { filters = {}; }
+// ✅ هستهٔ مشترک بارگذاری؛ پارامترها از GET (query) یا POST (body) می‌آیند
+async function runLoad({ type, offset, limit, filters }) {
 
   try {
     const conds = [];
@@ -124,4 +119,32 @@ export async function GET(request) {
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
+}
+
+// ✅ GET برای سازگاری عقب‌مانده (فقط درخواست‌های سبک بدون فیلتر بزرگ)
+export async function GET(request) {
+  const url = new URL(request.url);
+  let filters = {};
+  try { filters = JSON.parse(url.searchParams.get('filters') || '{}'); } catch { filters = {}; }
+  return runLoad({
+    type: url.searchParams.get('type') || 'daily',
+    offset: Math.max(0, Number(url.searchParams.get('offset') || 0)),
+    limit: Math.max(1, Number(url.searchParams.get('limit') || 10)),
+    filters,
+  });
+}
+
+// ✅✅ POST: فیلترها در بدنهٔ درخواست → URL هرگز بزرگ نمی‌شود → دیگر 431 نمی‌گیریم
+export async function POST(request) {
+  const b = await request.json().catch(() => ({}));
+  let filters = b.filters;
+  if (typeof filters === 'string') {
+    try { filters = JSON.parse(filters); } catch { filters = {}; }
+  }
+  return runLoad({
+    type: b.type || 'daily',
+    offset: Math.max(0, Number(b.offset || 0)),
+    limit: Math.max(1, Number(b.limit || 10)),
+    filters: filters && typeof filters === 'object' ? filters : {},
+  });
 }

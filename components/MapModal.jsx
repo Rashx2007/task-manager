@@ -368,8 +368,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     }
     setBusy(false);
   };
-
-  // ✅ فقط و فقط دیالوگ فایل بومی ویندوز (بدون مودال سفارشی، بدون محدودیت پوشه)
+// ✅ فقط و فقط دیالوگ فایل بومی ویندوز (بدون مودال سفارشی، بدون محدودیت پوشه)
   const pickDwgNative = async () => {
     try {
       const res = await fetch("/api/open-dwg-dialog", {
@@ -392,9 +391,19 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       alert("خطا در بازکردن دیالوگ ویندوز: " + e.message);
     }
   };
-
   const selectDwg = async (full) => {
-    const nm = parseMapInfo(full);
+    const nm = parseMapInfo(full);const likeTest = (pattern, s) => {
+  const rx = new RegExp(
+    "^" +
+      String(pattern)
+        .split("%")
+        .map((x) => x.replace(/[.+?^${}()|[]\]/g, "\$&"))
+        .join(".") +
+      "$",
+    "i",
+  );
+  return rx.test(s || "");
+};
     if (nm.building) setBuilding(nm.building);
     if (nm.block) setBlock(nm.block);
     if (nm.floor) setFloor(nm.floor);
@@ -552,15 +561,16 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     ];
     setTypeOptions(types);
         setBaseLayerList(present.filter((l) => isBaseLayer(rules, l)));
-    box.querySelectorAll("g[data-layer]").forEach((g) => {
+        box.querySelectorAll("g[data-layer]").forEach((g) => {
       const l = g.getAttribute("data-layer");
       const isB = isBaseLayer(rules, l);
       const r = ruleForLayer(rules, l);
-      const show =
-        (isB && baseHidden[l] !== false) ||
-        (r && (selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType))) ||
-        (!r && !isB && isAnnotation(l));
-      g.style.display = show ? "" : "none";
+      const ignored = r && r.DeviceType === "__IGNORE__";
+      const baseOk = !isB || baseHidden[l] !== false;
+      const deviceOk =
+        !r || ignored || selectedTypes.length === 0 || selectedTypes.includes(r.DeviceType);
+      // ✅ پیش‌فرض: همهٔ لایه‌ها نمایان (از جمله اعداد دایره‌ها و محورها)؛ فقط IGNORE پنهان می‌ماند
+      g.style.display = !ignored && baseOk && deviceOk ? "" : "none";
     });
     box.querySelectorAll("text[data-tag]").forEach((t) => {
       t.style.cursor = "pointer";
@@ -711,24 +721,25 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         .map((o) => norm(o.text))
         .join(" ")
         .trim();
-      const deviceNumber = num || "";
-      try {
-        const res = await fetch("/api/assets/match-or-prefill", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceType: inferredType,
-            deviceNumber,
-            building,
-            block,
-            floor,
-            entrance: detectEntrance(tag),
-            location: loc,
-            mechSystem: "",
-            specifications: specs,
-            mapTag: txt,
-          }),
-        });
+    
+    const deviceNumber = num || "";
+    try {
+      const res = await fetch("/api/assets/match-or-prefill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceType: inferredType,
+          deviceNumber,
+          building,
+          block,
+          floor,
+          entrance: detectEntrance(tag),
+          location: loc,
+          mechSystem: "",
+          specifications: specs,
+          mapTag: txt,
+        }),
+      });
         const d = await res.json();
         if (d.found) {
           say(`دستگاه کد ${d.assetId} یافت شد؛ انتخاب شد.`, 3000);
