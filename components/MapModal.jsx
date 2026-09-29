@@ -398,7 +398,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       String(pattern)
         .split("%")
         .map((x) => x.replace(/[.+?^${}()|[]\]/g, "\$&"))
-        .join(".") +
+        .join(".*") +
       "$",
     "i",
   );
@@ -676,52 +676,57 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       }
       // ✅ غنی‌سازی از همهٔ متن‌های نقشه (tags) + دایره‌های SVG:
       // شماره: «#۵»→۵ > لایه شماره > عدد داخل دایرهٔ مجاور | محل: لایه Location | مشخصات: باقی متن‌های مجاور
-      const R = 60;
-      const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
-      const px = Number(tag?.x ?? tag?.X);
-      const py = Number(tag?.y ?? tag?.Y);
-      const norm = (s) => String(s ?? "").trim();
-      const nearTags = tags
-        .map((o) => ({ ...o, x: Number(o.x ?? o.X), y: Number(o.y ?? o.Y) }))
-        .filter((o) => !isNaN(o.x) && !isNaN(o.y) && !(o.x === px && o.y === py && norm(o.text) === txt))
-        .filter((o) => d2(o, { x: px, y: py }) <= R * R);
-      const circles = [...box.querySelectorAll("svg circle")]
-        .map((c) => ({
-          cx: Number(c.getAttribute("cx")),
-          cy: Number(c.getAttribute("cy")),
-          r: Number(c.getAttribute("r")),
-        }))
-        .filter((c) => !isNaN(c.cx) && !isNaN(c.cy) && !isNaN(c.r) && c.r > 0);
-      const inCircle = (o) =>
-        circles.some((c) => (o.x - c.cx) ** 2 + (o.y - c.cy) ** 2 <= (c.r * 1.35) ** 2);
-      const hashNum = (o) => {
-        const m = norm(o.text).match(/#(\d+)/);
-        return m ? m[1] : null;
-      };
-      const pureNum = (o) => (/^\d+$/.test(norm(o.text)) ? norm(o.text) : null);
-      const isNumLayer = (o) => /num|number|nums|code|sign|tag/i.test(o.layer || "");
-      const isLocLayer = (o) => /location|محل/i.test(o.layer || "");
-      const num =
-        hashNum({ text: txt }) ||
-        nearTags.map(hashNum).find(Boolean) ||
-        nearTags.filter(isNumLayer).map(pureNum).find(Boolean) ||
-        nearTags.filter(inCircle).map(pureNum).find(Boolean) ||
-        (inCircle({ x: px, y: py }) ? pureNum({ text: txt }) : null) ||
-        "";
-      const loc = (nearTags.find(isLocLayer) || {}).text || "";
-      const specs = nearTags
-        .filter(
-          (o) =>
-            !isLocLayer(o) &&
-            !hashNum(o) &&
-            !(isNumLayer(o) && pureNum(o)) &&
-            !inCircle(o) &&
-            norm(o.text) !== norm(num),
-        )
-        .map((o) => norm(o.text))
-        .join(" ")
-        .trim();
-    
+          const R = 140;
+    const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+    const px = Number(tag?.x ?? tag?.X);
+    const py = Number(tag?.y ?? tag?.Y);
+    const norm = (s) => String(s ?? "").trim();
+    const nearTags = tags
+      .map((o) => ({ ...o, x: Number(o.x ?? o.X), y: Number(o.y ?? o.Y) }))
+      .filter((o) => !isNaN(o.x) && !isNaN(o.y) && !(o.x === px && o.y === py && norm(o.text) === txt))
+      .filter((o) => d2(o, { x: px, y: py }) <= R * R);
+    const circles = [...box.querySelectorAll("svg circle")]
+      .map((c) => ({ cx: Number(c.getAttribute("cx")), cy: Number(c.getAttribute("cy")), r: Number(c.getAttribute("r")) }))
+      .filter((c) => !isNaN(c.cx) && !isNaN(c.cy) && !isNaN(c.r) && c.r > 0);
+    const inCircle = (o) => circles.some((c) => (o.x - c.cx) ** 2 + (o.y - c.cy) ** 2 <= (c.r * 1.35) ** 2);
+    const hashNum = (o) => { const m = norm(o.text).match(/#(\d+)/); return m ? m[1] : null; };
+    const pureNum = (o) => (/^\d+$/.test(norm(o.text)) ? norm(o.text) : null);
+    const isNumLayer = (o) => /num|number|nums|code|sign|tag/i.test(o.layer || "");
+    const isLocLayer = (o) => /location|محل/i.test(o.layer || "");
+    const isPersian = (s) => (String(s || "").match(/[\u0600-\u06ff]/g) || []).length / Math.max(1, String(s || "").length) > 0.5;
+    const num =
+      hashNum({ text: txt }) ||
+      nearTags.map(hashNum).find(Boolean) ||
+      nearTags.filter(isNumLayer).map(pureNum).find(Boolean) ||
+      nearTags.filter(inCircle).map(pureNum).find(Boolean) ||
+      (inCircle({ x: px, y: py }) ? pureNum({ text: txt }) : null) ||
+      "";
+    // ✅ محل: لایهٔ Location؛ وگرنه نزدیک‌ترین متن فارسیِ لایهٔ 0 (نام اتاق) که برچسب ورودی نباشد
+    const locHit =
+      nearTags.find(isLocLayer) ||
+      nearTags.find((o) => (o.layer || "") === "0" && isPersian(o.text) && !/ورودی\s*\d/.test(norm(o.text)));
+    const loc = locHit ? norm(locHit.text) : "";
+    // ✅ ورودی: نزدیک‌ترین برچسب «ورودی N» روی نقشه
+    const entHit = nearTags.find((o) => /ورودی\s*(\d+)/.test(norm(o.text)));
+    const em = entHit ? norm(entHit.text).match(/ورودی\s*(\d+)/) : null;
+    // ✅ مشخصات شامل خودِ تگ دستگاه است (مثل «چپ 24.7مترمربع 400») + باقی متن‌های مجاور
+    const specs = [txt]
+      .concat(
+        nearTags
+          .filter(
+            (o) =>
+              !isLocLayer(o) &&
+              !hashNum(o) &&
+              !(isNumLayer(o) && pureNum(o)) &&
+              !inCircle(o) &&
+              norm(o.text) !== norm(num) &&
+              !/ورودی\s*\d/.test(norm(o.text)),
+          )
+          .map((o) => norm(o.text)),
+      )
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
     const deviceNumber = num || "";
     try {
       const res = await fetch("/api/assets/match-or-prefill", {
@@ -733,7 +738,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           building,
           block,
           floor,
-          entrance: detectEntrance(tag),
+          entrance: em ? em[1] : detectEntrance(tag),
           location: loc,
           mechSystem: "",
           specifications: specs,

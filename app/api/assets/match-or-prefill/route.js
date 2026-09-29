@@ -7,7 +7,18 @@ import { normalizeDigits, normalizeFa } from "@/lib/assetRules";
 export async function POST(request) {
   try {
     const b = await request.json();
-        const { deviceType, deviceNumber, building, block, floor, entrance, location, mechSystem, specifications, mapTag } = b || {};
+    const {
+      deviceType,
+      deviceNumber,
+      building,
+      block,
+      floor,
+      entrance,
+      location,
+      mechSystem,
+      specifications,
+      mapTag,
+    } = b || {};
 
     // ✅ نرمال‌سازی اعداد فارسی/عربی قبل از مقایسه
     const normalizedNumber =
@@ -20,7 +31,13 @@ export async function POST(request) {
       !isNaN(Number(normalizedNumber));
 
     // فقط وقتی «نوع + شماره + ساختمان + طبقه» همه موجود باشند، جستجوی دقیق انجام می‌شود
-    if (deviceType && hasNum && building && floor != null && String(floor).trim() !== "") {
+    if (
+      deviceType &&
+      hasNum &&
+      building &&
+      floor != null &&
+      String(floor).trim() !== ""
+    ) {
       const rows = await query(
         `SELECT AssetID FROM Asset_2_tbl
          WHERE AssetName = ? AND AssetNumber = ? AND Building = ? AND Block = ? AND Floor = ?
@@ -48,11 +65,14 @@ export async function POST(request) {
         Entrance: entrance || "",
         Location: location || "",
         MechSystem: mechSystem || "",
-        Specifications: "",
+        Specifications: specifications || "",
         MapTag: mapTag || "",
       },
     });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: 500 },
+    );
   }
 }
