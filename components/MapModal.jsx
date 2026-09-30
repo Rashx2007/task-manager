@@ -719,7 +719,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
     const inCircle = (o) => circles.some((c) => (o.x - c.cx) ** 2 + (o.y - c.cy) ** 2 <= (c.r * 1.35) ** 2);
     const hashNum = (o) => { const m = norm(o.text).match(/#(\d+)/); return m ? m[1] : null; };
     const pureNum = (o) => (/^\d+$/.test(norm(o.text)) ? norm(o.text) : null);
-    const isNumLayer = (o) => /num|number|nums|code|sign|tag/i.test(o.layer || "");
+    const isNumLayer = (o) => /num|number|nums|code|sign|tag|شماره/i.test(o.layer || "");
     const isLocLayer = (o) => /location|محل/i.test(o.layer || "");
     const isPersian = (s) => (String(s || "").match(/[\u0600-\u06ff]/g) || []).length / Math.max(1, String(s || "").length) > 0.5;
     const num =
@@ -730,8 +730,10 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       (inCircle({ x: px, y: py }) ? pureNum({ text: txt }) : null) ||
       "";
     // ✅ محل: لایهٔ Location؛ وگرنه نزدیک‌ترین متن فارسیِ لایهٔ 0 (نام اتاق) که برچسب ورودی نباشد
+    const isLocText = (o) => isLocLayer(o) || /^محل\s*[\d۰-۹]/.test(norm(o.text));
     const locHit =
-      nearTags.find(isLocLayer) ||
+      nearTags.find(isLocText) ||
+      nearTags.find((o) => (o.layer || "") === "0" && isPersian(o.text) && !/ورودی\s*\د/.test(norm(o.text))) ||
       nearTags.find((o) => (o.layer || "") === "0" && isPersian(o.text) && !/ورودی\s*\d/.test(norm(o.text)));
     const loc = locHit ? norm(locHit.text) : "";
     // ✅ ورودی: نزدیک‌ترین برچسب «ورودی N» روی نقشه
@@ -743,7 +745,8 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         nearTags
           .filter(
             (o) =>
-              !isLocLayer(o) &&
+              !isLocText(o) &&
+              o !== locHit &&
               !hashNum(o) &&
               !(isNumLayer(o) && pureNum(o)) &&
               !inCircle(o) &&
@@ -755,13 +758,26 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
+    // ✅ اگر برچسبِ کلیک‌شده روی لایهٔ شماره بود، نوع دستگاه از نزدیک‌ترین لایهٔ دستگاه واقعی
+    let finalType = inferredType;
+    if (!finalType || /شماره|num|number|nums|code|sign|tag/i.test(finalType)) {
+      const dt = nearTags
+        .map((o) => ruleForLayer(rules, o.layer || ""))
+        .find(
+          (rr) =>
+            rr &&
+            rr.DeviceType !== "__IGNORE__" &&
+            !/شماره|num|number|nums|code|sign|tag/i.test(rr.DeviceType),
+        );
+      if (dt) finalType = dt.DeviceType;
+    }
     const deviceNumber = num || "";
     try {
       const res = await fetch("/api/assets/match-or-prefill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deviceType: inferredType,
+          deviceType: finalType,
           deviceNumber,
           building,
           block,

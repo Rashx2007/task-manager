@@ -190,7 +190,7 @@ export async function POST(request) {
       process.env.MAP_LOCATION_LAYER || "Location",
       "i",
     );
-    const NUM_LAYER_RX = /[-_ ]?(Num|Number|Numbers|Nums|Code|Sign|Tag)s?$/i;
+    const NUM_LAYER_RX = /([-_ ]?(Num|Number|Numbers|Nums|Code|Sign|Tag)s?$|شماره)/i;
     const RADIUS = Number(process.env.MAP_NEIGHBOR_RADIUS || 60);
     const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
     const plainNum = (t) =>
@@ -267,13 +267,29 @@ export async function POST(request) {
         (String(s || "").match(/[\u0600-\u06ff]/g) || []).length /
           Math.max(1, String(s || "").length) >
         0.5;
+           // ✅ محل: لایهٔ Location یا هر متنی که با «محل + عدد» شروع شود (فارغ از لایه)
+      const isLocText = (o) =>
+        LOC_RX.test(o.layer || "") ||
+        /^محل\s*[\d۰-۹]/.test(String(o.text || "").trim());
+      const loc =
+        nearest(t, isLocText, Infinity) ||
+        nearest(
+          t,
+          (o) =>
+            (o.layer || "") === "0" &&
+            isPersian(o.text) &&
+            !/ورودی\s*\d/.test(String(o.text || "")),
+          RADIUS * 2,
+        );
+      // ✅ مشخصات: تگ خود دستگاه + باقی متن‌های مجاور (بدون شماره/محل/ورودی)
       const specifications = [String(t.text || "")]
         .concat(
           pool
             .filter(
               (o) =>
                 o !== numSrc &&
-                !LOC_RX.test(o.layer || "") &&
+                o !== loc &&
+                !isLocText(o) &&
                 !(NUM_LAYER_RX.test(o.layer || "") && plainNum(o)) &&
                 !hashNum(o) &&
                 !/ورودی\s*\d/.test(String(o.text || "")),
@@ -283,16 +299,6 @@ export async function POST(request) {
         .join(" ")
         .replace(/\s+/g, " ")
         .trim();
-      const loc =
-        nearest(t, (o) => LOC_RX.test(o.layer || ""), Infinity) ||
-        nearest(
-          t,
-          (o) =>
-            (o.layer || "") === "0" &&
-            isPersian(o.text) &&
-            !/ورودی\s*\d/.test(String(o.text || "")),
-          RADIUS * 2,
-        );
       const entSrc = nearest(
         t,
         (o) => /ورودی\s*(\d+)/.test(String(o.text || "")),

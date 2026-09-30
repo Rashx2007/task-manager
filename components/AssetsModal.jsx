@@ -761,7 +761,7 @@ const optionsFor = (field) => {
                   className="btn-success"
                   disabled={saving}
                   onClick={save}
-                >ب
+                >
                   {saving ? "..." : "ذخیره"}
                 </button>
                 <button
