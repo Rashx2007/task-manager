@@ -370,6 +370,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   };
 // ✅ فقط و فقط دیالوگ فایل بومی ویندوز (بدون مودال سفارشی، بدون محدودیت پوشه)
   const pickDwgNative = async () => {
+    // ۱) دیالوگ بومی ویندوز از سمت سرور (مسیر کامل)
     try {
       const res = await fetch("/api/open-dwg-dialog", {
         method: "POST",
@@ -377,18 +378,45 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
         body: JSON.stringify({ initialDir: lastDirRef.current || "" }),
       });
       const d = await res.json();
+      if (d.success) {
+        rememberDwg(d.path);
+        await selectDwg(d.path);
+        return;
+      }
       if (d.cancelled) {
         say("انتخاب فایل نقشه لغو شد.", 3000);
         return;
       }
-      if (!d.success) {
-        alert("خطا: " + (d.error || "نامشخص"));
+      console.warn("[pickDwg] دیالوگ سرور شکست خورد:", d.error);
+    } catch (e) {
+      console.warn("[pickDwg] خطای دیالوگ سرور:", e.message);
+    }
+    // ۲) پشتیبان: دیالوگ بومی ویندوزِ مرورگر + resolve مسیر در سرور (بدون مودال سفارشی)
+    try {
+      if (!window.showOpenFilePicker) throw new Error("مرورگر شما showOpenFilePicker ندارد");
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "DWG", accept: { "application/octet-stream": [".dwg"] } }],
+      });
+      const file = await handle.getFile();
+      say("یافتن مسیر فایل در سرور…", 0);
+      const r2 = await fetch("/api/browse-dwg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size }),
+      });
+      const d2 = await r2.json();
+      if (d2.success && d2.full) {
+        rememberDwg(d2.full);
+        await selectDwg(d2.full);
+      } else {
+        alert("فایل انتخاب شد ولی مسیر آن در سرور پیدا نشد: " + file.name + "\n" + (d2.error || ""));
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") {
+        say("انتخاب فایل نقشه لغو شد.", 3000);
         return;
       }
-      rememberDwg(d.path);
-      await selectDwg(d.path);
-    } catch (e) {
-      alert("خطا در بازکردن دیالوگ ویندوز: " + e.message);
+      alert("خطا در بازکردن دیالوگ: " + e.message);
     }
   };
   const selectDwg = async (full) => {
