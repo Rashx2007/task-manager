@@ -372,8 +372,21 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <form onSubmit={(e) => { e.preventDefault(); save(); }}
-        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[720px] max-w-full max-h-[90vh] overflow-y-auto p-6">
+            <form
+        onSubmit={(e) => { e.preventDefault(); save(); }}
+        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[720px] max-w-full max-h-[90vh] overflow-y-auto p-6"
+      >
+        <style>{`
+          /* ✅ ردیف متداخل: پس‌زمینهٔ قرمز کم‌رنگ روی خود tr و همهٔ tdها (غلبه بر استایل سراسری جدول) */
+          .task-table tbody tr.row-conflict,
+          .task-table tbody tr.row-conflict > td {
+            background: #fecaca !important;
+          }
+          .task-table tbody tr.row-conflict > td {
+            color: #7f1d1d;
+            font-weight: 700;
+          }
+        `}</style>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">الویت و زمان — کد کار: {taskId}</h3>
           <button type="button" onClick={onClose} className="text-xl">✕</button>
@@ -447,7 +460,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
                       <tr
                         key={r.TaskID}
                         data-tid={r.TaskID}
-                        className={bad ? 'bg-red-200' : ''}
+                        className={bad ? 'row-conflict' : ''}
                         style={bad ? { outline: '2px solid #dc2626', outlineOffset: '-2px' } : undefined}
                       >
                         <td>{r.TaskID}</td>
