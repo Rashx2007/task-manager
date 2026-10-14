@@ -215,25 +215,41 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
 
   // ✅ ردیف جدید: شروع = لحظهٔ زدن دکمه
   // ✅ «ردیف جدید»: اگر متن از یک ردیف نشسته باشد، متن فعلی + زمان‌ها = پیش‌نویس ردیفِ جدید
-  const resetEditor = () => {
+    // ✅ «ردیف جدید»: اگر متن از یک ردیف نشسته باشد → همان محتوا با تاریخ اصلاح‌شده و زمان‌های
+  //    محاسبه‌شده (خودکار یا دستی) بلافاصله به‌عنوان ردیف پیگیریِ جدید در دیتابیس ثبت می‌شود،
+  //    در جدول مودال نمایش داده می‌شود و در صورت فعال‌بودن «کپی متن در شرح کار» در شرح کار هم کپی می‌شود؛
+  //    سپس ویرایشگر برای جلسهٔ تازه پاک می‌شود. در غیر این صورت = پاک‌سازی کاملِ قبلی.
+  const resetEditor = async () => {
     const seated = loadedAtRef.current;
     if (seated && textRef.current.trim()) {
       const ns = startTouchedRef.current ? startRef.current : seated;   // شروع = زمان نشستن متن یا دستی
       const ne = endTouchedRef.current ? endRef.current : new Date();   // پایان = لحظهٔ کلیک دکمه یا دستی
-      setEditingId(null); // حالت ردیف جدید (نه ویرایش ردیف قدیم)
-      setStart(ns);
-      setEnd(ne);
-      startTouchedRef.current = true;
-      endTouchedRef.current = true;
-      loadedAtRef.current = null;
-      // ✅ تاریخ داخل باکس = تاریخ همان ردیف جدید (اولین مهر ✏ جایگزین می‌شود)
-      setText(textRef.current.replace(/\u200F?✏ \d{4}\.\d{2}\.\d{2}/, shamsiStampOf(ns)), false);
-      setTimeout(() => {
-        const ta = taRef.current;
-        if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
-      }, 30);
-      return;
+      if (ne < ns) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
+      // ✅ تاریخ داخل باکس = تاریخ همان ردیف جدید
+      const newText = textRef.current.replace(/\u200F?✏ \d{4}\.\d{2}\.\d{2}/, shamsiStampOf(ns));
+      setText(newText, false);
+      setBusy(true);
+      try {
+        const res = await fetch('/api/follow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId,
+            description: newText,
+            dueDateTime: toWallISO(ns),
+            endDateTime: toWallISO(ne),
+            updateDescription: copyToDesc, // ✅ کپی در شرح کار (سمت سرور) در صورت فعال‌بودن
+          }),
+        });
+        const d = await res.json();
+        if (!d.success) { alert('خطا در ثبت ردیف جدید: ' + d.error); setBusy(false); return; }
+        markSaved();
+        await load();            // ✅ ردیف جدید در جدول همین مودال
+        if (onSaved) onSaved();  // ✅ به‌روزرسانی والد (شرح کار در مودال ویرایش)
+      } catch { alert('خطا در ارتباط با سرور'); setBusy(false); return; }
+      setBusy(false);
     }
+    // شروع جلسهٔ تازه
     setEditingId(null);
     setText(shamsiStamp(), false);
     const now = new Date();
