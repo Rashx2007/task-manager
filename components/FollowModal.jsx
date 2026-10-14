@@ -114,6 +114,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const startTouchedRef = useRef(false);
   // ✅ لحظهٔ نشستن متن در باکس (کلیک روی ردیف) — مبنای «زمان شروع» ردیف جدید
   const loadedAtRef = useRef(null);
+  // ✅ آیا زمان‌ها از ردیف بارگذاری‌شده آمده‌اند (نه تنظیم دستی کاربر)؟
+  const rowTimesRef = useRef(false);
   const [copyToDesc, setCopyToDesc] = useState(true); // ✅ پیش‌فرض همیشه فعال
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -188,18 +190,19 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     const isSpace = e.code === 'Space' || e.key === ' ' || e.keyCode === 32;
     const isEnter = e.key === 'Enter';
     // ⚡ زیربند: Ctrl+Alt+Space یا Ctrl+Alt+Enter
-    if (e.ctrlKey && e.altKey && (isSpace || isEnter)) {
-      e.preventDefault(); e.stopPropagation();
-      const nv = value + '\n⚡ ';
+        if (e.ctrlKey && e.altKey && (isSpace || e.key === 'Enter')) {
+      e.preventDefault();
+      const nv = value + '\n' + ' '.repeat(13) + '⚡ ';
       setText(nv); setCaret(nv.length);
       return;
     }
-    // 📌 بند: Ctrl+Space یا Ctrl+Enter (اگر سیستم‌عامل Ctrl+Space را ربود)
-    if (e.ctrlKey && !e.altKey && (isSpace || isEnter)) {
-      e.preventDefault(); e.stopPropagation();
+    if (e.ctrlKey && !e.altKey && isSpace) {
+      e.preventDefault();
       const s = ta.selectionStart, en = ta.selectionEnd;
       const selected = value.slice(s, en);
-      const nv = selected ? value.slice(0, s) + value.slice(en) + '\n📌 ' + selected : value + '\n📌 ';
+      const nv = selected
+        ? value.slice(0, s) + value.slice(en) + '\n' + ' '.repeat(9) + '📌 ' + selected
+        : value + '\n' + ' '.repeat(9) + '📌 ';
       setText(nv); setCaret(nv.length);
       return;
     }
@@ -222,8 +225,10 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const resetEditor = async () => {
     const seated = loadedAtRef.current;
     if (seated && textRef.current.trim()) {
-      const ns = startTouchedRef.current ? startRef.current : seated;   // شروع = زمان نشستن متن یا دستی
-      const ne = endTouchedRef.current ? endRef.current : new Date();   // پایان = لحظهٔ کلیک دکمه یا دستی
+      // شروع = زمان نشستن متن (مگر تنظیم دستی) | پایان = لحظهٔ کلیک «ردیف جدید» (مگر تنظیم دستی)
+      const ns = startTouchedRef.current ? startRef.current : seated;
+      const ne = endTouchedRef.current ? endRef.current : new Date();
+      rowTimesRef.current = false;
       if (ne < ns) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
       // ✅ تاریخ داخل باکس = تاریخ همان ردیف جدید
       const newText = textRef.current.replace(/\u200F?✏ \d{4}\.\d{2}\.\d{2}/, shamsiStampOf(ns));
@@ -257,6 +262,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     setEnd(now);
     startTouchedRef.current = false;
     endTouchedRef.current = false;
+    rowTimesRef.current = false;
     loadedAtRef.current = null;
     setTimeout(() => {
       const ta = taRef.current;
@@ -268,7 +274,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     if (!text.trim()) { alert('متن پیگیری خالی است!'); return; }
     const s = startRef.current;
     // ✅ پایان = لحظهٔ زدن دکمه ذخیره (مگر اینکه دستی تغییر کرده یا ردیفی برای ویرایش باز شده باشد)
-    const e2 = endTouchedRef.current ? endRef.current : new Date();
+    const e2 = endTouchedRef.current || rowTimesRef.current ? endRef.current : new Date();
     setEnd(e2);
     if (e2 < s) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
     setBusy(true);
@@ -312,8 +318,9 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     setText(r.Description || '', false);
     const sd = fromWall(r.DueDateTime); if (sd) setStart(sd);
     const ed = fromWall(r.EndDateTime); if (ed) setEnd(ed);
-    endTouchedRef.current = true; // زمان‌های ردیف ویرایشی حفظ شوند
-    startTouchedRef.current = false; // شروع = زمان نشستن متن، مگر تنظیم دستی
+    endTouchedRef.current = false;   // زمان‌ها از ردیف آمده‌اند، نه دستی
+    startTouchedRef.current = false;
+    rowTimesRef.current = true;      // ✅ علامت «زمان‌های ردیف» برای حالت ویرایش
     loadedAtRef.current = new Date(); // ✅ لحظهٔ نشستن متن در باکس
     setTimeout(() => taRef.current?.focus(), 30);
   };
