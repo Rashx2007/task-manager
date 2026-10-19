@@ -6,7 +6,14 @@ const normalizeFa = (s) => String(s == null ? '' : s)
   .replace(/[يى]/g, 'ی').replace(/ك/g, 'ک')
   .replace(/[\u200c\u200f\u200e]/g, '').replace(/\s+/g, ' ').trim();
 
-const normCol = (col) =>
+const normCol const normCol = (col) =>
+  `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
+
+// ✅ برای مقایسهٔ LIKE: حذف همهٔ انواع فاصله (فاصله/CR/LF/Tab) از ستون تا
+//    خط جدید یا فاصلهٔ مضاعفِ ذخیره‌شده در متن، ردیف را از نتیجه نیندازد
+const normColWs = (col) =>
+  `REPLACE(REPLACE(REPLACE(REPLACE(${normCol(col)}, NCHAR(13), N''), NCHAR(10), N''), NCHAR(9), N''), N' ', N'')`;
+const normValWs = (s) => normalizeFa(s).replace(/\s+/g, '');= (col) =>
   `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
 
 // ✅ همان FROM که کوئری دسکتاپ/جامع استفاده می‌کند
@@ -85,8 +92,8 @@ async function runLoad({ type, offset, limit, filters }) {
         const ors = [];
         for (const v of values) {
           if (def.kind === 'like') {
-            ors.push(`(${normCol(def.col)} LIKE ?)`);
-            params.push(`%${normalizeFa(v)}%`);
+            ors.push(`(${normColWs(def.col)} LIKE ?)`);
+            params.push(`%${normValWs(v)}%`);
           } else if (def.kind === 'eq') {
             ors.push(`(${def.col} = ?)`);
             params.push(String(v));
