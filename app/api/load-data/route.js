@@ -1,3 +1,4 @@
+// app/api/load-data/route.js
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
@@ -6,15 +7,19 @@ const normalizeFa = (s) => String(s == null ? '' : s)
   .replace(/[يى]/g, 'ی').replace(/ك/g, 'ک')
   .replace(/[\u200c\u200f\u200e]/g, '').replace(/\s+/g, ' ').trim();
 
-const normCol const normCol = (col) =>
+const normCol = (col) =>
   `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
 
 // ✅ برای مقایسهٔ LIKE: حذف همهٔ انواع فاصله (فاصله/CR/LF/Tab) از ستون تا
 //    خط جدید یا فاصلهٔ مضاعفِ ذخیره‌شده در متن، ردیف را از نتیجه نیندازد
 const normColWs = (col) =>
   `REPLACE(REPLACE(REPLACE(REPLACE(${normCol(col)}, NCHAR(13), N''), NCHAR(10), N''), NCHAR(9), N''), N' ', N'')`;
-const normValWs = (s) => normalizeFa(s).replace(/\s+/g, '');= (col) =>
-  `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
+
+// ✅ سمت پارامتر LIKE: حذف فاصله‌ها + escape کاراکترهای ویژهٔ LIKE ( \ % [ ] _ )
+const normValWs = (s) =>
+  normalizeFa(s)
+    .replace(/\s+/g, '')
+    .replace(/[\\%\[\]_]/g, (c) => '\\' + c);
 
 // ✅ همان FROM که کوئری دسکتاپ/جامع استفاده می‌کند
 const BASE_FROM = `FROM Tsk_tbl tsk
@@ -42,12 +47,14 @@ const p2 = (n) => String(n).padStart(2, '0');
 
 // ✅ هستهٔ مشترک بارگذاری؛ پارامترها از GET (query) یا POST (body) می‌آیند
 async function runLoad({ type, offset, limit, filters }) {
+  // ✅ گارد: filters همیشه یک آبجکت معتبر باشد (null/[]/رشته → {})
+  const f = filters && typeof filters === 'object' && !Array.isArray(filters) ? filters : {};
 
   try {
     const conds = [];
     const params = [];
 
-    const hasColumnFilters = Object.values(filters).some((v) => Array.isArray(v) && v.length > 0);
+    const hasColumnFilters = Object.values(f).some((v) => Array.isArray(v) && v.length > 0);
 
     if (!hasColumnFilters) {
       // ✅ بدون فیلتر ستونی: همان لایه‌بندی روزانهٔ قبلی
@@ -75,7 +82,7 @@ async function runLoad({ type, offset, limit, filters }) {
       const d2 = new Date(); d2.setFullYear(d2.getFullYear() + 10);
       conds.push('(TD.DueDateTime <= ?)'); params.push(`${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} 23:59:59`);
 
-      for (const [key, values] of Object.entries(filters)) {
+      for (const [key, values] of Object.entries(f)) {
         if (!Array.isArray(values) || values.length === 0) continue;
         const def = COLUMN_FILTER_MAP[key];
         if (!def) continue;
@@ -92,7 +99,7 @@ async function runLoad({ type, offset, limit, filters }) {
         const ors = [];
         for (const v of values) {
           if (def.kind === 'like') {
-            ors.push(`(${normColWs(def.col)} LIKE ?)`);
+            ors.push(`(${normColWs(def.col)} LIKE ? ESCAPE '\\')`);
             params.push(`%${normValWs(v)}%`);
           } else if (def.kind === 'eq') {
             ors.push(`(${def.col} = ?)`);
@@ -122,7 +129,19 @@ async function runLoad({ type, offset, limit, filters }) {
       ORDER BY TD.DueDateTime, tsk.TaskID
       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, offset, limit]);
 
-    return NextResponse.json({ success: true, data: rows, total });
+    // ✅ نزدیک‌ترین لحظه‌ای که لایهٔ روزانه می‌تواند عوض شود (سررسید یک کار زمان‌ثابت جاری)
+    let nextSwitch = null;
+    if (!hasColumnFilters && type === 'daily') {
+      try {
+        const nx = await query(
+          `SELECT MIN(TD.DueDateTime) AS nxt
+           FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID = tsk.TaskID
+           WHERE (tsk.Complited < 1) AND (TD.Priorities = N'زمان انجام ثابت') AND (TD.DueDateTime >= GETDATE())`,
+        );
+        nextSwitch = nx[0]?.nxt || null;
+      } catch {}
+    }
+    return NextResponse.json({ success: true, data: rows, total, nextSwitch });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
