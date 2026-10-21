@@ -133,6 +133,8 @@ export default function AssetsModal({
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [formHint, setFormHint] = useState("");
   const [base, setBase] = useState({ names: [], systems: [] });
+  const [selectedBaseSystemId, setSelectedBaseSystemId] = useState("");
+  const [selectedBaseAssetNameId, setSelectedBaseAssetNameId] = useState("");
   const [newName, setNewName] = useState("");
   const [newSystem, setNewSystem] = useState("");
 
@@ -147,8 +149,15 @@ export default function AssetsModal({
     try {
       const r = await fetch("/api/base-info");
       const d = await r.json();
-      if (d.success)
-        setBase({ names: d.names || [], systems: d.systems || [] });
+      if (d.success) {
+        const systems = d.systems || [];
+        setBase({ names: d.names || [], systems });
+        setSelectedBaseSystemId((current) =>
+          systems.some((s) => sameVal(s.MechSystemsID, current))
+            ? current
+            : String(systems[0]?.MechSystemsID ?? ""),
+        );
+      }
     } catch { }
   }, []);
   useEffect(() => {
@@ -221,9 +230,21 @@ export default function AssetsModal({
       ]);
     }
     if (field === "AssetName") {
+      const mechSystem = String(form?.MechSystem ?? "").trim();
+      if (!mechSystem) return [];
+      const system = (base.systems || []).find((s) =>
+        sameVal(s.MechSystem, mechSystem),
+      );
+      const baseNames = system
+        ? (base.names || [])
+            .filter((n) => sameVal(n.MechSystemID, system.MechSystemsID))
+            .map((n) => n.AssetName)
+        : [];
       return distinct([
-        ...all.map((r) => r.AssetName),
-        ...(base.names || []).map((n) => n.AssetName),
+        ...all
+          .filter((r) => sameVal(r.MechSystem, mechSystem))
+          .map((r) => r.AssetName),
+        ...baseNames,
       ]);
     }
     return distinct(all.map((r) => r[field]));
@@ -430,15 +451,23 @@ const optionsFor = (field) => {
       else alert(d.error);
     } catch { }
   };
-  const addBase = async (kind, value) => {
-    const r = await fetch("/api/base-info", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, value }),
-    });
-    const d = await r.json();
-    if (d.success) loadBase();
-    else alert(d.error);
+  const addBase = async (kind, value, mechSystemId = null) => {
+    try {
+      const r = await fetch("/api/base-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, value, mechSystemId }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        await loadBase();
+        return true;
+      }
+      alert(d.error);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+    return false;
   };
 
   const inp = "search-input w-full";
@@ -650,7 +679,6 @@ const optionsFor = (field) => {
                               }}
                             >
                               ✏️ ویرایش
-                                                    ⧉ کپی
                       </button>
                       <button
                         type="button"
@@ -758,7 +786,13 @@ const optionsFor = (field) => {
                 <ComboInput
                   className={inp}
                   value={form.MechSystem}
-                  onChange={(v) => setFormField("MechSystem", v)}
+                  onChange={(v) =>
+                    setForm((current) =>
+                      current
+                        ? { ...current, MechSystem: v, AssetName: "" }
+                        : current,
+                    )
+                  }
                   options={optionsFor("MechSystem")}
                 />
               </div>
@@ -769,6 +803,12 @@ const optionsFor = (field) => {
                   value={form.AssetName}
                   onChange={(v) => setFormField("AssetName", v)}
                   options={optionsFor("AssetName")}
+                  placeholder={
+                    form.MechSystem
+                      ? "دستگاه متناسب با سیستم را انتخاب کنید..."
+                      : "ابتدا سیستم را انتخاب کنید"
+                  }
+                  disabled={!String(form.MechSystem ?? "").trim()}
                 />
               </div>
               <div>
@@ -855,33 +895,6 @@ const optionsFor = (field) => {
           {tab === "base" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h4 className="font-bold mb-2">نام دستگاه‌ها (AssetNames)</h4>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    className={inp}
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="نام جدید..."
-                  />
-                  <button
-                    className="btn-success whitespace-nowrap"
-                    onClick={() => {
-                      addBase("name", newName);
-                      setNewName("");
-                    }}
-                  >
-                    افزودن
-                  </button>
-                </div>
-                <div className="max-h-64 overflow-auto bg-white rounded border p-2">
-                  {base.names.map((n) => (
-                    <div key={n.AssetNameID} className="py-1 border-b">
-                      {n.AssetName}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
                 <h4 className="font-bold mb-2">
                   سیستم‌های مکانیکی (MechSystems)
                 </h4>
@@ -894,20 +907,95 @@ const optionsFor = (field) => {
                   />
                   <button
                     className="btn-success whitespace-nowrap"
-                    onClick={() => {
-                      addBase("system", newSystem);
-                      setNewSystem("");
+                    onClick={async () => {
+                      if (await addBase("system", newSystem)) setNewSystem("");
                     }}
                   >
                     افزودن
                   </button>
                 </div>
-                <div className="max-h-64 overflow-auto bg-white rounded border p-2">
-                  {base.systems.map((s) => (
-                    <div key={s.MechSystemsID} className="py-1 border-b">
-                      {s.MechSystem}
-                    </div>
-                  ))}
+                <div className="h-64 overflow-auto bg-white rounded border p-2">
+                  {base.systems.map((s) => {
+                    const selected = sameVal(
+                      s.MechSystemsID,
+                      selectedBaseSystemId,
+                    );
+                    return (
+                      <button
+                        key={s.MechSystemsID}
+                        type="button"
+                        className={`w-full text-right py-1 px-2 border-b rounded ${
+                          selected
+                            ? "bg-green-100 font-bold"
+                            : "hover:bg-gray-100"
+                        }`}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setSelectedBaseSystemId(String(s.MechSystemsID));
+                          setSelectedBaseAssetNameId("");
+                        }}
+                      >
+                        {s.MechSystem}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-bold mb-2">نام دستگاه‌ها (AssetNames)</h4>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    className={inp}
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="نام دستگاه جدید..."
+                    disabled={!selectedBaseSystemId}
+                  />
+                  <button
+                    className="btn-success whitespace-nowrap"
+                    disabled={!selectedBaseSystemId}
+                    onClick={async () => {
+                      if (
+                        await addBase(
+                          "name",
+                          newName,
+                          selectedBaseSystemId,
+                        )
+                      )
+                        setNewName("");
+                    }}
+                  >
+                    افزودن
+                  </button>
+                </div>
+                <div className="h-64 overflow-auto bg-white rounded border p-2">
+                  {base.names
+                    .filter((n) =>
+                      sameVal(n.MechSystemID, selectedBaseSystemId),
+                    )
+                    .map((n) => {
+                      const selected = sameVal(
+                        n.AssetNameID,
+                        selectedBaseAssetNameId,
+                      );
+                      return (
+                        <button
+                          key={n.AssetNameID}
+                          type="button"
+                          className={`w-full text-right py-1 px-2 border-b rounded ${
+                            selected
+                              ? "bg-green-100 font-bold"
+                              : "hover:bg-gray-100"
+                          }`}
+                          aria-pressed={selected}
+                          onClick={() =>
+                            setSelectedBaseAssetNameId(String(n.AssetNameID))
+                          }
+                        >
+                          {n.AssetName}
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
             </div>

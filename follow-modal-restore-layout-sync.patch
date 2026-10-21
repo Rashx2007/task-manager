@@ -1,0 +1,97 @@
+--- a/components/FollowModal.jsx
++++ b/components/FollowModal.jsx
+@@ -234,12 +234,18 @@
+     startTouchedRef.current = true;
+     const nd = new Date(d); nd.setHours(startRef.current.getHours(), startRef.current.getMinutes(), 0, 0);
+     setStart(nd);
+-    if (!endTouchedRef.current) { const ne = new Date(nd); ne.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0); setEnd(ne); }
++    // تغییر دستی تاریخ شروع، تاریخ پایان را برابر می‌کند؛ ساعت پایان دست‌نخورده می‌ماند.
++    const ne = new Date(endRef.current);
++    ne.setFullYear(nd.getFullYear(), nd.getMonth(), nd.getDate());
++    setEnd(ne);
+   };
+   const changeStartTime = (t) => {
+     startTouchedRef.current = true;
+     setStart(t);
+-    if (!endTouchedRef.current) { const ne = new Date(endRef.current); ne.setHours(t.getHours(), t.getMinutes(), 0, 0); setEnd(ne); }
++    // تغییر دستی ساعت شروع، ساعت پایان را برابر می‌کند؛ تاریخ پایان دست‌نخورده می‌ماند.
++    const ne = new Date(endRef.current);
++    ne.setHours(t.getHours(), t.getMinutes(), 0, 0);
++    setEnd(ne);
+   };
+   const changeEndDate = (d) => {
+     endTouchedRef.current = true;
+@@ -454,37 +460,43 @@
+             Enter در انتهای متن: سطر جدید با ✏ تاریخ | Ctrl+Space یا Ctrl+Enter: بند 📌 | Ctrl+Alt+Space یا Ctrl+Alt+Enter: زیربند ⚡
+           </div>
+ 
+-          {/* ✅ تاریخ و ساعت شروع/پایان — همسان با مودال الویت و زمان */}
+-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+-            <div>
+-              <label className="block text-sm font-bold mb-1">تاریخ شروع</label>
+-              <DatePicker value={toPicker(start)} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
+-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeStartDate(d)} />]} />
++          {/* ✅ چیدمان قبلی؛ انتخابگر ساعت ۲۴ساعته حفظ شده است */}
++          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
++            <div className="border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
++              <label className="block text-sm font-bold mb-1">زمان شروع</label>
++              <div className="flex items-center gap-2">
++                <div className="flex-1">
++                  <DatePicker value={toPicker(start)} onChange={(d) => { if (d) changeStartDate(d.toDate()); }}
++                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeStartDate(d)} />]} />
++                </div>
++                <div className="w-44 shrink-0">
++                  <TimeInput
++                    value={start}
++                    onChange={changeStartTime}
++                    open={openClock === 'start'}
++                    onToggle={() => setOpenClock((v) => v === 'start' ? null : 'start')}
++                    onClose={() => setOpenClock(null)}
++                  />
++                </div>
++              </div>
+             </div>
+-            <div>
+-              <label className="block text-sm font-bold mb-1">ساعت شروع</label>
+-              <TimeInput
+-                value={start}
+-                onChange={changeStartTime}
+-                open={openClock === 'start'}
+-                onToggle={() => setOpenClock((v) => v === 'start' ? null : 'start')}
+-                onClose={() => setOpenClock(null)}
+-              />
+-            </div>
+-            <div>
+-              <label className="block text-sm font-bold mb-1">تاریخ پایان</label>
+-              <DatePicker value={toPicker(end)} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
+-                calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeEndDate(d)} />]} />
+-            </div>
+-            <div>
+-              <label className="block text-sm font-bold mb-1">ساعت پایان</label>
+-              <TimeInput
+-                value={end}
+-                onChange={changeEndTime}
+-                open={openClock === 'end'}
+-                onToggle={() => setOpenClock((v) => v === 'end' ? null : 'end')}
+-                onClose={() => setOpenClock(null)}
+-              />
++            <div className="border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
++              <label className="block text-sm font-bold mb-1">زمان پایان</label>
++              <div className="flex items-center gap-2">
++                <div className="flex-1">
++                  <DatePicker value={toPicker(end)} onChange={(d) => { if (d) changeEndDate(d.toDate()); }}
++                    calendar={persian} locale={persian_fa} format="YYYY/MM/DD" inputClass={inp} plugins={[<TodayPlugin onToday={(d) => changeEndDate(d)} />]} />
++                </div>
++                <div className="w-44 shrink-0">
++                  <TimeInput
++                    value={end}
++                    onChange={changeEndTime}
++                    open={openClock === 'end'}
++                    onToggle={() => setOpenClock((v) => v === 'end' ? null : 'end')}
++                    onClose={() => setOpenClock(null)}
++                  />
++                </div>
++              </div>
+             </div>
+           </div>
+ 
