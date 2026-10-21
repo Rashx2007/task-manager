@@ -128,6 +128,8 @@ export default function AssetsModal({
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
+  // ✅ دستگاهی که می‌خواهیم مسیر پوشه‌اش را تنظیم کنیم (وقتی پوشه ندارد/پیدا نشد)
+  const [folderAskAsset, setFolderAskAsset] = useState(null);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [formHint, setFormHint] = useState("");
   const [base, setBase] = useState({ names: [], systems: [] });
@@ -362,6 +364,63 @@ const optionsFor = (field) => {
     }
     setSaving(false);
   };
+  // ✅ بازکردن پوشهٔ دستگاه؛ اگر تنظیم نشده یا یافت نشد → پرسش برای تنظیم
+  const openAssetFolder = async (a) => {
+    const p = String(a?.FolderPath || "").trim();
+    if (!p) {
+      setFolderAskAsset(a);
+      return;
+    }
+    try {
+      const res = await fetch("/api/open-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: p }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        if (d.adjusted)
+          alert(
+            "پوشهٔ ذخیره‌شده یافت نشد؛ نزدیک‌ترین مسیر موجود باز شد:\n" +
+              d.opened +
+              "\n\nمی‌توانید با دکمهٔ «📂 پوشه» مسیر را اصلاح کنید.",
+          );
+        return;
+      }
+      if (confirm("پوشهٔ دستگاه یافت نشد:\n" + p + "\n\nمسیر جدید انتخاب کنید؟"))
+        setFolderAskAsset(a);
+    } catch {
+      if (confirm("خطا در بازکردن پوشه. مسیر جدید انتخاب کنید؟"))
+        setFolderAskAsset(a);
+    }
+  };
+
+  // ✅ ذخیرهٔ مسیر جدید پوشه روی دستگاه + بازکردن آن
+  const saveAssetFolder = async (asset, path) => {
+    try {
+      const res = await fetch(`/api/assets/${asset.AssetID}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...asset, FolderPath: path }),
+      });
+      const d = await res.json();
+      if (!d.success) {
+        alert("خطا در ذخیرهٔ مسیر پوشه: " + (d.error || "نامشخص"));
+        return;
+      }
+      loadAll();
+      try {
+        await fetch("/api/open-path", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+      } catch {}
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
   const del = async (id) => {
     if (!confirm("آیا از حذف این دستگاه مطمئن هستید؟")) return;
     try {
@@ -591,7 +650,19 @@ const optionsFor = (field) => {
                               }}
                             >
                               ✏️ ویرایش
-                            </button>
+                                                    ⧉ کپی
+                      </button>
+                      <button
+                        type="button"
+                        title="بازکردن پوشهٔ دستگاه (اگر تنظیم نشده باشد، می‌پرسد)"
+                        className="px-2 py-1 text-xs rounded text-white bg-teal-600 hover:bg-teal-700 whitespace-nowrap"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAssetFolder(a);
+                        }}
+                      >
+                        📂 پوشه
+                      </button>
                             <button
                               type="button"
                               title="کپی دستگاه (نمونهٔ جدید با همین مشخصات)"
@@ -853,6 +924,19 @@ const optionsFor = (field) => {
             setShowBrowser(false);
           }}
           onClose={() => setShowBrowser(false)}
+        />
+      )}
+      {folderAskAsset && (
+        <FileBrowser
+          mode="folder"
+          initial={folderAskAsset.FolderPath || DEFAULT_ASSET_FOLDER}
+          title={"تنظیم پوشهٔ دستگاه کد " + folderAskAsset.AssetID}
+          onSelect={(p) => {
+            const a = folderAskAsset;
+            setFolderAskAsset(null);
+            saveAssetFolder(a, p);
+          }}
+          onClose={() => setFolderAskAsset(null)}
         />
       )}
     </div>

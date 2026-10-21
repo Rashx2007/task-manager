@@ -91,6 +91,40 @@ export default function BackupModal({ onClose }) {
     } catch {}
   };
 
+  const openBackupFolder = async (forRestore = false) => {
+    // A manually selected restore file takes priority over the dropdown.
+    const filePath = restorePath.trim();
+    let target = folder.trim();
+    if (forRestore && filePath) {
+      const separator = Math.max(filePath.lastIndexOf("\\"), filePath.lastIndexOf("/"));
+      if (separator < 0) {
+        alert("برای بازکردن پوشهٔ فایل بازگردانی، مسیر کامل فایل .bak را وارد کنید.");
+        return;
+      }
+      // Keep the separator so a drive root stays F:\ rather than F:.
+      target = filePath.slice(0, separator + 1);
+    }
+    if (!target) {
+      alert("ابتدا مسیر پوشهٔ پشتیبان‌ها را وارد کنید.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/open-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: target }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) {
+        alert("خطا در بازکردن پوشه: " + (d.error || "نامشخص"));
+      } else if (d.adjusted) {
+        alert("پوشهٔ موردنظر پیدا نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d.opened);
+      }
+    } catch (e) {
+      alert("خطا در بازکردن پوشه: " + e.message);
+    }
+  };
+
   const inp = "search-input w-full";
   return (
     <div
@@ -113,9 +147,19 @@ export default function BackupModal({ onClose }) {
             📂 مرور (ویندوز)
           </button>
         </div>
-        <button className="btn-success mb-4" disabled={busy} onClick={backup}>
-          💾 پشتیبان‌گیری
-        </button>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button className="btn-success" disabled={busy} onClick={backup}>
+            💾 پشتیبان‌گیری
+          </button>
+          <button
+            type="button"
+            className="btn-primary whitespace-nowrap"
+            disabled={busy}
+            onClick={() => openBackupFolder()}
+          >
+            📂 بازکردن پوشهٔ پشتیبان‌ها
+          </button>
+        </div>
 
         <label className="block text-sm font-bold mb-1">فایل‌های موجود (برای بازگردانی)</label>
         <select
@@ -151,9 +195,17 @@ export default function BackupModal({ onClose }) {
           <input ref={fileRef} type="file" accept=".bak" style={{ display: "none" }} onChange={pickFileNative} />
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className="btn-danger" disabled={busy} onClick={restore}>
             بازگردانی
+          </button>
+          <button
+            type="button"
+            className="btn-primary whitespace-nowrap"
+            disabled={busy}
+            onClick={() => openBackupFolder(true)}
+          >
+            📂 بازکردن پوشهٔ فایل بازگردانی
           </button>
           <button className="btn-primary" onClick={onClose}>
             بستن

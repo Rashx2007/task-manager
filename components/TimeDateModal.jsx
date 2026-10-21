@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
 import persian_fa from 'react-date-object/locales/persian_fa';
@@ -199,7 +199,40 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [fixedRows, setFixedRows] = useState([]);
   const isFixed = priority === 'زمان انجام ثابت';
+  const tableWrapRef = useRef(null);
 
+  // ✅ مقایسه بر مبنای «زمان دیواری»: سرور مقادیر را با برچسب UTC برمی‌گرداند
+  const wall = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+  const wallOfRow = (v) => {
+    const dt = v ? new Date(v) : null;
+    if (!dt || isNaN(dt.getTime())) return NaN;
+    return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), dt.getUTCHours(), dt.getUTCMinutes());
+  };
+
+  // ✅ شناسهٔ ردیف‌های متداخل با بازهٔ فعلی (شروع/پایان بالای جدول)
+  const conflictIds = useMemo(() => {
+    if (!isFixed) return new Set();
+    const s = wall(startRef.current);
+    const e = wall(endRef.current);
+    if (!isFinite(s) || !isFinite(e) || e <= s) return new Set();
+    const ids = new Set();
+    for (const r of fixedRows) {
+      if (Number(r.TaskID) === Number(taskId)) continue; // خودِ کارِ در حال ویرایش
+      const rs = wallOfRow(r.DueDateTime);
+      const re = wallOfRow(r.EndDateTime);
+      if (isNaN(rs) || isNaN(re)) continue;
+      if (s < re && rs < e) ids.add(Number(r.TaskID));
+    }
+    return ids;
+  }, [fixedRows, isFixed, start, end, taskId]);
+
+  // ✅✅ همیشه جدول را به اولین ردیف متداخل اسکرول کن (حتی اگر پایین لیست باشد)
+  useEffect(() => {
+    if (conflictIds.size === 0) return;
+    const first = [...conflictIds][0];
+    const el = tableWrapRef.current?.querySelector(`tr[data-tid="${first}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [conflictIds]);
   const changeStartDate = (d) => {
     const nd = new Date(d);
     nd.setHours(start.getHours(), start.getMinutes(), 0, 0);
@@ -284,7 +317,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
         }
       } catch (err) {}
     })();
-    fetch('/api/load-data?type=fixed')
+    fetch('/api/load-data?type=fixed&limit=1000')
       .then((r) => r.json())
       .then((d) => { if (d.success) setFixedRows(d.data || []); })
       .catch(() => {});
@@ -339,8 +372,21 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <form onSubmit={(e) => { e.preventDefault(); save(); }}
-        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[720px] max-w-full max-h-[90vh] overflow-y-auto p-6">
+            <form
+        onSubmit={(e) => { e.preventDefault(); save(); }}
+        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[720px] max-w-full max-h-[90vh] overflow-y-auto p-6"
+      >
+        <style>{`
+          /* ✅ ردیف متداخل: پس‌زمینهٔ قرمز کم‌رنگ روی خود tr و همهٔ tdها (غلبه بر استایل سراسری جدول) */
+          .task-table tbody tr.row-conflict,
+          .task-table tbody tr.row-conflict > td {
+            background: #fecaca !important;
+          }
+          .task-table tbody tr.row-conflict > td {
+            color: #7f1d1d;
+            font-weight: 700;
+          }
+        `}</style>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">الویت و زمان — کد کار: {taskId}</h3>
           <button type="button" onClick={onClose} className="text-xl">✕</button>
@@ -401,25 +447,41 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
 
         <div className="mt-4">
           <label className="block text-sm font-bold mb-1">کارهای دارای زمان انجام ثابت (برای انتخاب بازهٔ خالی)</label>
-          <div className="overflow-auto max-h-48 rounded border border-teal-700">
-            <table className="task-table w-full min-w-[560px]">
-              <thead>
-                <tr><th>کدکار</th><th>الویت</th><th>طول بازه</th><th>زمان آغاز</th><th>زمان پایان</th><th>وضعیت</th></tr>
-              </thead>
-              <tbody>
-                {fixedRows.length === 0 && <tr><td colSpan={6} className="text-center py-3">موردی وجود ندارد</td></tr>}
-                {fixedRows.map((r) => (
-                  <tr key={r.TaskID}>
-                    <td>{r.TaskID}</td>
-                    <td>{r.Priorities}</td>
-                    <td>{r.Durationtime}</td>
-                    <td>{fmtFa(r.DueDateTime)}</td>
-                    <td>{fmtFa(r.EndDateTime)}</td>
-                    <td>{Number(r.Complited) === 1 ? 'اتمام' : 'جاری'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div ref={tableWrapRef} className="overflow-auto max-h-48 rounded border border-teal-700">
+                         <table className="task-table w-full min-w-[760px]">
+                <thead>
+                  <tr><th>کدکار</th><th>موضوع</th><th>الویت</th><th>طول بازه</th><th>زمان آغاز</th><th>زمان پایان</th><th>وضعیت</th></tr>
+                </thead>
+                <tbody>
+                  {fixedRows.length === 0 && <tr><td colSpan={7} className="text-center py-3">موردی وجود ندارد</td></tr>}
+                  {fixedRows.map((r) => {
+                    const bad = conflictIds.has(Number(r.TaskID));
+                    return (
+                      <tr
+                        key={r.TaskID}
+                        data-tid={r.TaskID}
+                        className={bad ? 'row-conflict' : ''}
+                        style={bad ? { outline: '2px solid #dc2626', outlineOffset: '-2px' } : undefined}
+                      >
+                        <td>{r.TaskID}</td>
+                        <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.TaskTtl || ''}>
+                          {r.TaskTtl || '-'}
+                        </td>
+                        <td>{r.Priorities}</td>
+                        <td>{r.Durationtime}</td>
+                        <td>{fmtFa(r.DueDateTime)}</td>
+                        <td>{fmtFa(r.EndDateTime)}</td>
+                        <td>{Number(r.Complited) === 1 ? 'اتمام' : 'جاری'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {conflictIds.size > 0 && (
+                <div className="mt-1 text-xs text-red-700 font-bold">
+                  ⚠ {conflictIds.size} کار با بازهٔ انتخاب‌شده تداخل دارد (ردیف‌های قرمز).
+                </div>
+              )}
           </div>
         </div>
 

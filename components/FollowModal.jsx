@@ -6,7 +6,8 @@ import persian_fa from 'react-date-object/locales/persian_fa';
 import useDraftGuard from './useDraftGuard';
 import TodayPlugin from './TodayPlugin';
 
-const shamsiStamp = () => '\u200F✏ ' + new DateObject({ calendar: persian }).format('YYYY.MM.DD') + ' ';
+const shamsiStampOf = (d) => '\u200F✏ ' + new DateObject({ date: d, calendar: persian }).format('YYYY.MM.DD') + ' ';
+const shamsiStamp = () => shamsiStampOf(new Date());
 const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -110,6 +111,11 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const startRef = useRef(start);
   const endRef = useRef(end);
   const endTouchedRef = useRef(false);
+  const startTouchedRef = useRef(false);
+  // ✅ لحظهٔ نشستن متن در باکس (کلیک روی ردیف) — مبنای «زمان شروع» ردیف جدید
+  const loadedAtRef = useRef(null);
+  // ✅ آیا زمان‌ها از ردیف بارگذاری‌شده آمده‌اند (نه تنظیم دستی کاربر)؟
+  const rowTimesRef = useRef(false);
   const [copyToDesc, setCopyToDesc] = useState(true); // ✅ پیش‌فرض همیشه فعال
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -130,11 +136,13 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const setEnd = (d) => { endRef.current = d; setEndState(d); };
 
   const changeStartDate = (d) => {
+    startTouchedRef.current = true;
     const nd = new Date(d); nd.setHours(startRef.current.getHours(), startRef.current.getMinutes(), 0, 0);
     setStart(nd);
     if (!endTouchedRef.current) { const ne = new Date(nd); ne.setHours(endRef.current.getHours(), endRef.current.getMinutes(), 0, 0); setEnd(ne); }
   };
   const changeStartTime = (t) => {
+    startTouchedRef.current = true;
     setStart(t);
     if (!endTouchedRef.current) { const ne = new Date(endRef.current); ne.setHours(t.getHours(), t.getMinutes(), 0, 0); setEnd(ne); }
   };
@@ -158,7 +166,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
       const res = await fetch(`/api/follow?taskId=${taskId}`);
       const d = await res.json();
       if (d.success) setRows(d.rows || []);
-    } catch {}
+    } catch { }
   }, [taskId]);
   useEffect(() => { load(); }, [load]);
 
@@ -175,13 +183,16 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     if (ta) ta.selectionStart = ta.selectionEnd = pos;
   });
 
-  const handleKeyDown = (e) => {
+    const handleKeyDown = (e) => {
     const ta = taRef.current;
+    if (!ta) return;
     const value = textRef.current;
-    const isSpace = e.code === 'Space' || e.key === ' ';
-    if (e.ctrlKey && e.altKey && (isSpace || e.key === 'Enter')) {
+    const isSpace = e.code === 'Space' || e.key === ' ' || e.keyCode === 32;
+    const isEnter = e.key === 'Enter';
+    // ⚡ زیربند: Ctrl+Alt+Space یا Ctrl+Alt+Enter
+        if (e.ctrlKey && e.altKey && (isSpace || e.key === 'Enter')) {
       e.preventDefault();
-      const nv = value + '\n             ⚡  ';
+      const nv = value + '\n' + ' '.repeat(13) + '⚡ ';
       setText(nv); setCaret(nv.length);
       return;
     }
@@ -189,11 +200,14 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
       e.preventDefault();
       const s = ta.selectionStart, en = ta.selectionEnd;
       const selected = value.slice(s, en);
-      const nv = selected ? value.slice(0, s) + value.slice(en) + '\n         📌 ' + selected : value + '\n         📌 ';
+      const nv = selected
+        ? value.slice(0, s) + value.slice(en) + '\n' + ' '.repeat(9) + '📌 ' + selected
+        : value + '\n' + ' '.repeat(9) + '📌 ';
       setText(nv); setCaret(nv.length);
       return;
     }
-    if (e.key === 'Enter' && !e.ctrlKey && !e.altKey) {
+    // ✏ سطر جدید با تاریخ، فقط در انتهای متن
+    if (isEnter && !e.ctrlKey && !e.altKey) {
       if (ta.selectionStart >= value.length) {
         e.preventDefault();
         const nv = value + '\n' + shamsiStamp();
@@ -203,13 +217,53 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   };
 
   // ✅ ردیف جدید: شروع = لحظهٔ زدن دکمه
-  const resetEditor = () => {
+  // ✅ «ردیف جدید»: اگر متن از یک ردیف نشسته باشد، متن فعلی + زمان‌ها = پیش‌نویس ردیفِ جدید
+    // ✅ «ردیف جدید»: اگر متن از یک ردیف نشسته باشد → همان محتوا با تاریخ اصلاح‌شده و زمان‌های
+  //    محاسبه‌شده (خودکار یا دستی) بلافاصله به‌عنوان ردیف پیگیریِ جدید در دیتابیس ثبت می‌شود،
+  //    در جدول مودال نمایش داده می‌شود و در صورت فعال‌بودن «کپی متن در شرح کار» در شرح کار هم کپی می‌شود؛
+  //    سپس ویرایشگر برای جلسهٔ تازه پاک می‌شود. در غیر این صورت = پاک‌سازی کاملِ قبلی.
+  const resetEditor = async () => {
+    const seated = loadedAtRef.current;
+    if (seated && textRef.current.trim()) {
+      // شروع = زمان نشستن متن (مگر تنظیم دستی) | پایان = لحظهٔ کلیک «ردیف جدید» (مگر تنظیم دستی)
+      const ns = startTouchedRef.current ? startRef.current : seated;
+      const ne = endTouchedRef.current ? endRef.current : new Date();
+      rowTimesRef.current = false;
+      if (ne < ns) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
+      // ✅ تاریخ داخل باکس = تاریخ همان ردیف جدید
+      const newText = textRef.current.replace(/\u200F?✏ \d{4}\.\d{2}\.\d{2}/, shamsiStampOf(ns));
+      setText(newText, false);
+      setBusy(true);
+      try {
+        const res = await fetch('/api/follow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId,
+            description: newText,
+            dueDateTime: toWallISO(ns),
+            endDateTime: toWallISO(ne),
+            updateDescription: copyToDesc, // ✅ کپی در شرح کار (سمت سرور) در صورت فعال‌بودن
+          }),
+        });
+        const d = await res.json();
+        if (!d.success) { alert('خطا در ثبت ردیف جدید: ' + d.error); setBusy(false); return; }
+        markSaved();
+        await load();            // ✅ ردیف جدید در جدول همین مودال
+        if (onSaved) onSaved();  // ✅ به‌روزرسانی والد (شرح کار در مودال ویرایش)
+      } catch { alert('خطا در ارتباط با سرور'); setBusy(false); return; }
+      setBusy(false);
+    }
+    // شروع جلسهٔ تازه
     setEditingId(null);
     setText(shamsiStamp(), false);
     const now = new Date();
     setStart(now);
     setEnd(now);
+    startTouchedRef.current = false;
     endTouchedRef.current = false;
+    rowTimesRef.current = false;
+    loadedAtRef.current = null;
     setTimeout(() => {
       const ta = taRef.current;
       if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
@@ -220,22 +274,22 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     if (!text.trim()) { alert('متن پیگیری خالی است!'); return; }
     const s = startRef.current;
     // ✅ پایان = لحظهٔ زدن دکمه ذخیره (مگر اینکه دستی تغییر کرده یا ردیفی برای ویرایش باز شده باشد)
-    const e2 = endTouchedRef.current ? endRef.current : new Date();
+    const e2 = endTouchedRef.current || rowTimesRef.current ? endRef.current : new Date();
     setEnd(e2);
     if (e2 < s) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
     setBusy(true);
     try {
       const res = editingId
         ? await fetch('/api/follow', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ followId: editingId, taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
-          })
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ followId: editingId, taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
+        })
         : await fetch('/api/follow', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
-          });
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
+        });
       const d = await res.json();
       if (d.success) {
         markSaved();
@@ -256,7 +310,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
       const res = await fetch(`/api/follow?id=${editingId}`, { method: 'DELETE' });
       const d = await res.json();
       if (d.success) { markSaved(); resetEditor(); load(); }
-    } catch {}
+    } catch { }
   };
 
   const pickRow = (r) => {
@@ -264,7 +318,10 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     setText(r.Description || '', false);
     const sd = fromWall(r.DueDateTime); if (sd) setStart(sd);
     const ed = fromWall(r.EndDateTime); if (ed) setEnd(ed);
-    endTouchedRef.current = true; // زمان‌های ردیف ویرایشی حفظ شوند
+    endTouchedRef.current = false;   // زمان‌ها از ردیف آمده‌اند، نه دستی
+    startTouchedRef.current = false;
+    rowTimesRef.current = true;      // ✅ علامت «زمان‌های ردیف» برای حالت ویرایش
+    loadedAtRef.current = new Date(); // ✅ لحظهٔ نشستن متن در باکس
     setTimeout(() => taRef.current?.focus(), 30);
   };
 
@@ -281,7 +338,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
 
         <div className="p-6 overflow-y-auto overscroll-contain">
           <label className="block text-sm font-bold mb-1">شرح پیگیری</label>
-          <textarea
+                   <textarea
             ref={taRef}
             dir="rtl"
             value={text}
@@ -289,10 +346,10 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
             onKeyDown={handleKeyDown}
             rows={6}
             className={inp}
-            style={{ direction: 'rtl', textAlign: 'right', lineHeight: '2' }}
+            style={{ direction: 'rtl', textAlign: 'right', lineHeight: '2', fontFamily: 'inherit', fontSize: '13px' }}
           />
           <div className="text-[11px] text-gray-600 mt-1">
-            Enter در انتهای متن: سطر جدید با ✏ تاریخ | Ctrl+Space: بند 📌 | Ctrl+Alt+Space: زیربند ⚡
+            Enter در انتهای متن: سطر جدید با ✏ تاریخ | Ctrl+Space یا Ctrl+Enter: بند 📌 | Ctrl+Alt+Space یا Ctrl+Alt+Enter: زیربند ⚡
           </div>
 
           {/* ✅ ساعت در کنار تاریخ */}
