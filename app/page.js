@@ -202,6 +202,18 @@ export default function Home() {
   const [reloadKey, setReloadKey] = useState(0);
   const loadTypeRef = useRef("daily");
   const searchRowsRef = useRef([]);
+  // ✅ نوسازی خودکار بدون رفرش صفحه
+  const [nextSwitch, setNextSwitch] = useState(null);
+  const switchTimerRef = useRef(null);
+  const activeFiltersRef = useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  // ✅ تفسیر «زمان دیواری» سرور (ISO با برچسب UTC) به ساعت محلی مرورگر
+  const wallDate = (s) => {
+    const m = String(s || "").match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+  };
   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
   const applyClientFilters = (rows, fObj) =>
@@ -255,6 +267,7 @@ export default function Home() {
       if (d.success) {
         setTasks(d.data || []);
         setTotalFiltered(d.total || 0);
+        setNextSwitch(d.nextSwitch ?? null);
       } else {
         setLoadError(d.error || "خطای نامشخص از سرور");
       }
@@ -272,6 +285,41 @@ export default function Home() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+
+  // ✅ تایمر یک‌باره: دقیقاً در لحظهٔ سررسید کار زمان‌ثابت (+۵ ثانیه بافر)، جدول خودکار بازخوانی می‌شود
+  useEffect(() => {
+    if (switchTimerRef.current) clearTimeout(switchTimerRef.current);
+    if (!nextSwitch) return;
+    const target = wallDate(nextSwitch);
+    if (!target) return;
+    const delay = target.getTime() - Date.now() + 5000;
+    if (delay <= 0) {
+      loadTasks(activeFiltersRef.current, pageRef.current);
+      return;
+    }
+    switchTimerRef.current = setTimeout(() => {
+      loadTasks(activeFiltersRef.current, pageRef.current);
+    }, delay);
+    return () => {
+      if (switchTimerRef.current) clearTimeout(switchTimerRef.current);
+    };
+  }, [nextSwitch, loadTasks]);
+
+  // ✅ تور امنیتی: نوسازی هر ۵ دقیقه + هنگام دیده‌شدن دوبارهٔ تب
+  useEffect(() => {
+    const iv = setInterval(() => {
+      loadTasks(activeFiltersRef.current, pageRef.current);
+    }, 5 * 60 * 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible")
+        loadTasks(activeFiltersRef.current, pageRef.current);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [loadTasks]);
 
   // ✅ تغییر فیلتر = برگشت به صفحهٔ ۱ + کوئری جدید
   const [compSync, setCompSync] = useState(null);
