@@ -1,0 +1,84 @@
+--- a/components/AssetsModal.jsx
++++ b/components/AssetsModal.jsx
+@@ -1,6 +1,7 @@
+ "use client";
+ import { useState, useEffect, useCallback, useRef } from "react";
+ import FileBrowser from "./FileBrowser";
++import { showConfirm } from "@/lib/toast";
+ 
+ const DEFAULT_ASSET_FOLDER = "D:\\(فنّی)";
+ const distinct = (arr) =>
+@@ -127,6 +128,8 @@
+     AssetName: "",
+   });
+   const initializedAssetIdRef = useRef(null);
++  const pendingSelectionRef = useRef(null);
++  useEffect(() => () => { pendingSelectionRef.current = null; }, []);
+   const [form, setForm] = useState(null);
+   const [editingId, setEditingId] = useState(null);
+   const [saving, setSaving] = useState(false);
+@@ -189,15 +192,29 @@
+   };
+ 
+   const selectAsset = (asset) => {
++    if (pendingSelectionRef.current) return;
++    const selection = {};
++    pendingSelectionRef.current = selection;
+     const message = [
+       "آیا از انتخاب این دستگاه اطمینان دارید؟",
+       `کد: ${asset.AssetID} — ${asset.AssetName || "بدون نام"} — شماره: ${asset.AssetNumber ?? "-"}`,
+       `ساختمان: ${asset.Building || "-"} | بلوک: ${asset.Block || "-"} | طبقه: ${asset.Floor ?? "-"}`,
+       `ورودی: ${asset.Entrance || "-"} | محل: ${asset.Location || "-"} | سیستم: ${asset.MechSystem || "-"}`,
+     ].join("\n");
+-    if (!window.confirm(message)) return;
+-    if (onSelectAsset) onSelectAsset(asset.AssetID);
+-    else setSelectedAsset(asset);
++    showConfirm(message, {
++      type: "warn",
++      confirmText: "انتخاب دستگاه",
++      cancelText: "انصراف",
++      onConfirm: () => {
++        if (pendingSelectionRef.current !== selection) return;
++        pendingSelectionRef.current = null;
++        if (onSelectAsset) onSelectAsset(asset.AssetID);
++        else setSelectedAsset(asset);
++      },
++      onCancel: () => {
++        if (pendingSelectionRef.current === selection) pendingSelectionRef.current = null;
++      },
++    });
+   };
+ 
+   // ✅ Esc فقط وقتی FileBrowser باز نیست، خود AssetsModal را می‌بندد
+@@ -547,13 +564,19 @@
+         <div className="p-5 overflow-auto overscroll-contain">
+           {tab === "devices" && form === null && (
+             <>
+-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
++              <div className="flex items-stretch gap-2 mb-3">
+                 <input
+-                  className={inp}
++                  className={`${inp} flex-1 min-w-0`}
++                  aria-label="جستجوی سراسری"
+                   placeholder="جستجوی سراسری..."
+                   value={search}
+                   onChange={(e) => setSearch(e.target.value)}
+                 />
++                <button type="button" className="btn-primary shrink-0 whitespace-nowrap" onClick={clearFilters}>
++                  پاک‌کردن
++                </button>
++              </div>
++              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                 <input
+                   className={inp}
+                   aria-label="کد دستگاه"
+@@ -562,9 +585,6 @@
+                   value={flt.AssetID}
+                   onChange={setF("AssetID")}
+                 />
+-                <button type="button" className="btn-primary" onClick={clearFilters}>
+-                  پاک‌کردن فیلترها
+-                </button>
+                 <select
+                   className={inp}
+                   value={flt.Building}
