@@ -807,6 +807,7 @@ export default function TaskForm({
       )}
       {showAssetPicker && (
         <AssetsModal
+          initialAssetId={form.AssetID || null}
           preset={assetPreset}
           onClose={() => {
             setShowAssetPicker(false);

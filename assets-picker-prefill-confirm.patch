@@ -1,0 +1,125 @@
+--- a/components/AssetsModal.jsx
++++ b/components/AssetsModal.jsx
+@@ -110,12 +110,14 @@
+   onNewTaskWithAsset,
+   onSelectAsset = null,
+   preset = null,
++  initialAssetId = null,
+   onAssetSaved = null,
+ }) {
+   const [tab, setTab] = useState("devices");
+   const [all, setAll] = useState([]);
+   const [search, setSearch] = useState("");
+   const [flt, setFlt] = useState({
++    AssetID: "",
+     Building: "",
+     Block: "",
+     Floor: "",
+@@ -124,6 +126,7 @@
+     MechSystem: "",
+     AssetName: "",
+   });
++  const initializedAssetIdRef = useRef(null);
+   const [form, setForm] = useState(null);
+   const [editingId, setEditingId] = useState(null);
+   const [saving, setSaving] = useState(false);
+@@ -165,6 +168,38 @@
+     loadBase();
+   }, [loadAll, loadBase]);
+ 
++  // مقدار اولیه فقط یک بار از دستگاه فرم کار خوانده می‌شود؛ بازخوانی جدول فیلترهای کاربر را بازنویسی نمی‌کند.
++  useEffect(() => {
++    if (preset || initialAssetId == null || initialAssetId === "") return;
++    const key = String(initialAssetId);
++    if (initializedAssetIdRef.current === key) return;
++    const asset = all.find((a) => String(a.AssetID) === key);
++    if (!asset) return;
++    initializedAssetIdRef.current = key;
++    setSelectedAsset(asset);
++    setSearch("");
++    setFlt((current) => Object.fromEntries(
++      Object.keys(current).map((field) => [field, String(asset[field] ?? "")]),
++    ));
++  }, [all, initialAssetId, preset]);
++
++  const clearFilters = () => {
++    setSearch("");
++    setFlt((current) => Object.fromEntries(Object.keys(current).map((field) => [field, ""])));
++  };
++
++  const selectAsset = (asset) => {
++    const message = [
++      "آیا از انتخاب این دستگاه اطمینان دارید؟",
++      `کد: ${asset.AssetID} — ${asset.AssetName || "بدون نام"} — شماره: ${asset.AssetNumber ?? "-"}`,
++      `ساختمان: ${asset.Building || "-"} | بلوک: ${asset.Block || "-"} | طبقه: ${asset.Floor ?? "-"}`,
++      `ورودی: ${asset.Entrance || "-"} | محل: ${asset.Location || "-"} | سیستم: ${asset.MechSystem || "-"}`,
++    ].join("\n");
++    if (!window.confirm(message)) return;
++    if (onSelectAsset) onSelectAsset(asset.AssetID);
++    else setSelectedAsset(asset);
++  };
++
+   // ✅ Esc فقط وقتی FileBrowser باز نیست، خود AssetsModal را می‌بندد
+   useEffect(() => {
+     const prev = document.body.style.overflow;
+@@ -206,7 +241,9 @@
+       if (v && String(a[k] ?? "") !== v) return false;
+     return true;
+   });
+-  const opt = (key, src) => distinct(src.map((a) => a[key]));
++  // «-» هم باید در فیلترها قابل نمایش باشد، چون مقدار معتبر بعضی دستگاه‌هاست.
++  const opt = (key, src) => [...new Set(src.map((a) => String(a[key] ?? "")).filter((v) => v !== ""))]
++    .sort((a, b) => a.localeCompare(b, "fa", { numeric: true }));
+   const setF = (k) => (e) => setFlt({ ...flt, [k]: e.target.value });
+ 
+   const cascadeOptions = (field) => {
+@@ -517,6 +554,17 @@
+                   value={search}
+                   onChange={(e) => setSearch(e.target.value)}
+                 />
++                <input
++                  className={inp}
++                  aria-label="کد دستگاه"
++                  title="کد دستگاه؛ برای نمایش سایر دستگاه‌ها فیلترها را پاک کنید"
++                  placeholder="کد دستگاه"
++                  value={flt.AssetID}
++                  onChange={setF("AssetID")}
++                />
++                <button type="button" className="btn-primary" onClick={clearFilters}>
++                  پاک‌کردن فیلترها
++                </button>
+                 <select
+                   className={inp}
+                   value={flt.Building}
+@@ -610,7 +658,7 @@
+                 )}
+                 {onSelectAsset && (
+                   <div className="text-sm font-bold text-teal-800 py-2">
+-                    یک دستگاه را انتخاب کنید تا به فرم کار برگردد؛ یا با «+ دستگاه جدید» همان‌جا ثبتش کنید.
++                    برای نمایش دستگاه‌های دیگر فیلترها را پاک کنید؛ انتخاب ردیف فقط پس از تأیید به فرم کار منتقل می‌شود.
+                   </div>
+                 )}
+               </div>
+@@ -645,11 +693,7 @@
+                     {filtered.map((a) => (
+                       <tr
+                         key={a.AssetID}
+-                        onClick={() =>
+-                          onSelectAsset
+-                            ? onSelectAsset(a.AssetID)
+-                            : setSelectedAsset(a)
+-                        }
++                        onClick={() => selectAsset(a)}
+                         className={
+                           selectedAsset?.AssetID === a.AssetID
+                             ? "task-row-selected"
+--- a/components/TaskForm.jsx
++++ b/components/TaskForm.jsx
+@@ -807,6 +807,7 @@
+       )}
+       {showAssetPicker && (
+         <AssetsModal
++          initialAssetId={form.AssetID || null}
+           preset={assetPreset}
+           onClose={() => {
+             setShowAssetPicker(false);
