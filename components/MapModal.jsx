@@ -861,13 +861,10 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
   return (
     <div
       className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
-      onClick={(e) => {
-        e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
         e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
+        if (e.button === 0 && e.target === e.currentTarget) onClose();
       }}
     >
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1100px] max-w-full max-h-[92vh] overflow-y-auto p-4">

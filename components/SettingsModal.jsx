@@ -32,7 +32,8 @@ export default function SettingsModal({ onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.button === 0 && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[440px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">تنظیمات ساعات کاری</h3>
         <div className="grid grid-cols-2 gap-4">

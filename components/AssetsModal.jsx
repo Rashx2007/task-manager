@@ -528,13 +528,10 @@ const optionsFor = (field) => {
   return (
     <div
       className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-3"
-      onClick={(e) => {
-        e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
         e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
+        if (e.button === 0 && e.target === e.currentTarget) onClose();
       }}
     >
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1150px] max-w-[98vw] max-h-[94vh] flex flex-col">

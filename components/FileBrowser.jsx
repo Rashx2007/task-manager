@@ -95,8 +95,8 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10001] flex items-center justify-center p-4"
-      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
-      onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.button === 0 && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[780px] max-w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700">
           <h3 className="font-bold">{title || (mode === 'folder' ? 'انتخاب پوشه' : 'انتخاب فایل')}</h3>

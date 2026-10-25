@@ -41,7 +41,8 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
 
     return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000]"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => { e.stopPropagation(); if (e.button === 0 && e.target === e.currentTarget) onClose(); }}>
       {/* ✅ Enter در هر دو ورودی = ذخیره (submit فرم) */}
       <form onSubmit={(e) => { e.preventDefault(); save(); }}
         className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[560px] max-w-[95vw] p-6">
