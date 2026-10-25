@@ -128,7 +128,7 @@ async function runLoad({ type, offset, limit, filters }) {
       pApp.PersonName AS ApplicantName, pFun.PersonName AS FunctorName
       ${BASE_FROM}
       ${where}
-      ORDER BY TD.DueDateTime, tsk.TaskID
+      ORDER BY ${hasColumnFilters ? 'tsk.TaskID DESC, TD.DueDateTime DESC' : 'TD.DueDateTime, tsk.TaskID'}
       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, offset, limit]);
 
     // ✅ نزدیک‌ترین لحظه‌ای که لایهٔ روزانه می‌تواند عوض شود (سررسید یک کار زمان‌ثابت جاری)

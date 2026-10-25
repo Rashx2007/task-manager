@@ -78,7 +78,7 @@ export async function POST(request) {
       pApp.PersonName AS ApplicantName, pFun.PersonName AS FunctorName
       ${BASE_FROM}
       ${where}
-      ORDER BY TD.DueDateTime, tsk.TaskID`;
+      ORDER BY tsk.TaskID DESC, TD.DueDateTime DESC`;
     const qparams = [...params];
     if (b.limit) {
       sql += ` OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`;

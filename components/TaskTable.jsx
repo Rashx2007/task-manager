@@ -129,6 +129,7 @@ const MECH_COL = PLACE_COLS[3];
 
 export default function TaskTable({
   tasks,
+  forceTaskIdDescending = false,
   startNumber = 0,
   onRowClick,
   onComplete,
@@ -311,6 +312,8 @@ export default function TaskTable({
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
   const sorted = [...(tasks || [])].sort((a, b) => {
+    if (forceTaskIdDescending)
+      return Number(normalizeDigits(b.TaskID)) - Number(normalizeDigits(a.TaskID));
     if (!sortKey) return 0;
     let av, bv;
     if (sortKey === "status") {
@@ -407,7 +410,7 @@ export default function TaskTable({
           <tr>
             {COLUMNS.map((col) => {
               const isFiltered = !draftActive && filters[col.key] != null;
-              const isSorted = sortKey === col.key;
+              const isSorted = forceTaskIdDescending ? col.key === "TaskID" : sortKey === col.key;
               const isOpen = menu && menu.key === col.key;
               return (
                 <th key={col.key}>
@@ -425,7 +428,7 @@ export default function TaskTable({
                         }
                       >
                         {isSorted
-                          ? sortDir === "asc"
+                          ? !forceTaskIdDescending && sortDir === "asc"
                             ? "▲"
                             : "▼"
                           : isFiltered
@@ -709,7 +712,13 @@ export default function TaskTable({
               </div>
             ) : (
               <>
-                {menuCol.sortable && (
+                {forceTaskIdDescending && menuCol.sortable && (
+                  <div className="col-menu-section">
+                    <div className="col-menu-title">ترتیب نتایج جستجو</div>
+                    <div className="text-sm">کد کار نزولی در تمام صفحات</div>
+                  </div>
+                )}
+                {menuCol.sortable && !forceTaskIdDescending && (
                   <div className="col-menu-section">
                     <div className="col-menu-title">مرتب‌سازی</div>
                     <button

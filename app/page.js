@@ -16,6 +16,11 @@ import FolderModal from "@/components/FolderModal";
 import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import { showToast } from "@/lib/toast";
 
+// کل نتایج جستجو باید پیش از slice مرتب شوند، نه فقط ردیف‌های هر صفحه.
+const sortSearchRows = (rows) => [...(rows || [])].sort(
+  (a, b) => Number(normalizeDigits(b.TaskID)) - Number(normalizeDigits(a.TaskID)),
+);
+
 const PAGE_SIZE = 10;
 
 function FullHeight({ children }) {
@@ -202,6 +207,7 @@ export default function Home() {
   const [reloadKey, setReloadKey] = useState(0);
   const loadTypeRef = useRef("daily");
   const searchRowsRef = useRef([]);
+  const loadRequestRef = useRef(0);
   // ✅ نوسازی خودکار بدون رفرش صفحه
   const [nextSwitch, setNextSwitch] = useState(null);
   const switchTimerRef = useRef(null);
@@ -245,14 +251,15 @@ export default function Home() {
     });
 
   const loadTasks = useCallback(async (filtersObj, pageNum) => {
+    const requestId = ++loadRequestRef.current;
     const type = loadTypeRef.current;
     setLoadError("");
     try {
       if (type === "search") {
-        const filteredRows = applyClientFilters(
+        const filteredRows = sortSearchRows(applyClientFilters(
           searchRowsRef.current || [],
           filtersObj,
-        );
+        ));
         setTotalFiltered(filteredRows.length);
         setTasks(
           filteredRows.slice((pageNum - 1) * PAGE_SIZE, pageNum * PAGE_SIZE),
@@ -271,11 +278,13 @@ export default function Home() {
           filters: filtersObj || {},
         }),
       });
+      if (requestId !== loadRequestRef.current) return;
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         throw new Error(`سرور کد ${res.status} برگرداند: ${t.slice(0, 200)}`);
       }
       const d = await res.json();
+      if (requestId !== loadRequestRef.current) return;
       if (d.success) {
         setTasks(d.data || []);
         setTotalFiltered(d.total || 0);
@@ -284,6 +293,7 @@ export default function Home() {
         setLoadError(d.error || "خطای نامشخص از سرور");
       }
     } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
       setLoadError("خطا در ارتباط با سرور: " + e.message);
     }
   }, []);
@@ -631,9 +641,11 @@ export default function Home() {
             <SearchPanel
               onResult={(rows) => {
                 loadTypeRef.current = "search";
-                searchRowsRef.current = rows || [];
-                setTasks((rows || []).slice(0, PAGE_SIZE));
-                setTotalFiltered((rows || []).length);
+                loadRequestRef.current++;
+                const orderedRows = sortSearchRows(rows);
+                searchRowsRef.current = orderedRows;
+                setTasks(orderedRows.slice(0, PAGE_SIZE));
+                setTotalFiltered(orderedRows.length);
                 setPage(1);
                 setIsSearchView(true);
               }}
@@ -645,9 +657,11 @@ export default function Home() {
               sync={compSync}
               onResult={(rows) => {
                 loadTypeRef.current = "search";
-                searchRowsRef.current = rows || [];
-                setTasks((rows || []).slice(0, PAGE_SIZE));
-                setTotalFiltered((rows || []).length);
+                loadRequestRef.current++;
+                const orderedRows = sortSearchRows(rows);
+                searchRowsRef.current = orderedRows;
+                setTasks(orderedRows.slice(0, PAGE_SIZE));
+                setTotalFiltered(orderedRows.length);
                 setPage(1);
                 setIsSearchView(true);
               }}
@@ -692,6 +706,7 @@ export default function Home() {
         <FullHeight>
           <TaskTable
             tasks={tasks}
+            forceTaskIdDescending={!draft && (isSearchView || Object.values(activeFilters).some(Array.isArray))}
             startNumber={(page - 1) * PAGE_SIZE}
             onRowClick={setSelectedTask}
             onComplete={handleComplete}
