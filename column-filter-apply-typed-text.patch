@@ -1,0 +1,57 @@
+--- a/components/TaskTable.jsx
++++ b/components/TaskTable.jsx
+@@ -275,7 +275,7 @@
+ 
+   const isChecked = (key, v) => staged == null || staged.has(v);
+   const allChecked = (key) =>
+-    staged == null || (shownValues.length > 0 && shownValues.every((v) => staged.has(v)));
++    shownValues.length > 0 && (staged == null || shownValues.every((v) => staged.has(v)));
+   const toggleFilterValue = (key, value) => {
+     setStaged((prev) => {
+       const base = prev == null ? new Set(menuValues || []) : new Set(prev);
+@@ -284,7 +284,8 @@
+       return base;
+     });
+   };
+-  const setAllChecked = (key, checked) => setStaged(checked ? null : new Set());
++  const setAllChecked = (key, checked) =>
++    setStaged(checked ? (menuQuery ? new Set(shownValues) : null) : new Set());
+   const applyStaged = (key) => {
+     if (menuLoading) return;
+     setFilters((prev) => ({
+@@ -753,9 +754,16 @@
+                     </div>
+                     <input
+                       className="col-menu-search"
+-                      placeholder="تایپ برای جستجو در گزینه‌ها…"
++                      placeholder="متن را بنویسید و اعمال فیلتر را بزنید…"
+                       value={menuQuery}
+-                      onChange={(e) => setMenuQuery(e.target.value)}
++                      disabled={menuLoading}
++                      onChange={(e) => onSearchChange(e.target.value)}
++                      onKeyDown={(e) => {
++                        if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
++                        e.preventDefault();
++                        e.stopPropagation();
++                        applyStaged(menuCol.key);
++                      }}
+                     />
+                     <label className="col-menu-item col-menu-selectall">
+                       <input
+@@ -765,12 +773,15 @@
+                           setAllChecked(menuCol.key, e.target.checked)
+                         }
+                       />
+-                      <span>(انتخاب همه)</span>
++                      <span>{menuQuery ? "(انتخاب همهٔ نتایج جستجو)" : "(انتخاب همه)"}</span>
+                     </label>
+                     {menuLoading && (
+                       <div className="col-menu-empty">
+                         در حال خواندن گزینه‌ها…
+                       </div>
++                    )}
++                    {!menuLoading && shownValues.length === 0 && (
++                      <div className="col-menu-empty">گزینه‌ای مطابق متن پیدا نشد.</div>
+                     )}
+                     {!menuLoading && (
+                       <div className="col-menu-list">
