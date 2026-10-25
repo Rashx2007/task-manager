@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function SettingsModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ startWork: '07:30', restStart: '12:00', restEnd: '13:00', endWork: '16:00', ignore: false });
   const [saving, setSaving] = useState(false);
@@ -36,6 +38,7 @@ export default function SettingsModal({ onClose, onSaved }) {
       onMouseDown={(e) => { e.stopPropagation(); if (e.button === 0 && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[440px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">تنظیمات ساعات کاری</h3>
+        <TaskContextHeader className="mb-4" />
         <div className="grid grid-cols-2 gap-4">
           <div><label className="block text-sm font-bold mb-1">شروع کار</label><input type="time" value={form.startWork} onChange={(e) => setForm({ ...form, startWork: e.target.value })} className={inp} /></div>
           <div><label className="block text-sm font-bold mb-1">پایان کار</label><input type="time" value={form.endWork} onChange={(e) => setForm({ ...form, endWork: e.target.value })} className={inp} /></div>

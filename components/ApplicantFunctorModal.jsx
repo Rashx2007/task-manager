@@ -15,6 +15,8 @@ const firstPhone = (person, prefix) => [1, 2, 3]
   .map((index) => String(person?.[`${prefix}${index}`] ?? '').trim())
   .find(Boolean) || '';
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
   const [persons, setPersons] = useState([]);
   const [applicant, setApplicant] = useState('');
@@ -117,6 +119,7 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
       <form onSubmit={(e) => { e.preventDefault(); save(); }}
         className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[760px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">درخواست‌کننده و انجام‌دهنده — کد کار: {taskId}</h3>
+        <TaskContextHeader taskId={taskId} className="mb-4" />
         {personField('درخواست‌کننده', 'applicant', applicant, setApplicant)}
         {personField('انجام‌دهنده', 'functor', functor, setFunctor)}
         <datalist id="af-persons">{persons.map((p) => <option key={p.PersonID} value={p.PersonName} />)}</datalist>
@@ -141,6 +144,7 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
               <h4 id="af-person-details-title" className="font-bold">اطلاعات کامل شخص</h4>
               <button ref={detailsCloseRef} type="button" className="btn-danger" onClick={() => setDetailsPerson(null)}>بستن</button>
             </div>
+            <TaskContextHeader taskId={taskId} className="mb-3" />
             <div className="overflow-hidden rounded-lg border border-teal-700/40">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-teal-800 text-white">

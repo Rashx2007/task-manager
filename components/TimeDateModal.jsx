@@ -174,6 +174,8 @@ function TimeInput({ value, onChange }) {
   );
 }
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const [priority, setPriority] = useState('نامشخص');
   const [hours, setHours] = useState('00');
@@ -392,6 +394,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
           <button type="button" onClick={onClose} className="text-xl">✕</button>
         </div>
 
+        <TaskContextHeader taskId={taskId} className="mb-4" />
         {/* ✅ زمان ثبت کار — فقط خواندنی */}
         <div className="mb-4">
           <label className="block text-sm font-bold mb-1">زمان ثبت (غیرقابل ویرایش)</label>

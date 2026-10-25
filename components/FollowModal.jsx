@@ -195,6 +195,8 @@ function TimeInput({ value, onChange, open, onToggle, onClose }) {
   );
 }
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const [rows, setRows] = useState([]);
   const [text, setTextState] = useState(shamsiStamp);
@@ -444,6 +446,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
 
+        <TaskContextHeader taskId={taskId} className="mx-6 my-2 shrink-0" />
         <div className="p-6 overflow-y-auto overscroll-contain">
           <label className="block text-sm font-bold mb-1">شرح پیگیری</label>
                    <textarea

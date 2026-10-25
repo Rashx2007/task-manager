@@ -153,7 +153,9 @@ function Sec({ k, title, badge, open, onToggle, children, color = "bg-[#F7C4A5]"
   );
 }
 
-export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, defaults = {} }) {
+import TaskContextHeader from "./TaskContextHeader";
+
+export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefineDevice, onClose, defaults = {} }) {
   const [building, setBuilding] = useState(defaults.building || "");
   const [block, setBlock] = useState(defaults.block || "");
   const [floor, setFloor] = useState(defaults.floor || "");
@@ -873,6 +875,7 @@ export default function MapModal({ onPickAsset, onOpenDefineDevice, onClose, def
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
 
+        <TaskContextHeader taskId={contextTaskId} className="mb-3" />
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <label className="text-xs font-bold">
             ساختمان

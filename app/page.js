@@ -6,6 +6,7 @@ import StatusBar from "@/components/StatusBar";
 import TaskTable from "@/components/TaskTable";
 import SearchPanel from "@/components/SearchPanel";
 import TaskForm from "@/components/TaskForm";
+import TaskInspector from "@/components/TaskInspector";
 import ComprehensiveSearch from "@/components/ComprehensiveSearch";
 import ReportsModal from "@/components/ReportsModal";
 import BackupModal from "@/components/BackupModal";
@@ -608,6 +609,7 @@ export default function Home() {
 
   return (
     <main className="h-screen bg-[#D8C9B4] flex flex-col overflow-hidden">
+      <TaskInspector />
       <div className="shrink-0">
         <Toolbar
           onNewTask={openNew}

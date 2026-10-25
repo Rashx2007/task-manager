@@ -1,7 +1,9 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
+import TaskContextHeader from "./TaskContextHeader";
+
+export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onClose, onSelect }) {
   const [path, setPath] = useState('');
   const [roots, setRoots] = useState([]);
   const [dirs, setDirs] = useState([]);
@@ -80,6 +82,7 @@ export default function DwgBrowser({ defaultPath = '', onClose, onSelect }) {
           <h3 className="font-bold">انتخاب فایل نقشه (DWG)</h3>
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
+        <TaskContextHeader taskId={contextTaskId} className="mb-3" />
         <div className="flex gap-2 items-center mb-2">
           <button type="button" className="btn-primary px-3" title="یک سطح بالا" onClick={up}>↑</button>
           <button type="button" className="btn-primary px-3" title="به‌روزآوری" onClick={() => load(path)}>🔄</button>

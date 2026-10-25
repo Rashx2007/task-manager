@@ -106,8 +106,11 @@ function ComboInput({
   );
 }
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function AssetsModal({
   onClose,
+  contextTaskId = null,
   onNewTaskWithAsset,
   onSelectAsset = null,
   preset = null,
@@ -541,6 +544,7 @@ const optionsFor = (field) => {
             ✕
           </button>
         </div>
+        <TaskContextHeader taskId={contextTaskId} className="mx-6 my-2 shrink-0" />
         <div className="flex gap-2 px-6 py-2 border-b border-teal-700">
           <button
             className={tab === "devices" ? "btn-success" : "btn-primary"}
@@ -1065,6 +1069,7 @@ const optionsFor = (field) => {
       </div>
       {showBrowser && (
         <FileBrowser
+          contextTaskId={contextTaskId}
           mode="folder"
           initial={form?.FolderPath || DEFAULT_ASSET_FOLDER}
           title="انتخاب پوشه دستگاه"
@@ -1077,6 +1082,7 @@ const optionsFor = (field) => {
       )}
       {folderAskAsset && (
         <FileBrowser
+          contextTaskId={contextTaskId}
           mode="folder"
           initial={folderAskAsset.FolderPath || DEFAULT_ASSET_FOLDER}
           title={"تنظیم پوشهٔ دستگاه کد " + folderAskAsset.AssetID}

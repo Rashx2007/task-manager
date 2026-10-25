@@ -3,7 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 
 const EMPTY = { PersonName: '', OfficeName: '', WorkTellNumber1: '', WorkTellNumber2: '', WorkTellNumber3: '', MobileTellNumber1: '', MobileTellNumber2: '', MobileTellNumber3: '', Address: '' };
 
-export default function PersonsModal({ onClose }) {
+import TaskContextHeader from "./TaskContextHeader";
+
+export default function PersonsModal({ contextTaskId = null, onClose }) {
   const [list, setList] = useState([]);
   const [term, setTerm] = useState('');
   const [form, setForm] = useState(null);
@@ -70,6 +72,7 @@ export default function PersonsModal({ onClose }) {
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
 
+        <TaskContextHeader taskId={contextTaskId} className="mx-6 my-2 shrink-0" />
         <div className="p-6 overflow-y-auto overscroll-contain">
           {form === null ? (
             <>

@@ -1,7 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 
-export default function FolderBrowser({ initial = '', onSelect, onClose }) {
+import TaskContextHeader from "./TaskContextHeader";
+
+export default function FolderBrowser({ contextTaskId = null, initial = '', onSelect, onClose }) {
   const [current, setCurrent] = useState('');
   const [parent, setParent] = useState('');
   const [folders, setFolders] = useState([]);
@@ -35,6 +37,7 @@ export default function FolderBrowser({ initial = '', onSelect, onClose }) {
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[560px] max-w-[95vw] max-h-[80vh] flex flex-col p-4">
         <h3 className="font-bold mb-3">انتخاب پوشه</h3>
 
+        <TaskContextHeader taskId={contextTaskId} className="mb-3" />
         <div className="flex items-center gap-2 mb-3">
           <button
             className="btn-primary px-3"

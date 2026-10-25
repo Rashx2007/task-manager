@@ -40,7 +40,9 @@ function FileThumb({ f, active, onClick }) {
   );
 }
 
-export default function FileBrowser({ mode = 'folder', initial = '', title, onSelect, onClose }) {
+import TaskContextHeader from "./TaskContextHeader";
+
+export default function FileBrowser({ contextTaskId = null, mode = 'folder', initial = '', title, onSelect, onClose }) {
   const [view, setView] = useState('thumb');
   const [current, setCurrent] = useState('');
   const [parent, setParent] = useState('');
@@ -102,6 +104,7 @@ export default function FileBrowser({ mode = 'folder', initial = '', title, onSe
           <h3 className="font-bold">{title || (mode === 'folder' ? 'انتخاب پوشه' : 'انتخاب فایل')}</h3>
           <button onClick={onClose} className="text-xl">✕</button>
         </div>
+        <TaskContextHeader taskId={contextTaskId} className="mx-4 my-2 shrink-0" />
         <div className="p-4 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <button className="btn-primary px-3" onClick={() => load(parent)} disabled={!current} title="یک سطح بالا">↑</button>

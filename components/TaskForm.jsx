@@ -62,6 +62,8 @@ const fromPicker = (d) => {
 const assetSpec = (a) =>
   `${a.AssetName}، قسمت: ${a.Location || "-"} (ساختمان ${a.Building || "-"}، بلوک: ${a.Block || "-"}، طبقه: ${a.Floor ?? "-"}، ورودی: ${a.Entrance || "-"}) شماره: ${a.AssetNumber ?? "-"} [کد:${a.AssetID}]`;
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function TaskForm({
   initial = null,
   defaultAssetId = null,
@@ -407,6 +409,7 @@ export default function TaskForm({
         <h3 className="text-lg font-bold mb-4">
           {isEdit ? `ویرایش کار — کد: ${currentTaskId}` : "ثبت کار جدید"}
         </h3>
+        <TaskContextHeader taskId={currentTaskId} draftMode={!currentTaskId} draftAsset={!currentTaskId ? assets.find((asset) => String(asset.AssetID) === String(form.AssetID)) : null} className="mb-4" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
             <label className="block text-sm font-bold mb-1">موضوع *</label>
@@ -807,6 +810,7 @@ export default function TaskForm({
       )}
       {showAssetPicker && (
         <AssetsModal
+          contextTaskId={currentTaskId}
           initialAssetId={form.AssetID || null}
           preset={assetPreset}
           onClose={() => {
@@ -841,6 +845,7 @@ export default function TaskForm({
       {showMap && (
         <div style={{ display: showAssetPicker ? "none" : "contents" }}>
           <MapModal
+            contextTaskId={currentTaskId}
             onClose={() => setShowMap(false)}
             onPickAsset={(id) => {
               setForm((f) => ({ ...f, AssetID: String(id) }));
@@ -851,6 +856,7 @@ export default function TaskForm({
                   if (d.success) setAssets(d.data || []);
                       {showAssetPicker && (
         <AssetsModal
+          contextTaskId={currentTaskId}
           preset={assetPreset}
           onClose={() => {
             setShowAssetPicker(false);

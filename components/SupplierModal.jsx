@@ -33,6 +33,8 @@ const fromPicker = (d) => {
 };
 const todayStr = () => fromPicker(new DateObject({ calendar: persian, locale: persian_fa }));
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function SupplierModal({ taskId, onClose, onSaved }) {
   const [form, setForm] = useState(null);
   const [buyers, setBuyers] = useState([]);
@@ -160,6 +162,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[640px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">تأمین‌کننده / خرید — کد کار: {taskId}</h3>
 
+        <TaskContextHeader taskId={taskId} className="mb-4" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-bold mb-1">شماره درخواست</label>

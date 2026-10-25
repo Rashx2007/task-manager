@@ -10,6 +10,8 @@ const SHARE_FOLDER = 'E:\\Share(Tasks)\\Elhami';
 // ✅ مسیر مطلق = درایو + جداکننده (اسلش یا بک‌اسلش)
 const isAbs = (p) => /^[A-Za-z]:[\/\\]/.test(String(p || '').trim());
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function FolderModal({ taskId, onClose, onSaved }) {
   const [fileName, setFileName] = useState('');
   const [folderPath, setFolderPath] = useState('');
@@ -218,6 +220,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[680px] max-w-[95vw] p-6">
         <h3 className="text-lg font-bold mb-4">پوشهٔ ضمائم — کد کار: {taskId}</h3>
 
+        <TaskContextHeader taskId={taskId} className="mb-4" />
         <div className="mb-3">
           <label className="block text-sm font-bold mb-1">مسیر پوشه</label>
           <div className="flex gap-2">
@@ -255,6 +258,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
 
       {showFolderBrowser && (
         <FileBrowser
+          contextTaskId={taskId}
           mode="folder"
           initial={browserInitial || DEFAULT_ASSET_FOLDER}
           title={waitingAssetFolder ? 'تعیین پوشهٔ دستگاه' : 'انتخاب پوشهٔ ضمائم'}
@@ -281,6 +285,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
       )}
       {showFileBrowser && (
         <FileBrowser
+          contextTaskId={taskId}
           mode="file"
           initial={browserInitial || folderPath}
           title="انتخاب فایل ضمیمه"

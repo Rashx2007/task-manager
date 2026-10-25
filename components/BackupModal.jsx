@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function BackupModal({ onClose }) {
   const [folder, setFolder] = useState("F:\\(Task)\\Projects\\DBBackups");
   const [files, setFiles] = useState([]);
@@ -140,6 +142,7 @@ export default function BackupModal({ onClose }) {
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[560px] max-w-full max-h-[90vh] overflow-y-auto p-6">
         <h3 className="text-lg font-bold mb-4">پشتیبان‌گیری / بازگردانی پایگاه داده</h3>
 
+        <TaskContextHeader className="mb-4" />
         <label className="block text-sm font-bold mb-1">پوشهٔ پشتیبان‌ها</label>
         <div className="flex gap-2 mb-3">
           <input className={inp} dir="ltr" value={folder} onChange={(e) => setFolder(e.target.value)} />

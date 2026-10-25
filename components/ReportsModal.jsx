@@ -55,6 +55,8 @@ const REPORTS = [
   },
 ];
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function ReportsModal({ onClose }) {
   const [active, setActive] = useState(null);
 
@@ -67,6 +69,7 @@ export default function ReportsModal({ onClose }) {
             <h3 className="text-lg font-bold">📊 گزارش‌ها</h3>
             <button type="button" onClick={onClose} className="text-xl">✕</button>
           </div>
+          <TaskContextHeader className="mx-4 my-2 shrink-0" />
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {REPORTS.map((g) => (
               <div key={g.group}>

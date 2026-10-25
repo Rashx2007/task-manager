@@ -1,0 +1,376 @@
+--- a/components/TaskInspector.jsx
++++ b/components/TaskInspector.jsx
+@@ -1,13 +1,13 @@
+ 'use client';
+ import { useEffect, useRef, useState } from 'react';
+ import { createPortal } from 'react-dom';
++import TaskInspectionTable from './TaskInspectionTable';
+ import { assetSummary, formatWallTime, parseTaskId, readTaskSnapshot, TASK_INSPECTOR_EVENT } from '@/lib/task-inspection';
+ 
+ export default function TaskInspector() {
+   const [opened, setOpened] = useState(false);
+   const [originTaskId, setOriginTaskId] = useState(null);
+   const [originSummary, setOriginSummary] = useState('');
+-  const [code, setCode] = useState('');
+   const [snapshot, setSnapshot] = useState(null);
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState('');
+@@ -15,6 +15,7 @@
+   const abortRef = useRef(null);
+   const panelRef = useRef(null);
+   const inputRef = useRef(null);
++  const tableRef = useRef(null);
+   const openedRef = useRef(false);
+   const openerRef = useRef(null);
+ 
+@@ -29,7 +30,7 @@
+       openedRef.current = true;
+       setOriginTaskId(parseTaskId(event.detail?.originTaskId));
+       setOriginSummary(typeof event.detail?.originSummary === 'string' ? event.detail.originSummary : '');
+-      setCode(''); setSnapshot(null); setError(''); setLoading(false); setOpened(true);
++      setSnapshot(null); setError(''); setLoading(false); setOpened(true);
+     };
+     window.addEventListener(TASK_INSPECTOR_EVENT, open);
+     return () => { window.removeEventListener(TASK_INSPECTOR_EVENT, open); invalidate(); };
+@@ -43,13 +44,16 @@
+     const keyboard = (event) => {
+       const inside = panelRef.current?.contains(event.target);
+       if (event.key === 'Escape') {
+-        event.preventDefault(); event.stopImmediatePropagation(); close(); return;
++        event.preventDefault(); event.stopImmediatePropagation();
++        if (!tableRef.current?.closeFilter()) close();
++        return;
+       }
+       if (!inside) {
+         event.preventDefault(); event.stopImmediatePropagation(); inputRef.current?.focus(); return;
+       }
+       if (event.key === 'Tab') {
+-        const controls = [...panelRef.current.querySelectorAll('button:not(:disabled), input:not(:disabled)')];
++        const filterDialog = panelRef.current.querySelector('[aria-label^="فیلتر "][role="dialog"]');
++        const controls = [...(filterDialog || panelRef.current).querySelectorAll('button:not(:disabled), input:not(:disabled)')].filter((node) => node.getClientRects().length);
+         const first = controls[0], last = controls[controls.length - 1];
+         if ((event.shiftKey && event.target === first) || (!event.shiftKey && event.target === last)) {
+           event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+@@ -69,9 +73,10 @@
+     };
+   }, [opened]);
+ 
+-  const inspect = async (event) => {
+-    event.preventDefault();
+-    const id = parseTaskId(code);
++  const resetDetails = () => { invalidate(); setSnapshot(null); setError(''); setLoading(false); };
++
++  const inspect = async (value) => {
++    const id = parseTaskId(value);
+     invalidate(); setSnapshot(null); setError('');
+     if (!id) { setLoading(false); setError('کد کار را به‌صورت عدد صحیح مثبت وارد کنید.'); return; }
+     const requestId = requestRef.current;
+@@ -101,24 +106,21 @@
+       onClick={(event) => event.stopPropagation()}
+       onMouseDown={(event) => { event.stopPropagation(); if (event.button === 0 && event.target === event.currentTarget) close(); }}>
+       <section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" dir="rtl"
+-        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[760px] max-w-full h-full max-h-[94vh] flex flex-col">
++        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1180px] max-w-full h-full max-h-[94vh] flex flex-col">
+         <div className="p-4 border-b border-teal-700/30 shrink-0">
+           <div className="flex items-center justify-between gap-3">
+             <h3 id="task-inspector-title" className="font-bold">بررسی مستقل کار — فقط نمایش</h3>
+-            <button type="button" className="btn-danger" onClick={close}>بازگشت به پنجرهٔ قبلی</button>
++            <button ref={inputRef} type="button" className="btn-danger" onClick={close}>بازگشت به پنجرهٔ قبلی</button>
+           </div>
+           <p className="text-xs mt-2">{originTaskId ? `کار پنجرهٔ اصلی: ${originTaskId}` : 'پنجرهٔ اصلی: عمومی یا کار جدید'} — اطلاعات فرم اصلی تغییر نمی‌کند و این پنل هیچ ذخیره‌ای ندارد.</p>
+           {originSummary && <p className="text-xs mt-1 break-words">دستگاه کار اصلی: {originSummary}</p>}
+-          <form onSubmit={inspect} className="flex gap-2 mt-3">
+-            <input ref={inputRef} className="search-input flex-1 min-w-0" aria-label="کد کار برای بررسی" inputMode="numeric" value={code}
+-              onChange={(event) => { invalidate(); setCode(event.target.value); setSnapshot(null); setError(''); setLoading(false); }} placeholder="کد کار موردنظر" />
+-            <button type="submit" className="btn-primary">نمایش کار</button>
+-          </form>
++
+         </div>
+         <div className="flex-1 min-h-0 overflow-auto overscroll-contain p-4">
++          <TaskInspectionTable ref={tableRef} onSelect={inspect} onResultsChange={resetDetails} selectedId={snapshot?.id} />
+           {loading && <p role="status">در حال دریافت اطلاعات کار…</p>}
+           {error && <p role="alert" className="rounded bg-red-100 text-red-900 p-3">{error}</p>}
+-          {!task && !loading && !error && <p>کد کار را وارد کنید. جستجو و مشاهده هیچ تغییری در دیتابیس ایجاد نمی‌کند.</p>}
++          {!task && !loading && !error && <p className="text-sm">با انتخاب یک ردیف، اطلاعات همان کار و سوابق آن در پایین جدول نمایش داده می‌شود؛ فرم اصلی دست‌نخورده می‌ماند.</p>}
+           {task && <>
+             <h4 className="font-bold mb-2">در حال مشاهدهٔ کار {snapshot.id} — فقط‌خواندنی</h4>
+             <table className="w-full border-collapse text-sm mb-5"><tbody>
+--- /dev/null
++++ b/components/TaskInspectionTable.jsx
+@@ -0,0 +1,151 @@
++'use client';
++import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
++import { INSPECTION_COLUMNS, inspectionSearchText, readInspectionSearch } from '@/lib/task-inspector-filters';
++import { formatWallTime, parseTaskId } from '@/lib/task-inspection';
++
++function ColumnFilter({ column, filters, onApply, onClose }) {
++  const [values, setValues] = useState([]);
++  const [picked, setPicked] = useState(new Set());
++  const [text, setText] = useState('');
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++  const inputRef = useRef(null);
++  const visible = values.filter((value) => inspectionSearchText(value).includes(inspectionSearchText(text)));
++  useEffect(() => {
++    const controller = new AbortController(); let active = true;
++    readInspectionSearch({ mode: 'options', field: column.key, filters }, controller.signal).then((data) => {
++      if (!active) return;
++      if (!Array.isArray(data.values) || data.values.some((value) => typeof value !== 'string')) throw new Error('پاسخ گزینه‌های فیلتر معتبر نیست.');
++      const options = [...new Set(data.values)]; setValues(options);
++      setPicked(new Set(filters[column.key] ?? options));
++    }).catch((reason) => { if (active && reason.name !== 'AbortError') setError(reason.message); })
++      .finally(() => { if (active) setLoading(false); });
++    inputRef.current?.focus();
++    return () => { active = false; controller.abort(); };
++  }, []);
++  const apply = (event) => {
++    event.preventDefault(); event.stopPropagation();
++    if (loading || error) return;
++    const selected = visible.filter((value) => picked.has(value));
++    // تنها «همهٔ گزینه‌ها بدون متن جستجو» به معنی حذف فیلتر است؛ صفر تطبیق یعنی نتیجهٔ خالی.
++    onApply(!inspectionSearchText(text) && selected.length === values.length && values.length ? null : selected);
++  };
++  return <div className="fixed inset-0 flex items-center justify-center p-3" style={{ zIndex: 100060 }}
++    onMouseDown={(event) => { event.stopPropagation(); if (event.button === 0 && event.target === event.currentTarget) onClose(); }}
++    onClick={(event) => event.stopPropagation()}>
++    <form onSubmit={apply} role="dialog" aria-label={`فیلتر ${column.label}`} dir="rtl"
++      className="rounded-lg shadow-2xl border border-teal-700 bg-white p-3 text-sm"
++      style={{ width: 350, maxWidth: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', color: '#134e4a' }}>
++      <div className="flex justify-between items-center gap-2 mb-2"><strong>فیلتر {column.label}</strong>
++        <button type="button" aria-label="بستن فیلتر" onClick={onClose}>✕</button></div>
++      <input ref={inputRef} className="search-input w-full" aria-label={`جستجو در ${column.label}`} value={text}
++        onChange={(event) => {
++          const next = event.target.value; setText(next);
++          setPicked(new Set(values.filter((value) => inspectionSearchText(value).includes(inspectionSearchText(next)))));
++        }} placeholder="بنویسید و Enter یا اعمال فیلتر را بزنید" />
++      {loading ? <p role="status" className="p-2">دریافت گزینه‌ها…</p> : error ? <p role="alert" className="p-2 text-red-800">{error}</p> : <>
++        <label className="flex gap-2 p-2"><input type="checkbox" aria-label="انتخاب همهٔ نتایج فیلتر"
++          checked={visible.length > 0 && visible.every((value) => picked.has(value))}
++          onChange={(event) => setPicked((previous) => {
++            const next = new Set(previous); visible.forEach((value) => event.target.checked ? next.add(value) : next.delete(value)); return next;
++          })} /> (انتخاب همه) — {visible.length} گزینه</label>
++        <div className="overflow-auto border rounded p-2" style={{ minHeight: 80, maxHeight: '40vh' }}>
++          {!visible.length && <p>گزینه‌ای مطابق متن پیدا نشد.</p>}
++          {visible.map((value) => <label key={value} className="flex items-start gap-2 py-1 break-words">
++            <input type="checkbox" checked={picked.has(value)} onChange={() => setPicked((previous) => {
++              const next = new Set(previous); next.has(value) ? next.delete(value) : next.add(value); return next;
++            })} /><span style={{ overflowWrap: 'anywhere' }}>{value}</span></label>)}
++        </div></>}
++      <div className="flex flex-wrap gap-2 mt-3">
++        <button type="submit" className="btn-success" disabled={loading || !!error}>اعمال فیلتر</button>
++        <button type="button" className="btn-primary" onClick={() => onApply(null)}>حذف فیلتر ستون</button>
++        <button type="button" className="btn-danger" onClick={onClose}>انصراف</button>
++      </div>
++    </form>
++  </div>;
++}
++
++const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, onResultsChange, selectedId }, ref) {
++  const [filters, setFilters] = useState({});
++  const [started, setStarted] = useState(false);
++  const [page, setPage] = useState(1);
++  const [result, setResult] = useState({ rows: [], total: 0, page: 1 });
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState('');
++  const [menu, setMenu] = useState(null);
++  const menuRef = useRef(null), generationRef = useRef(0), abortRef = useRef(null);
++  const invalidate = () => { generationRef.current++; abortRef.current?.abort(); abortRef.current = null; };
++  const closeMenu = () => { const wasOpen = !!menuRef.current; menuRef.current = null; setMenu(null); return wasOpen; };
++  useImperativeHandle(ref, () => ({ closeFilter: closeMenu }), []);
++  useEffect(() => {
++    if (!started) return;
++    const token = ++generationRef.current;
++    const controller = new AbortController(); abortRef.current = controller;
++    setLoading(true); setError(''); setResult({ rows: [], total: 0, page });
++    readInspectionSearch({ mode: 'rows', filters, page, pageSize: 20 }, controller.signal).then((data) => {
++      if (token !== generationRef.current) return;
++      if (!Array.isArray(data.rows) || !Number.isSafeInteger(data.total) || data.total < 0 || !Number.isSafeInteger(data.page) || data.page < 1 || data.rows.some((row) => !parseTaskId(row.TaskID)) || data.rows.some((row, i) => i && Number(data.rows[i - 1].TaskID) <= Number(row.TaskID))) throw new Error('پاسخ جدول جستجو معتبر نیست.');
++      setResult({ rows: data.rows, total: data.total, page: data.page });
++    }).catch((reason) => { if (token === generationRef.current && reason.name !== 'AbortError') setError(reason.message); })
++      .finally(() => { if (token === generationRef.current) setLoading(false); });
++    return () => { generationRef.current++; controller.abort(); };
++  }, [filters, page, started]);
++  const change = (next, nextStarted = true) => {
++    invalidate(); onResultsChange(); closeMenu(); setFilters(next); setPage(1); setStarted(nextStarted);
++    setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
++  };
++  const turnPage = (next) => { invalidate(); onResultsChange(); setPage(next); };
++  const pages = Math.max(1, Math.ceil(result.total / 20));
++  const cell = (row, key) => {
++    if (key === 'status') return Number(row.Complited) === 1 ? 'اتمام' : 'جاری';
++    if (key === 'DueDateTime' || key === 'EndDateTime') return formatWallTime(row[key]);
++    return row[key] == null || row[key] === '' ? '—' : String(row[key]);
++  };
++  return <section aria-label="جستجوی مستقل کارها" className="mb-5">
++    <div className="flex flex-wrap items-center gap-2 mb-3">
++      <button type="button" className="btn-primary" onClick={() => change({})}>نمایش همهٔ کارها</button>
++      <button type="button" className="btn-danger" onClick={() => change({}, false)}>پاک‌کردن جستجو</button>
++      <span className="text-xs">سرستون را بزنید؛ نتایج در تمام صفحات با کد کار نزولی مرتب می‌شوند.</span>
++    </div>
++    {Object.keys(filters).length > 0 && <div className="flex flex-wrap gap-2 mb-2" aria-label="فیلترهای فعال">
++      {Object.entries(filters).map(([key, values]) => <button key={key} type="button" className="rounded bg-teal-800 text-white px-2 py-1 text-xs"
++        onClick={() => { const next = { ...filters }; delete next[key]; change(next); }}>
++        {INSPECTION_COLUMNS.find((column) => column.key === key)?.label}: {values.length ? values.join('، ') : 'بدون تطبیق'} ×
++      </button>)}
++    </div>}
++    <div className="overflow-auto rounded border border-teal-700/30" style={{ maxHeight: '42vh' }}>
++      <table className="border-collapse text-sm w-full" style={{ minWidth: 1600 }} aria-label="نتایج جستجوی کارها">
++        <thead className="bg-teal-800 text-white sticky top-0"><tr>
++          <th scope="col" className="p-2">ردیف</th>
++          {INSPECTION_COLUMNS.map((column) => <th scope="col" key={column.key} className="border border-teal-600 p-2 whitespace-nowrap text-right">
++            {column.filterable ? <button type="button" className="w-full text-right" aria-label={`فیلتر ${column.label}`} aria-haspopup="dialog"
++              onClick={() => { menuRef.current = column.key; setMenu(column); }}>{column.label} {Object.hasOwn(filters, column.key) ? '●' : '▾'}</button> : column.label}
++          </th>)}
++        </tr></thead>
++        <tbody>{result.rows.map((row, index) => <tr key={row.TaskID} className={Number(selectedId) === Number(row.TaskID) ? 'bg-teal-200' : index % 2 ? 'bg-teal-50' : 'bg-white/90'}
++          style={{ cursor: 'pointer' }} onClick={() => onSelect(row.TaskID)}>
++          <td className="border border-teal-700/20 p-2">{(result.page - 1) * 20 + index + 1}</td>
++          {INSPECTION_COLUMNS.map((column) => <td key={column.key} className="border border-teal-700/20 p-2" style={{ maxWidth: 300, overflowWrap: 'anywhere' }}>
++            {column.key === 'TaskID' ? <button type="button" aria-label={`مشاهدهٔ کار ${row.TaskID}`} className="underline font-bold"
++              onClick={(event) => { event.stopPropagation(); onSelect(row.TaskID); }}>{row.TaskID}</button> : cell(row, column.key)}
++          </td>)}
++        </tr>)}
++        {!result.rows.length && <tr><td colSpan={INSPECTION_COLUMNS.length + 1} className="bg-white/80 p-4">
++          {loading ? 'در حال جستجو…' : error ? 'دریافت نتایج ناموفق بود.' : started ? 'کاری مطابق فیلترها پیدا نشد.' : 'برای پیدا کردن کار، از فیلتر سرستون‌ها استفاده کنید یا «نمایش همهٔ کارها» را بزنید.'}
++        </td></tr>}
++        </tbody>
++      </table>
++    </div>
++    {error && <p role="alert" className="p-2 bg-red-100 text-red-900">{error}</p>}
++    {loading && <p role="status" className="text-sm mt-2">در حال دریافت نتایج…</p>}
++    {started && !loading && !error && <div className="flex items-center flex-wrap gap-3 mt-2 text-sm">
++      <span>{result.total} کار — صفحهٔ {result.page} از {pages}</span>
++      <button type="button" className="btn-primary" disabled={result.page <= 1} onClick={() => turnPage(result.page - 1)}>صفحهٔ قبل</button>
++      <button type="button" className="btn-primary" disabled={result.page >= pages} onClick={() => turnPage(result.page + 1)}>صفحهٔ بعد</button>
++    </div>}
++    {menu && <ColumnFilter key={menu.key} column={menu} filters={filters} onClose={closeMenu} onApply={(values) => {
++      const next = { ...filters }; if (values === null) delete next[menu.key]; else next[menu.key] = values; change(next);
++    }} />}
++  </section>;
++});
++export default TaskInspectionTable;
+--- /dev/null
++++ b/lib/task-inspector-filters.js
+@@ -0,0 +1,24 @@
++import { normalizeDigits, normalizeFa } from './assetRules';
++
++// این فهرست مستقل از جدول قابل‌ویرایش صفحهٔ اصلی است.
++export const INSPECTION_COLUMNS = [
++  ['TaskID', 'کد کار', true], ['AssetName', 'دستگاه/مجموعه', true],
++  ['AssetNumber', 'شماره', true], ['Building', 'ساختمان', true],
++  ['Block', 'بلوک', true], ['Floor', 'طبقه', true], ['Entrance', 'ورودی', true],
++  ['Location', 'قسمت', true], ['TaskTtl', 'موضوع', true],
++  ['Descriptions', 'توضیحات', false], ['Priorities', 'اولویت', true],
++  ['status', 'وضعیت', true], ['DueDateTime', 'زمان شروع', false],
++  ['EndDateTime', 'زمان پایان', false],
++].map(([key, label, filterable]) => ({ key, label, filterable }));
++
++export const inspectionSearchText = (value) => normalizeFa(normalizeDigits(value)).replace(/\s+/g, '');
++
++export async function readInspectionSearch(body, signal) {
++  const response = await fetch('/api/task-inspector/search', {
++    method: 'POST', cache: 'no-store', signal,
++    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
++  });
++  const result = await response.json();
++  if (!response.ok || !result.success) throw new Error(result.error || 'دریافت نتایج جستجو ناموفق بود.');
++  return result;
++}
+--- /dev/null
++++ b/app/api/task-inspector/search/route.js
+@@ -0,0 +1,95 @@
++import { NextResponse } from 'next/server';
++import { query } from '@/lib/db';
++import { normalizeDigits, normalizeFa } from '@/lib/assetRules';
++
++const COLUMNS = {
++  TaskID: 'tsk.TaskID', AssetName: 'asset.AssetName', AssetNumber: 'asset.AssetNumber',
++  Building: 'asset.Building', Block: 'asset.Block', Floor: 'asset.Floor',
++  Entrance: 'asset.Entrance', Location: 'asset.Location', TaskTtl: 'tsk.TaskTtl',
++  Priorities: 'COALESCE(TD.Priorities, tsk.Priorities)',
++  status: "CASE WHEN tsk.Complited = 1 THEN N'اتمام' ELSE N'جاری' END",
++};
++const NUMERIC = new Set(['TaskID', 'AssetNumber', 'Floor']);
++const FROM = `FROM Tsk_tbl tsk
++  LEFT JOIN Asset_Task_tbl atk ON atk.TaskID = tsk.TaskID
++  LEFT JOIN Asset_2_tbl asset ON asset.AssetID = COALESCE(atk.AssetID, tsk.AssetID)
++  LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID`;
++const reply = (body, status = 200) => NextResponse.json(body, {
++  status, headers: { 'Cache-Control': 'no-store' },
++});
++const invalid = (message) => { const error = new Error(message); error.inputError = true; throw error; };
++const own = (key) => Object.prototype.hasOwnProperty.call(COLUMNS, key);
++const textColumn = (col) => `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CAST(${col} AS nvarchar(max)), NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک'), NCHAR(13), N''), NCHAR(10), N''), NCHAR(9), N''), NCHAR(160), N''), N' ', N'')`;
++
++function conditions(filters, except) {
++  const params = [], clauses = [];
++  for (const [key, values] of Object.entries(filters)) {
++    if (key === except || values === null) continue;
++    if (!values.length) { clauses.push('(1 = 0)'); continue; }
++    const alternatives = values.map((value) => {
++      const col = COLUMNS[key];
++      if (NUMERIC.has(key)) {
++        const raw = normalizeDigits(value).trim();
++        if (!/^-?\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) invalid('مقدار فیلتر عددی معتبر نیست.');
++        params.push(Number(raw)); return `${col} = ?`;
++      }
++      if (key === 'status' || key === 'Priorities') {
++        params.push(normalizeFa(value)); return `LTRIM(RTRIM(CAST(${col} AS nvarchar(max)))) = ?`;
++      }
++      const text = normalizeFa(value).replace(/\s+/g, '').replace(/[\\%_\[\]]/g, '\\$&');
++      params.push(`%${text}%`);
++      return `${textColumn(col)} LIKE ? ESCAPE '\\'`;
++    });
++    clauses.push(`(${alternatives.join(' OR ')})`);
++  }
++  if (params.length > 2000) invalid('تعداد گزینه‌های انتخابی زیاد است؛ فیلتر را محدودتر کنید یا انتخاب همه را به‌کار ببرید.');
++  return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
++}
++
++// POST فقط برای انتقال فیلترهاست؛ این مسیر هیچ عملیات نوشتنی در دیتابیس ندارد.
++export async function POST(request) {
++  try {
++    let body;
++    try { body = await request.json(); } catch { invalid('بدنهٔ جستجو معتبر نیست.'); }
++    if (!body || typeof body !== 'object' || Array.isArray(body)) invalid('درخواست جستجو معتبر نیست.');
++    const mode = body.mode;
++    if (!['rows', 'options'].includes(mode)) invalid('نوع جستجو معتبر نیست.');
++    const filters = body.filters == null ? {} : body.filters;
++    if (typeof filters !== 'object' || Array.isArray(filters)) invalid('فیلترها باید یک شیء معتبر باشند.');
++    for (const [key, values] of Object.entries(filters)) {
++      if (!own(key) || (values !== null && (!Array.isArray(values) || values.some((v) => typeof v !== 'string' || v.length > 4000)))) invalid('ستون یا مقدار فیلتر معتبر نیست.');
++      if (values?.length > 2000) invalid('تعداد گزینه‌های این ستون زیاد است؛ انتخاب را محدودتر کنید.');
++    }
++    if (mode === 'options') {
++      if (typeof body.field !== 'string' || !own(body.field)) invalid('ستون فیلتر معتبر نیست.');
++      const col = COLUMNS[body.field];
++      const { where, params } = conditions(filters, body.field);
++      const rows = await query(`SELECT DISTINCT CAST(${col} AS nvarchar(max)) AS v ${FROM}
++        ${where || 'WHERE 1 = 1'} AND ${col} IS NOT NULL
++        AND LTRIM(RTRIM(CAST(${col} AS nvarchar(max)))) <> N''`, params);
++      const values = rows.map((row) => String(row.v));
++      values.sort((a, b) => NUMERIC.has(body.field) ? Number(a) - Number(b) : a.localeCompare(b, 'fa', { numeric: true }));
++      return reply({ success: true, values });
++    }
++    const page = body.page ?? 1, pageSize = body.pageSize ?? 20;
++    if (!Number.isSafeInteger(page) || page < 1 || page > 10000000 || ![10, 20, 50].includes(pageSize)) invalid('صفحهٔ جستجو معتبر نیست.');
++    const { where, params } = conditions(filters);
++    const counts = await query(`SELECT COUNT(DISTINCT tsk.TaskID) AS total ${FROM} ${where}`, params);
++    const total = Number(counts[0]?.total || 0);
++    const resolvedPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
++    const rows = total ? await query(`WITH matches AS (
++      SELECT tsk.TaskID, tsk.TaskTtl, tsk.Descriptions, tsk.Complited,
++        COALESCE(TD.Priorities, tsk.Priorities) AS Priorities,
++        asset.AssetName, asset.AssetNumber, asset.Building, asset.Block,
++        asset.Floor, asset.Entrance, asset.Location, TD.DueDateTime, TD.EndDateTime,
++        ROW_NUMBER() OVER (PARTITION BY tsk.TaskID ORDER BY TD.DueDateTime DESC, asset.AssetID DESC) AS inspectionRank
++      ${FROM} ${where}
++    ) SELECT TaskID, TaskTtl, Descriptions, Complited, Priorities,
++      AssetName, AssetNumber, Building, Block, Floor, Entrance, Location, DueDateTime, EndDateTime
++      FROM matches WHERE inspectionRank = 1
++      ORDER BY TaskID DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, (resolvedPage - 1) * pageSize, pageSize]) : [];
++    return reply({ success: true, rows, total, page: resolvedPage, pageSize });
++  } catch (error) {
++    return reply({ success: false, error: error.inputError ? error.message : 'دریافت نتایج جستجو ناموفق بود.' }, error.inputError ? 400 : 500);
++  }
++}

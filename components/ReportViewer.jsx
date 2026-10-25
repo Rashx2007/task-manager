@@ -6,6 +6,8 @@ import { showToast } from "@/lib/toast";
 import persian from "react-date-object/calendars/persian";
 import persian_fa from "react-date-object/locales/persian_fa";
 
+import TaskContextHeader from "./TaskContextHeader";
+
 export default function ReportViewer({ config, onClose }) {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -155,6 +157,7 @@ export default function ReportViewer({ config, onClose }) {
           </button>
         </div>
 
+        <TaskContextHeader className="mx-4 my-2 shrink-0" />
         <div className="p-4 border-b border-teal-800/20 flex flex-wrap gap-3 items-end">
           {config.needsDateRange && (
             <>
