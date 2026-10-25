@@ -1,13 +1,15 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { isCentral } from "@/lib/assetRules";
+import { isCentral, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import Tip from "./Tip";
 
 const assetSpec = (t) =>
   t.AssetName
     ? `${t.AssetName}، قسمت: ${t.Location || "-"} (ساختمان ${t.Building || "-"}، بلوک: ${t.Block || "-"}، طبقه: ${t.Floor ?? "-"}، ورودی: ${t.Entrance || "-"}) شماره: ${t.AssetNumber ?? "-"} [کد:${t.AssetID}]`
     : "";
+
+const filterSearchText = (value) => normalizeFa(normalizeDigits(value));
 
 const COLUMNS = [
   { key: "row", label: "ردیف", sortable: false, filterable: false },
@@ -150,6 +152,7 @@ export default function TaskTable({
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuQuery, setMenuQuery] = useState("");
   const [staged, setStaged] = useState(null);
+  const menuRequestRef = useRef(0);
 
   // بعد از stateهای موجود، این‌ها رو اضافه کنید:
   const [pendingFilters, setPendingFilters] = useState(null); // null یعنی از filters اصلی استفاده کن
@@ -189,6 +192,9 @@ export default function TaskTable({
   const centralDraft = isCentral(draft?.Building);
 
   const loadMenuValues = async (col) => {
+    const requestId = ++menuRequestRef.current;
+    const cur = filters[col.key];
+    setStaged(cur == null ? null : new Set(cur));
     setMenuLoading(true);
     setMenuValues(null);
     if (col.key === "status") {
@@ -219,8 +225,8 @@ export default function TaskTable({
       );
     } else {
       for (const [k, set] of Object.entries(filters)) {
-        if (k === col.key || set == null || set.size !== 1) continue;
-        constraints[k] = Array.from(set)[0];
+        if (k === col.key || set == null) continue;
+        constraints[k] = Array.from(set);
       }
     }
     try {
@@ -231,18 +237,17 @@ export default function TaskTable({
           field: col.key,
           source: col.source || "task",
           constraints,
+          scope: draftActive ? "assets" : "tasks",
         }),
       });
       const d = await res.json();
-      const vals = d.success ? d.values : [];
-      setMenuValues(vals);
-      const cur = filters[col.key];
-      setStaged(cur == null ? null : new Set(cur));
+      if (requestId !== menuRequestRef.current) return;
+      setMenuValues(d.success && Array.isArray(d.values) ? d.values : []);
     } catch {
+      if (requestId !== menuRequestRef.current) return;
       setMenuValues([]);
-      setStaged(null);
     }
-    setMenuLoading(false);
+    if (requestId === menuRequestRef.current) setMenuLoading(false);
   };
 
   const openMenu = (e, col) => {
@@ -251,7 +256,7 @@ export default function TaskTable({
     const next = (menu && menu.key === col.key) ? null : { key: col.key, y: Math.min(r.bottom + 2, window.innerHeight - 480), right: window.innerWidth - r.right };
     setMenuQuery("");
     setMenu(next);
-    if (!next) setStaged(null);
+    if (!next) { menuRequestRef.current++; setStaged(null); }
     if (next && (col.filterable || col.assignable)) loadMenuValues(col);
   };
 
@@ -281,12 +286,12 @@ export default function TaskTable({
   };
   const setAllChecked = (key, checked) => setStaged(checked ? null : new Set());
   const applyStaged = (key) => {
+    if (menuLoading) return;
     setFilters((prev) => ({
       ...prev,
       [key]:
         staged == null ||
-          staged.size === 0 ||
-          (menuValues && staged.size === menuValues.length)
+          (staged.size > 0 && menuValues && staged.size === menuValues.length && menuValues.every((v) => staged.has(v)))
           ? null
           : staged,
     }));
@@ -300,7 +305,7 @@ export default function TaskTable({
   const onSearchChange = (v) => {
     setMenuQuery(v);
     if (!v) setStaged(null);
-    else setStaged(new Set((menuValues || []).filter((x) => String(x).includes(v))));
+    else setStaged(new Set((menuValues || []).filter((x) => filterSearchText(x).includes(filterSearchText(v)))));
   };
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
@@ -391,7 +396,7 @@ export default function TaskTable({
     : null;
     const shownValues = !menuQuery
     ? menuValues || []
-    : (menuValues || []).filter((v) => String(v).includes(menuQuery));
+    : (menuValues || []).filter((v) => filterSearchText(v).includes(filterSearchText(menuQuery)));
   
 
   return (
@@ -788,7 +793,7 @@ export default function TaskTable({
             <div className="col-menu-footer">
               {menuCol.filterable ? (
                 <>
-                  <button type="button" className="col-menu-ok" onClick={() => applyStaged(menuCol.key)}>
+                  <button type="button" className="col-menu-ok" disabled={menuLoading} onClick={() => applyStaged(menuCol.key)}>
                     اعمال فیلتر
                   </button>
                   <button type="button" className="col-menu-cancel" onClick={cancelMenu}>

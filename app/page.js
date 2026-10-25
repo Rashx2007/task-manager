@@ -13,7 +13,7 @@ import AssetsModal from "@/components/AssetsModal";
 import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
-import { placeRules } from "@/lib/assetRules";
+import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import { showToast } from "@/lib/toast";
 
 const PAGE_SIZE = 10;
@@ -227,7 +227,19 @@ export default function Home() {
               ? "اتمام"
               : "جاری"
             : String(t[k] ?? "");
-        if (!vals.includes(v)) return false;
+        const numeric = ["TaskID", "AssetNumber", "Floor"].includes(k);
+        if (numeric) {
+          const raw = normalizeDigits(v).trim();
+          if (raw === "" || !Number.isFinite(Number(raw)) || !vals.some((value) => {
+            const candidate = normalizeDigits(value).trim();
+            return candidate !== "" && Number.isFinite(Number(candidate)) && Number(candidate) === Number(raw);
+          })) return false;
+        } else if (["Priorities", "status"].includes(k)) {
+          if (!vals.some((value) => String(value) === v)) return false;
+        } else {
+          const normalized = (value) => normalizeFa(value).replace(/\s+/g, "");
+          if (!vals.some((value) => normalized(v).includes(normalized(value)))) return false;
+        }
       }
       return true;
     });

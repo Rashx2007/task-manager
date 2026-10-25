@@ -1,6 +1,7 @@
 // app/api/load-data/route.js
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { normalizeDigits } from '@/lib/assetRules';
 
 // ✅ همان نرمال‌سازی که کوئری دسکتاپ/جامع استفاده می‌کند
 const normalizeFa = (s) => String(s == null ? '' : s)
@@ -8,7 +9,7 @@ const normalizeFa = (s) => String(s == null ? '' : s)
   .replace(/[\u200c\u200f\u200e]/g, '').replace(/\s+/g, ' ').trim();
 
 const normCol = (col) =>
-  `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
+  `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CAST(${col} AS nvarchar(max)), NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')`;
 
 // ✅ برای مقایسهٔ LIKE: حذف همهٔ انواع فاصله (فاصله/CR/LF/Tab) از ستون تا
 //    خط جدید یا فاصلهٔ مضاعفِ ذخیره‌شده در متن، ردیف را از نتیجه نیندازد
@@ -36,14 +37,15 @@ const COLUMN_FILTER_MAP = {
   AssetNumber:  { kind: 'eqNum', col: 'asset.AssetNumber' },
   AssetName:    { kind: 'like',  col: 'asset.AssetName' },
   Building:     { kind: 'like',  col: 'asset.Building' },
+  Block:        { kind: 'like',  col: 'asset.Block' },
+  Floor:        { kind: 'eqNum', col: 'asset.Floor' },
+  Entrance:     { kind: 'like',  col: 'asset.Entrance' },
   Location:     { kind: 'like',  col: 'asset.Location' },
   TaskTtl:      { kind: 'like',  col: 'tsk.TaskTtl' },
   Descriptions: { kind: 'like',  col: 'tsk.Descriptions' },
   Priorities:   { kind: 'eq',    col: 'TD.Priorities' },
   status:       { kind: 'status' },
 };
-
-const p2 = (n) => String(n).padStart(2, '0');
 
 // ✅ هستهٔ مشترک بارگذاری؛ پارامترها از GET (query) یا POST (body) می‌آیند
 async function runLoad({ type, offset, limit, filters }) {
@@ -54,7 +56,7 @@ async function runLoad({ type, offset, limit, filters }) {
     const conds = [];
     const params = [];
 
-    const hasColumnFilters = Object.values(f).some((v) => Array.isArray(v) && v.length > 0);
+    const hasColumnFilters = Object.entries(f).some(([key, v]) => Object.hasOwn(COLUMN_FILTER_MAP, key) && Array.isArray(v));
 
     if (!hasColumnFilters) {
       // ✅ بدون فیلتر ستونی: همان لایه‌بندی روزانهٔ قبلی
@@ -76,23 +78,20 @@ async function runLoad({ type, offset, limit, filters }) {
         }
       }
     } else {
-      // ✅✅ با فیلتر ستونی: دقیقاً همان کوئری دسکتاپ/جامع
-      // بازهٔ تاریخ پیش‌فرض (همان فرم جامع)
-      conds.push('(TD.DueDateTime >= ?)'); params.push('2018-03-21 00:00:00');
-      const d2 = new Date(); d2.setFullYear(d2.getFullYear() + 10);
-      conds.push('(TD.DueDateTime <= ?)'); params.push(`${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} 23:59:59`);
-
+      // فیلتر ستونی از کل کارهاست؛ بازهٔ تاریخ پنهان نباید کارهای بدون زمان را حذف کند.
       for (const [key, values] of Object.entries(f)) {
-        if (!Array.isArray(values) || values.length === 0) continue;
-        const def = COLUMN_FILTER_MAP[key];
+        if (!Array.isArray(values)) continue;
+        const def = Object.hasOwn(COLUMN_FILTER_MAP, key) ? COLUMN_FILTER_MAP[key] : null;
         if (!def) continue;
+        if (values.length === 0) { conds.push('(1 = 0)'); continue; }
 
         if (def.kind === 'status') {
           const hasCur = values.includes('جاری');
           const hasDone = values.includes('اتمام');
           if (hasCur && !hasDone) conds.push('(tsk.Complited < 1)');
           else if (hasDone && !hasCur) conds.push('(tsk.Complited = 1)');
-          // هر دو یا هیچ‌کدام = همهٔ کارها (بدون شرط)
+          else if (!hasCur && !hasDone) conds.push('(1 = 0)');
+          // هر دو وضعیت = همهٔ کارها
           continue;
         }
 
@@ -105,8 +104,11 @@ async function runLoad({ type, offset, limit, filters }) {
             ors.push(`(${def.col} = ?)`);
             params.push(String(v));
           } else {
+            const raw = normalizeDigits(v).trim();
+            const number = raw === '' ? NaN : Number(raw);
+            if (!Number.isFinite(number)) { ors.push('(1 = 0)'); continue; }
             ors.push(`(${def.col} = ?)`);
-            params.push(Number(v));
+            params.push(number);
           }
         }
         conds.push(`(${ors.join(' OR ')})`);
