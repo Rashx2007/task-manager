@@ -102,7 +102,7 @@ export default function TaskInspector() {
     ['شرح کار', task.Descriptions],
   ] : [];
   return createPortal(
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-end p-2 sm:p-4" style={{ zIndex: 100050 }}
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-2 sm:p-4" style={{ zIndex: 100050 }}
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => { event.stopPropagation(); if (event.button === 0 && event.target === event.currentTarget) close(); }}>
       <section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" dir="rtl"
