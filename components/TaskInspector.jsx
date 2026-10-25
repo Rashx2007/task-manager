@@ -1,13 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import TaskInspectionTable from './TaskInspectionTable';
 import { assetSummary, formatWallTime, parseTaskId, readTaskSnapshot, TASK_INSPECTOR_EVENT } from '@/lib/task-inspection';
 
 export default function TaskInspector() {
   const [opened, setOpened] = useState(false);
   const [originTaskId, setOriginTaskId] = useState(null);
   const [originSummary, setOriginSummary] = useState('');
-  const [code, setCode] = useState('');
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -15,6 +15,7 @@ export default function TaskInspector() {
   const abortRef = useRef(null);
   const panelRef = useRef(null);
   const inputRef = useRef(null);
+  const tableRef = useRef(null);
   const openedRef = useRef(false);
   const openerRef = useRef(null);
 
@@ -29,7 +30,7 @@ export default function TaskInspector() {
       openedRef.current = true;
       setOriginTaskId(parseTaskId(event.detail?.originTaskId));
       setOriginSummary(typeof event.detail?.originSummary === 'string' ? event.detail.originSummary : '');
-      setCode(''); setSnapshot(null); setError(''); setLoading(false); setOpened(true);
+      setSnapshot(null); setError(''); setLoading(false); setOpened(true);
     };
     window.addEventListener(TASK_INSPECTOR_EVENT, open);
     return () => { window.removeEventListener(TASK_INSPECTOR_EVENT, open); invalidate(); };
@@ -43,13 +44,16 @@ export default function TaskInspector() {
     const keyboard = (event) => {
       const inside = panelRef.current?.contains(event.target);
       if (event.key === 'Escape') {
-        event.preventDefault(); event.stopImmediatePropagation(); close(); return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (!tableRef.current?.closeFilter()) close();
+        return;
       }
       if (!inside) {
         event.preventDefault(); event.stopImmediatePropagation(); inputRef.current?.focus(); return;
       }
       if (event.key === 'Tab') {
-        const controls = [...panelRef.current.querySelectorAll('button:not(:disabled), input:not(:disabled)')];
+        const filterDialog = panelRef.current.querySelector('[aria-label^="فیلتر "][role="dialog"]');
+        const controls = [...(filterDialog || panelRef.current).querySelectorAll('button:not(:disabled), input:not(:disabled)')].filter((node) => node.getClientRects().length);
         const first = controls[0], last = controls[controls.length - 1];
         if ((event.shiftKey && event.target === first) || (!event.shiftKey && event.target === last)) {
           event.preventDefault(); (event.shiftKey ? last : first)?.focus();
@@ -69,9 +73,10 @@ export default function TaskInspector() {
     };
   }, [opened]);
 
-  const inspect = async (event) => {
-    event.preventDefault();
-    const id = parseTaskId(code);
+  const resetDetails = () => { invalidate(); setSnapshot(null); setError(''); setLoading(false); };
+
+  const inspect = async (value) => {
+    const id = parseTaskId(value);
     invalidate(); setSnapshot(null); setError('');
     if (!id) { setLoading(false); setError('کد کار را به‌صورت عدد صحیح مثبت وارد کنید.'); return; }
     const requestId = requestRef.current;
@@ -101,24 +106,21 @@ export default function TaskInspector() {
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => { event.stopPropagation(); if (event.button === 0 && event.target === event.currentTarget) close(); }}>
       <section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" dir="rtl"
-        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[760px] max-w-full h-full max-h-[94vh] flex flex-col">
+        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1180px] max-w-full h-full max-h-[94vh] flex flex-col">
         <div className="p-4 border-b border-teal-700/30 shrink-0">
           <div className="flex items-center justify-between gap-3">
             <h3 id="task-inspector-title" className="font-bold">بررسی مستقل کار — فقط نمایش</h3>
-            <button type="button" className="btn-danger" onClick={close}>بازگشت به پنجرهٔ قبلی</button>
+            <button ref={inputRef} type="button" className="btn-danger" onClick={close}>بازگشت به پنجرهٔ قبلی</button>
           </div>
           <p className="text-xs mt-2">{originTaskId ? `کار پنجرهٔ اصلی: ${originTaskId}` : 'پنجرهٔ اصلی: عمومی یا کار جدید'} — اطلاعات فرم اصلی تغییر نمی‌کند و این پنل هیچ ذخیره‌ای ندارد.</p>
           {originSummary && <p className="text-xs mt-1 break-words">دستگاه کار اصلی: {originSummary}</p>}
-          <form onSubmit={inspect} className="flex gap-2 mt-3">
-            <input ref={inputRef} className="search-input flex-1 min-w-0" aria-label="کد کار برای بررسی" inputMode="numeric" value={code}
-              onChange={(event) => { invalidate(); setCode(event.target.value); setSnapshot(null); setError(''); setLoading(false); }} placeholder="کد کار موردنظر" />
-            <button type="submit" className="btn-primary">نمایش کار</button>
-          </form>
+
         </div>
         <div className="flex-1 min-h-0 overflow-auto overscroll-contain p-4">
+          <TaskInspectionTable ref={tableRef} onSelect={inspect} onResultsChange={resetDetails} selectedId={snapshot?.id} />
           {loading && <p role="status">در حال دریافت اطلاعات کار…</p>}
           {error && <p role="alert" className="rounded bg-red-100 text-red-900 p-3">{error}</p>}
-          {!task && !loading && !error && <p>کد کار را وارد کنید. جستجو و مشاهده هیچ تغییری در دیتابیس ایجاد نمی‌کند.</p>}
+          {!task && !loading && !error && <p className="text-sm">با انتخاب یک ردیف، اطلاعات همان کار و سوابق آن در پایین جدول نمایش داده می‌شود؛ فرم اصلی دست‌نخورده می‌ماند.</p>}
           {task && <>
             <h4 className="font-bold mb-2">در حال مشاهدهٔ کار {snapshot.id} — فقط‌خواندنی</h4>
             <table className="w-full border-collapse text-sm mb-5"><tbody>
