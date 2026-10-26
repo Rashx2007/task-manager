@@ -49,11 +49,13 @@ test('More than 20 fixed blockers are handled without silently leaving a conflic
   assert.equal(at(result, 1).endLocal, '2026-10-26 21:30:00');
 });
 
-test('Persistently disabled sync is independent; completed and historical memberships never reactivate', () => {
+test('Follow-up sync exceptions retain shared scheduling; completed and historical members never reactivate', () => {
   const result = plan({ tasks: [task(1), task(2), task(3, { Complited: 1 }), task(4)], groups,
     members: [member(1), member(2, { SyncEnabled: 0 }), member(3), member(4, { LeftAt: '2026-10-25 08:00:00' })], startAt: origin });
-  assert.equal(result.workUnitCount, 3); assert.equal(result.taskCount, 3);
-  assert.equal(at(result, 1).groupId, 1); assert.equal(at(result, 2).groupId, null); assert.equal(at(result, 4).groupId, null); assert.equal(at(result, 3), undefined);
+  assert.equal(result.workUnitCount, 2); assert.equal(result.taskCount, 3);
+  assert.equal(at(result, 1).groupId, 1); assert.equal(at(result, 2).groupId, 1); assert.equal(at(result, 4).groupId, null); assert.equal(at(result, 3), undefined);
+  assert.equal(at(result, 2).startLocal, at(result, 1).startLocal);
+  assert.equal(at(result, 2).endLocal, at(result, 1).endLocal);
 });
 
 test('Different priority, duration, or fixed interval within a synchronized group requires explicit resolution', () => {
@@ -114,4 +116,16 @@ test('Same wall input produces identical plans under UTC, Tehran and New York ho
     assert.equal(child.status, 0, child.stderr); return child.stdout;
   });
   assert.equal(new Set(results).size, 1);
+});
+
+
+test('Toggling only follow-up SyncEnabled changes neither fixed nor non-fixed task schedules', () => {
+  for (const tasks of [
+    [task(1), task(2), task(3)],
+    [fixed(1, origin, '2026-10-26 09:00:00'), fixed(2, origin, '2026-10-26 09:00:00')],
+  ]) {
+    const enabled = plan({ tasks, groups, members: [member(1), member(2)], startAt: origin });
+    const excepted = plan({ tasks, groups, members: [member(1), member(2, { SyncEnabled: 0 })], startAt: origin });
+    assert.deepEqual(excepted, enabled);
+  }
 });
