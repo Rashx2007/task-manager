@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
-import { rescheduleAll } from '@/lib/scheduler-logic';
+import { rescheduleTasks, schedulerFailure } from '@/lib/group-scheduler-service';
+
 export async function POST() {
-  try { const n = await rescheduleAll(); return NextResponse.json({ success: true, count: n }); }
-  catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+  try {
+    const value = await rescheduleTasks();
+    return NextResponse.json({ success: true, count: value });
+  } catch (error) {
+    const failure = schedulerFailure(error);
+    return NextResponse.json(failure.body, { status: failure.status });
+  }
 }

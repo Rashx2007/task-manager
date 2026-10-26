@@ -1,6 +1,7 @@
 // app/api/update-schedule/route.js
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { updateTaskSchedule, schedulerFailure } from "@/lib/group-scheduler-service";
 
 const pad = (n) => String(n).padStart(2, "0");
 const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -18,8 +19,8 @@ const toMin = (v) => {
 };
 
 // ✅ ساعات کاری از Set_tbl (مثل Frm_setting دسکتاپ)
-async function loadWorkHours() {
-  const rows = await query(
+async function loadWorkHours(execute = query) {
+  const rows = await execute(
     `SELECT StartWorkTime, restTimeStart, restTimeEnd, EndWorkTime FROM Set_tbl`,
   );
   const r = rows[0] || {};
@@ -62,52 +63,56 @@ function correctDue(cur, h) {
 
 export async function POST() {
   try {
-    const h = await loadWorkHours();
-    const rows = await query(
-      `SELECT tsk.TaskID AS ID, tsk.FixedDueTime AS fix, TD.Priorities AS pr,
-              TD.DueDateTime AS Due, TD.EndDateTime AS Endd
-       FROM Tsk_tbl tsk
-       LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
-       WHERE (tsk.Complited = 0)
-       ORDER BY TD.DueDateTime`,
-    );
+    const updated = await updateTaskSchedule(async (execute) => {
+      const h = await loadWorkHours(execute);
+      const rows = await execute(
+        `SELECT tsk.TaskID AS ID, tsk.FixedDueTime AS fix, TD.Priorities AS pr,
+                TD.DueDateTime AS Due, TD.EndDateTime AS Endd
+         FROM Tsk_tbl tsk
+         LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
+         WHERE (tsk.Complited = 0)
+         ORDER BY TD.DueDateTime`,
+      );
 
-    let currentDue = calcInitial(new Date(), h);
-    let updated = 0;
+      let currentDue = calcInitial(new Date(), h);
+      let updated = 0;
 
-    for (const r of rows) {
-      const due = r.Due ? new Date(r.Due) : null;
-      const end = r.Endd ? new Date(r.Endd) : null;
-      if (!due || !end) continue;
-      const duration = end.getTime() - due.getTime();
+      for (const r of rows) {
+        const due = r.Due ? new Date(r.Due) : null;
+        const end = r.Endd ? new Date(r.Endd) : null;
+        if (!due || !end) continue;
+        const duration = end.getTime() - due.getTime();
 
-      currentDue = correctDue(currentDue, h);
-      const currentEnd = new Date(currentDue.getTime() + duration);
-      const isFixed = Number(r.fix) === 1 || String(r.pr || "") === "زمان انجام ثابت";
+        currentDue = correctDue(currentDue, h);
+        const currentEnd = new Date(currentDue.getTime() + duration);
+        const isFixed = Number(r.fix) === 1 || String(r.pr || "") === "زمان انجام ثابت";
 
-      if (!isFixed) {
-        const params = [
-          fmtDate(currentDue), fmtTime(currentDue),
-          fmtDate(currentEnd), fmtTime(currentEnd),
-          fmtDT(currentDue), fmtDT(currentEnd),
-        ];
-        await query(
-          `UPDATE TimeDate_tbl SET Due_Date=?, Due_Time=?, End_Date=?, End_Time=?, DueDateTime=?, EndDateTime=? WHERE TaskID=?`,
-          [...params, r.ID],
-        );
-        await query(
-          `UPDATE Tsk_tbl SET Due_Date=?, Due_Time=?, End_Date=?, End_Time=?, DueDateTime=?, EndDateTime=? WHERE TaskID=?`,
-          [...params, r.ID],
-        );
-        updated++;
-        currentDue = currentEnd; // کار بعدی از پایان این کار شروع می‌شود
-      } else {
-        currentDue = end; // کار زمان‌ثابت جابه‌جا نمی‌شود؛ زنجیره از پایان آن ادامه می‌یابد
+        if (!isFixed) {
+          const params = [
+            fmtDate(currentDue), fmtTime(currentDue),
+            fmtDate(currentEnd), fmtTime(currentEnd),
+            fmtDT(currentDue), fmtDT(currentEnd),
+          ];
+          await execute(
+            `UPDATE TimeDate_tbl SET Due_Date=?, Due_Time=?, End_Date=?, End_Time=?, DueDateTime=?, EndDateTime=? WHERE TaskID=?`,
+            [...params, r.ID],
+          );
+          await execute(
+            `UPDATE Tsk_tbl SET Due_Date=?, Due_Time=?, End_Date=?, End_Time=?, DueDateTime=?, EndDateTime=? WHERE TaskID=?`,
+            [...params, r.ID],
+          );
+          updated++;
+          currentDue = currentEnd; // کار بعدی از پایان این کار شروع می‌شود
+        } else {
+          currentDue = end; // کار زمان‌ثابت جابه‌جا نمی‌شود؛ زنجیره از پایان آن ادامه می‌یابد
+        }
       }
-    }
 
+      return updated;
+    });
     return NextResponse.json({ success: true, updated });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    const failure = schedulerFailure(e);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
 }

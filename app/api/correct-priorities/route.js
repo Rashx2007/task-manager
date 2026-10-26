@@ -1,7 +1,12 @@
-// correct-priorities/route.js
 import { NextResponse } from 'next/server';
-import { correctPriorityNames } from '@/lib/scheduler-logic';
+import { correctTaskPriorities, schedulerFailure } from '@/lib/group-scheduler-service';
+
 export async function POST() {
-  try { const n = await correctPriorityNames(); return NextResponse.json({ success: true, corrected: n }); }
-  catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+  try {
+    const value = await correctTaskPriorities();
+    return NextResponse.json({ success: true, corrected: value });
+  } catch (error) {
+    const failure = schedulerFailure(error);
+    return NextResponse.json(failure.body, { status: failure.status });
+  }
 }
