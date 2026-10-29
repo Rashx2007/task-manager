@@ -7,6 +7,7 @@ import TimeDateModal from "./TimeDateModal";
 import ApplicantFunctorModal from "./ApplicantFunctorModal";
 import FollowModal from "./FollowModal";
 import SupplierModal from "./SupplierModal";
+import TaskPurchaseTip from "./TaskPurchaseTip";
 import FolderModal from "./FolderModal";
 import AssetsModal from "./AssetsModal";
 import MapModal from "./MapModal";
@@ -680,14 +681,16 @@ export default function TaskForm({
             </select>
           </div>
           <div className="flex items-end">
-            <button
-              type="button"
-              disabled={!isEdit}
-              onClick={() => setShowSupplier(true)}
-              className="btn-primary w-full"
-            >
-              تأمین‌کننده / خرید (...)
-            </button>
+            <TaskPurchaseTip taskId={currentTaskId} block>
+              <button
+                type="button"
+                disabled={!isEdit}
+                onClick={() => setShowSupplier(true)}
+                className="btn-primary w-full"
+              >
+                تأمین‌کننده / خرید (...)
+              </button>
+            </TaskPurchaseTip>
           </div>
           {form.tskType === "خرید" && (
             <div className="md:col-span-2 bg-[#F7C4A5] rounded p-4 grid grid-cols-1 md:grid-cols-3 gap-3">

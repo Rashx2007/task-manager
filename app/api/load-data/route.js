@@ -122,7 +122,7 @@ async function runLoad({ type, offset, limit, filters }) {
     const total = Number(countRows[0]?.c || 0);
 
     // ✅ ردیف‌های صفحه، دقیقاً مثل جامع + صفحه‌بندی
-    const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location,
+    const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location, asset.MechSystem,
       tsk.TaskTtl, tsk.Descriptions, tsk.Complited, atk.AssetID,
       TD.Submit_Date, TD.Priorities, TD.DueDateTime, TD.EndDateTime,
       pApp.PersonName AS ApplicantName, pFun.PersonName AS FunctorName

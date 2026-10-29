@@ -3,10 +3,11 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { isCentral, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import Tip from "./Tip";
+import TaskPurchaseTip from "./TaskPurchaseTip";
 
 const assetSpec = (t) =>
   t.AssetName
-    ? `${t.AssetName}، قسمت: ${t.Location || "-"} (ساختمان ${t.Building || "-"}، بلوک: ${t.Block || "-"}، طبقه: ${t.Floor ?? "-"}، ورودی: ${t.Entrance || "-"}) شماره: ${t.AssetNumber ?? "-"} [کد:${t.AssetID}]`
+    ? `${t.AssetName}، سیستم: ${t.MechSystem || "ثبت نشده"}، قسمت: ${t.Location || "-"} (ساختمان ${t.Building || "-"}، بلوک: ${t.Block || "-"}، طبقه: ${t.Floor ?? "-"}، ورودی: ${t.Entrance || "-"}) شماره: ${t.AssetNumber ?? "-"} [کد:${t.AssetID}]`
     : "";
 
 const filterSearchText = (value) => normalizeFa(normalizeDigits(value));
@@ -552,7 +553,7 @@ export default function TaskTable({
               style={{ cursor: "pointer" }}
             >
               <td>
-                <Tip tip={submitTip(t)}>{startNumber + i + 1}</Tip>
+                <TaskPurchaseTip taskId={t.TaskID} block>{startNumber + i + 1}</TaskPurchaseTip>
               </td>
               <td>
                 <Tip tip={`${submitTip(t)}\nاولویت: ${t.Priorities || "-"}`}>{t.TaskID}</Tip>

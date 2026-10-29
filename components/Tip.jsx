@@ -1,7 +1,7 @@
 "use client";
 import { useLayoutEffect, useRef, useState } from "react";
 
-export default function Tip({ tip, children, block = false }) {
+export default function Tip({ tip, children, block = false, onOpen, onClose, focusable = false, zIndex = 10000 }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
   const tipRef = useRef(null);
@@ -10,8 +10,9 @@ export default function Tip({ tip, children, block = false }) {
     const r = e.currentTarget.getBoundingClientRect();
     setAnchor({ cx: r.left + r.width / 2, top: r.top, bottom: r.bottom });
     setOpen(true);
+    onOpen?.();
   };
-  const hide = () => setOpen(false);
+  const hide = () => { setOpen(false); onClose?.(); };
 
   // ✅ جای‌گیری پس از رندر: اندازه‌گیری حباب و clamp داخل viewport
   useLayoutEffect(() => {
@@ -26,11 +27,14 @@ export default function Tip({ tip, children, block = false }) {
     if (y < pad) y = anchor.bottom + 6; // جا نشد → زیر سلول
     tipRef.current.style.left = `${x - half}px`;
     tipRef.current.style.top = `${y}px`;
-  }, [open, anchor]);
+  }, [open, anchor, tip]);
 
   return (
     <span
-      style={block ? { display: "block" } : undefined}
+      style={block ? { display: "block", width: "100%" } : undefined}
+      tabIndex={focusable ? 0 : undefined}
+      onFocus={show}
+      onBlur={hide}
       onMouseEnter={show}
       onMouseLeave={hide}
     >
@@ -44,7 +48,7 @@ export default function Tip({ tip, children, block = false }) {
             position: "fixed",
             left: 0,
             top: 0,
-            zIndex: 10000,
+            zIndex,
             maxWidth: 320,
             padding: "6px 10px",
             borderRadius: 6,

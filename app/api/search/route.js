@@ -69,7 +69,7 @@ export async function POST(request) {
     const where = c.length ? "WHERE " + c.join(" AND ") : "";
     const rows = await query(
       `SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building,
-              asset.Block, asset.Floor, asset.Entrance, asset.Location,
+              asset.Block, asset.Floor, asset.Entrance, asset.Location, asset.MechSystem,
               tsk.TaskTtl, tsk.Descriptions, tsk.Complited, TD.Priorities,
               TD.Submit_Date, TD.DueDateTime, TD.EndDateTime,
               pur.RequestNumber, pur.RegisterNumber, pur.Buyer, pur.Status
