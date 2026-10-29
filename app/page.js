@@ -15,7 +15,7 @@ import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
 import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
-import { showToast } from "@/lib/toast";
+import { showToast, showConfirm } from "@/lib/toast";
 
 // کل نتایج جستجو باید پیش از slice مرتب شوند، نه فقط ردیف‌های هر صفحه.
 const sortSearchRows = (rows) => [...(rows || [])].sort(
@@ -53,6 +53,7 @@ function FullHeight({ children }) {
 
 export default function Home() {
   const [tasks, setTasks] = useState([]);
+  const completionPendingRef = useRef(false);
   const [totalFiltered, setTotalFiltered] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [selectedTask, setSelectedTask] = useState(null);
@@ -381,20 +382,42 @@ export default function Home() {
     });
   }, []);
 
-  const handleComplete = async (taskId) => {
-    if (!confirm("آیا این کار اتمام یافته است؟")) return;
-    try {
-      const res = await fetch("/api/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId }),
-      });
-      const d = await res.json();
-      if (d.success) setReloadKey((k) => k + 1);
-      else alert("خطا: " + d.error);
-    } catch {
-      alert("خطا در ارتباط با سرور");
+  const handleComplete = (taskId) => {
+    if (completionPendingRef.current) return;
+    const text = normalizeDigits(taskId).trim();
+    const id = Number(text);
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
+      showToast("کد کار معتبر نیست.", "warn"); return;
     }
+    completionPendingRef.current = true;
+    let answered = false;
+    showConfirm(`آیا کار ${id} اتمام یافته است؟`, {
+      type: "warn", confirmText: "ثبت اتمام کار", cancelText: "انصراف",
+      onCancel: () => {
+        if (answered) return;
+        answered = true; completionPendingRef.current = false;
+      },
+      onConfirm: async () => {
+        if (answered) return;
+        answered = true;
+        try {
+          const res = await fetch("/api/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskId: id }),
+          });
+          const d = await res.json();
+          if (res.ok && d.success) {
+            setReloadKey((key) => key + 1);
+            showToast(d.alreadyCompleted ? `کار ${id} قبلاً اتمام یافته است.` : `اتمام کار ${id} ثبت شد.`, d.alreadyCompleted ? "info" : "success");
+          } else showToast(d.error || "ثبت اتمام کار ناموفق بود.", "error");
+        } catch {
+          showToast("خطا در ارتباط با سرور؛ وضعیت کار را تازه‌سازی و بررسی کنید.", "error");
+        } finally {
+          completionPendingRef.current = false;
+        }
+      },
+    });
   };
 
   const handleDelete = async () => {
@@ -619,7 +642,7 @@ export default function Home() {
           onComplete={() =>
             selectedTask
               ? handleComplete(selectedTask.TaskID)
-              : alert("ابتدا یک کار را انتخاب کنید.")
+              : showToast("ابتدا یک کار را انتخاب کنید.", "warn")
           }
           onSearch={() => setShowSearch((s) => !s)}
           onComprehensiveSearch={() => setShowComprehensive((s) => !s)}

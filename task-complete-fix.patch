@@ -1,0 +1,175 @@
+diff --git a/app/api/complete/route.js b/app/api/complete/route.js
+--- a/app/api/complete/route.js
++++ b/app/api/complete/route.js
+@@ -1,13 +1,35 @@
+ import { NextResponse } from 'next/server';
+-import { query } from '@/lib/db';
+-import { formatSqlDateTime } from '@/lib/schedule-logic';
++import { runTransaction } from '@/lib/db';
++import { normalizeDigits } from '@/lib/assetRules';
++import { formatSqlDateTime, nowWall } from '@/lib/schedule-logic';
++
+ export async function POST(request) {
++  let body;
++  try { body = await request.json(); }
++  catch { return NextResponse.json({ success: false, error: 'بدنهٔ درخواست معتبر نیست.' }, { status: 400 }); }
++  const raw = body?.taskId;
++  const text = typeof raw === 'string' || typeof raw === 'number' ? normalizeDigits(raw).trim() : '';
++  const taskId = Number(text);
++  if (!/^\d+$/.test(text) || !Number.isSafeInteger(taskId) || taskId < 1 || taskId > 2147483647) {
++    return NextResponse.json({ success: false, error: 'کد کار معتبر نیست.' }, { status: 400 });
++  }
+   try {
+-    const { taskId } = await request.json();
+-    const n = new Date();
+-const now = formatSqlDateTime(new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate(), n.getHours(), n.getMinutes(), n.getSeconds())));
+-    await query(`UPDATE Tsk_tbl SET Complited=1, Finish_DateTime=? WHERE TaskID=?`, [now, Number(taskId)]);
+-    await query(`UPDATE TimeDate_tbl SET EndDateTime=?, Finish_DateTime=? WHERE TaskID=?`, [now, now, Number(taskId)]);
+-    return NextResponse.json({ success: true });
+-  } catch (e) { return NextResponse.json({ success: false, error: e.message }, { status: 500 }); }
+-}
+\ No newline at end of file
++    const result = await runTransaction(async (tx) => {
++      const rows = await tx(`SELECT TaskID, Complited FROM Tsk_tbl WITH (UPDLOCK, HOLDLOCK) WHERE TaskID = ?`, [taskId]);
++      if (!rows.length) {
++        const error = new Error('کار موردنظر پیدا نشد.'); error.code = 'TASK_NOT_FOUND'; throw error;
++      }
++      if (Number(rows[0].Complited) === 1) return { alreadyCompleted: true };
++      const now = formatSqlDateTime(nowWall());
++      // Finish_DateTime belongs to TimeDate_tbl, NOT Tsk_tbl.
++      await tx(`UPDATE Tsk_tbl SET Complited = 1 WHERE TaskID = ?`, [taskId]);
++      // Preserve the previous completion behavior for existing time rows only.
++      await tx(`UPDATE TimeDate_tbl SET EndDateTime = ?, Finish_DateTime = ? WHERE TaskID = ?`, [now, now, taskId]);
++      return { alreadyCompleted: false };
++    });
++    return NextResponse.json({ success: true, taskId, ...result });
++  } catch (error) {
++    if (error.code === 'TASK_NOT_FOUND') return NextResponse.json({ success: false, error: 'کار موردنظر پیدا نشد.' }, { status: 404 });
++    return NextResponse.json({ success: false, error: 'ثبت اتمام کار ناموفق بود؛ وضعیت کار را تازه‌سازی و دوباره بررسی کنید.' }, { status: 500 });
++  }
++}
+diff --git a/app/page.js b/app/page.js
+--- a/app/page.js
++++ b/app/page.js
+@@ -15,7 +15,7 @@
+ import SettingsModal from "@/components/SettingsModal";
+ import FolderModal from "@/components/FolderModal";
+ import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
+-import { showToast } from "@/lib/toast";
++import { showToast, showConfirm } from "@/lib/toast";
+ 
+ // کل نتایج جستجو باید پیش از slice مرتب شوند، نه فقط ردیف‌های هر صفحه.
+ const sortSearchRows = (rows) => [...(rows || [])].sort(
+@@ -53,6 +53,7 @@
+ 
+ export default function Home() {
+   const [tasks, setTasks] = useState([]);
++  const completionPendingRef = useRef(false);
+   const [totalFiltered, setTotalFiltered] = useState(0);
+   const [loadError, setLoadError] = useState("");
+   const [selectedTask, setSelectedTask] = useState(null);
+@@ -381,20 +382,42 @@
+     });
+   }, []);
+ 
+-  const handleComplete = async (taskId) => {
+-    if (!confirm("آیا این کار اتمام یافته است؟")) return;
+-    try {
+-      const res = await fetch("/api/complete", {
+-        method: "POST",
+-        headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({ taskId }),
+-      });
+-      const d = await res.json();
+-      if (d.success) setReloadKey((k) => k + 1);
+-      else alert("خطا: " + d.error);
+-    } catch {
+-      alert("خطا در ارتباط با سرور");
+-    }
++  const handleComplete = (taskId) => {
++    if (completionPendingRef.current) return;
++    const text = normalizeDigits(taskId).trim();
++    const id = Number(text);
++    if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
++      showToast("کد کار معتبر نیست.", "warn"); return;
++    }
++    completionPendingRef.current = true;
++    let answered = false;
++    showConfirm(`آیا کار ${id} اتمام یافته است؟`, {
++      type: "warn", confirmText: "ثبت اتمام کار", cancelText: "انصراف",
++      onCancel: () => {
++        if (answered) return;
++        answered = true; completionPendingRef.current = false;
++      },
++      onConfirm: async () => {
++        if (answered) return;
++        answered = true;
++        try {
++          const res = await fetch("/api/complete", {
++            method: "POST",
++            headers: { "Content-Type": "application/json" },
++            body: JSON.stringify({ taskId: id }),
++          });
++          const d = await res.json();
++          if (res.ok && d.success) {
++            setReloadKey((key) => key + 1);
++            showToast(d.alreadyCompleted ? `کار ${id} قبلاً اتمام یافته است.` : `اتمام کار ${id} ثبت شد.`, d.alreadyCompleted ? "info" : "success");
++          } else showToast(d.error || "ثبت اتمام کار ناموفق بود.", "error");
++        } catch {
++          showToast("خطا در ارتباط با سرور؛ وضعیت کار را تازه‌سازی و بررسی کنید.", "error");
++        } finally {
++          completionPendingRef.current = false;
++        }
++      },
++    });
+   };
+ 
+   const handleDelete = async () => {
+@@ -619,7 +642,7 @@
+           onComplete={() =>
+             selectedTask
+               ? handleComplete(selectedTask.TaskID)
+-              : alert("ابتدا یک کار را انتخاب کنید.")
++              : showToast("ابتدا یک کار را انتخاب کنید.", "warn")
+           }
+           onSearch={() => setShowSearch((s) => !s)}
+           onComprehensiveSearch={() => setShowComprehensive((s) => !s)}
+diff --git a/tests/task-complete.test.mjs b/tests/task-complete.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/task-complete.test.mjs
+@@ -0,0 +1,34 @@
++// SQL transactions and browser APIs are mocked; no real database is modified.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs/promises';
++import vm from 'node:vm';
++const routeText=await fs.readFile(new URL('../app/api/complete/route.js',import.meta.url),'utf8');
++const pageText=await fs.readFile(new URL('../app/page.js',import.meta.url),'utf8');
++const normalizeDigits=v=>String(v??'').replace(/[۰-۹]/g,c=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(c)).replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c));
++async function route({exists=true,completed=false,failAt,withTime=true}={}){
++ const calls=[],state={completed,finish:null,commits:0,rollbacks:0},context=vm.createContext({Date});
++ const tx=async(sql,params)=>{calls.push({sql,params});if(failAt&&sql.includes(failAt))throw Error('private SQL: '+failAt);if(sql.startsWith('SELECT'))return exists?[{TaskID:202,Complited:state.completed?1:0}]:[];if(sql.startsWith('UPDATE Tsk'))state.completed=true;if(sql.startsWith('UPDATE TimeDate')&&withTime)state.finish=params[0];return[];};
++ const m=new vm.SourceTextModule(routeText,{context});await m.link(spec=>{const exports=spec==='next/server'?{NextResponse:{json:(body,options={})=>({body,status:options.status||200})}}:spec==='@/lib/assetRules'?{normalizeDigits}:spec==='@/lib/schedule-logic'?{nowWall:()=>new Date('2026-10-29T11:22:33Z'),formatSqlDateTime:d=>d.toISOString().slice(0,19).replace('T',' ')}:{runTransaction:async work=>{const before={completed:state.completed,finish:state.finish};try{const value=await work(tx);state.commits++;return value;}catch(e){Object.assign(state,before);state.rollbacks++;throw e;}}};return new vm.SyntheticModule(Object.keys(exports),function(){for(const[k,v]of Object.entries(exports))this.setExport(k,v);},{context});});await m.evaluate();return{calls,state,api:m.namespace,post:body=>m.namespace.POST({json:async()=>body})};
++}
++test('Completion uses one transaction and never writes Finish_DateTime to Tsk_tbl',async()=>{const h=await route();const r=await h.post({taskId:'۲۰۲'});assert.equal(r.status,200);assert.equal(r.body.success,true);assert.equal(r.body.taskId,202);assert.equal(h.state.commits,1);assert.equal(h.calls.length,3);assert.ok(h.calls[0].sql.includes('WITH (UPDLOCK, HOLDLOCK)'));assert.ok(!h.calls[1].sql.includes('Finish_DateTime'));assert.ok(h.calls[2].sql.includes('Finish_DateTime'));assert.deepEqual(Array.from(h.calls[2].params),['2026-10-29 11:22:33','2026-10-29 11:22:33',202]);for(const row of h.calls)assert.equal((row.sql.match(/\?/g)||[]).length,row.params.length);});
++test('Invalid IDs never reach SQL',async()=>{const h=await route();for(const taskId of [null,{},[],true,'',0,-1,'1.5','1e2','2147483648','1;DELETE'])assert.equal((await h.post({taskId})).status,400);assert.equal(h.calls.length,0);});
++test('Malformed JSON is 400 before a transaction',async()=>{const h=await route();const r=await h.api.POST({json:async()=>{throw Error('invalid JSON');}});assert.equal(r.status,400);assert.equal(h.calls.length,0);});
++test('Missing task is 404 without updates',async()=>{const h=await route({exists:false});assert.equal((await h.post({taskId:202})).status,404);assert.equal(h.calls.length,1);assert.equal(h.state.rollbacks,1);});
++test('Already-completed task is idempotent and keeps its original finish time',async()=>{const h=await route({completed:true});h.state.finish='original';const r=await h.post({taskId:202});assert.equal(r.body.alreadyCompleted,true);assert.equal(h.calls.length,1);assert.equal(h.state.finish,'original');});
++test('Second update failure rolls back the SQL double instead of leaving completion half-written',async()=>{const h=await route({failAt:'UPDATE TimeDate_tbl'});const r=await h.post({taskId:202});assert.equal(r.status,500);assert.equal(h.state.completed,false);assert.equal(h.state.rollbacks,1);assert.equal(h.state.commits,0);});
++test('Unexpected SQL failure does not leak column names or SQL details',async()=>{const h=await route({failAt:'SELECT'});const r=await h.post({taskId:202});assert.equal(r.status,500);assert.ok(!JSON.stringify(r).includes('private SQL'));assert.equal(h.state.completed,false);});
++test('Task without time rows can complete without fabricating a schedule row',async()=>{const h=await route({withTime:false});const r=await h.post({taskId:202});assert.equal(r.body.success,true);assert.equal(h.state.completed,true);assert.equal(h.state.finish,null);assert.ok(!h.calls.some(r=>r.sql.startsWith('INSERT')));});
++const a=pageText.indexOf('  const handleComplete = '),b=pageText.indexOf('\n  const handleDelete',a),handler=pageText.slice(a,b);
++function browser({response={success:true},ok=true,networkError=false}={}){
++ const state={pending:{current:false},confirms:[],toasts:[],fetches:[],reloads:0};
++ const context=vm.createContext({completionPendingRef:state.pending,normalizeDigits,showConfirm:(message,options)=>state.confirms.push({message,options}),showToast:(...args)=>state.toasts.push(args),fetch:async(url,options)=>{state.fetches.push({url,options});if(networkError)throw Error('network');return{ok,json:async()=>response};},setReloadKey:fn=>{state.reloads=fn(state.reloads);}});vm.runInContext(handler+'\nthis.handle=handleComplete;',context);return{state,handle:context.handle};
++}
++test('Confirmation toast captures task ID and cancellation performs no request',()=>{const h=browser();h.handle(202);assert.ok(h.state.confirms[0].message.includes('202'));assert.equal(h.state.fetches.length,0);h.state.confirms[0].options.onCancel();assert.equal(h.state.pending.current,false);assert.equal(h.state.fetches.length,0);});
++test('Confirm sends the captured task ID and reloads only after successful response',async()=>{const h=browser();h.handle(202);await h.state.confirms[0].options.onConfirm();assert.deepEqual(JSON.parse(h.state.fetches[0].options.body),{taskId:202});assert.equal(h.state.fetches[0].url,'/api/complete');assert.equal(h.state.reloads,1);assert.equal(h.state.toasts[0][1],'success');assert.equal(h.state.pending.current,false);});
++test('Repeated row clicks and double confirm do not submit duplicate requests',async()=>{const h=browser();h.handle(202);h.handle(303);assert.equal(h.state.confirms.length,1);const callback=h.state.confirms[0].options.onConfirm;await Promise.all([callback(),callback()]);assert.equal(h.state.fetches.length,1);});
++test('Server failure uses error toast, does not reload and releases the guard',async()=>{const h=browser({response:{success:false,error:'safe error'},ok:false});h.handle(202);await h.state.confirms[0].options.onConfirm();assert.equal(h.state.reloads,0);assert.equal(h.state.toasts[0][1],'error');h.handle(202);assert.equal(h.state.confirms.length,2);});
++test('Network failure uses error toast and releases the guard',async()=>{const h=browser({networkError:true});h.handle(202);await h.state.confirms[0].options.onConfirm();assert.equal(h.state.pending.current,false);assert.equal(h.state.reloads,0);assert.equal(h.state.toasts[0][1],'error');});
++test('Already-completed result is informative rather than an error',async()=>{const h=browser({response:{success:true,alreadyCompleted:true}});h.handle(202);await h.state.confirms[0].options.onConfirm();assert.equal(h.state.toasts[0][1],'info');assert.equal(h.state.reloads,1);});
++test('Invalid browser task ID does not open confirmation or submit',()=>{const h=browser();h.handle('bad');assert.equal(h.state.confirms.length,0);assert.equal(h.state.fetches.length,0);assert.equal(h.state.toasts[0][1],'warn');});
++test('Completion handler contains no native confirm or alert; toolbar shares it',()=>{assert.ok(!/\b(?:confirm|alert)\s*\(/.test(handler));assert.ok(pageText.includes('onComplete={handleComplete}'));assert.ok(pageText.includes('handleComplete(selectedTask.TaskID)'));assert.ok(pageText.includes('showToast("ابتدا یک کار را انتخاب کنید.", "warn")'));});
