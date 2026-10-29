@@ -1,0 +1,83 @@
+diff --git a/app/api/task-inspector/route.js b/app/api/task-inspector/route.js
+--- a/app/api/task-inspector/route.js
++++ b/app/api/task-inspector/route.js
+@@ -30,11 +30,14 @@
+     if (!rows.length) return reply({ success: false, error: 'کار موردنظر پیدا نشد.' }, 404);
+     // RequestID is an internal key, not the displayed request number.
+     // Preserve every registered number belonging to this task; do not guess one.
+-    const requests = await query(`SELECT RequestNumber FROM Purchase_Request_tbl
++    const requests = await query(`SELECT RequestNumber, RegisterNumber FROM Purchase_Request_tbl
+       WHERE TaskID = ? ORDER BY RequestID DESC`, [taskId]);
+     const requestNumbers = [...new Set(requests.map((row) => row.RequestNumber)
+       .filter((value) => value != null && String(value).trim() !== '').map(String))];
+-    const task = { ...rows[0], RequestNumber: requestNumbers.join('، ') || null };
++    const registerNumbers = [...new Set(requests.map((row) => row.RegisterNumber)
++      .filter((value) => value != null && String(value).trim() !== '').map(String))];
++    const task = { ...rows[0], RequestNumber: requestNumbers.join('، ') || null,
++      RegisterNumber: registerNumbers.join('، ') || null };
+     const followups = url.searchParams.get('details') === '1'
+       ? await query(`SELECT FollowID, TaskID, Description, DueDateTime, EndDateTime, Duration
+           FROM Follow_tbl WHERE TaskID = ? ORDER BY DueDateTime DESC, FollowID DESC`, [taskId])
+diff --git a/components/TaskInspector.jsx b/components/TaskInspector.jsx
+--- a/components/TaskInspector.jsx
++++ b/components/TaskInspector.jsx
+@@ -130,7 +130,7 @@
+   if (!opened) return null;
+   const task = snapshot?.task;
+   const rows = task ? [
+-    ['کد کار', task.TaskID], ['شماره درخواست کار', task.RequestNumber], ['موضوع', task.TaskTtl], ['دستگاه و نشانی', assetSummary(task)],
++    ['کد کار', task.TaskID], ['شماره درخواست کار', task.RequestNumber], ['شماره خرید', task.RegisterNumber], ['موضوع', task.TaskTtl], ['دستگاه و نشانی', assetSummary(task)],
+     ['وضعیت', Number(task.Complited) === 1 ? 'اتمام' : 'جاری'], ['اولویت', task.Priorities],
+     ['درخواست‌کننده', task.ApplicantName], ['انجام‌دهنده', task.FunctorName],
+     ['زمان شروع', formatWallTime(task.DueDateTime)], ['زمان پایان', formatWallTime(task.EndDateTime)],
+@@ -172,7 +172,7 @@
+             <table className="w-full border-collapse text-sm mb-5"><tbody>
+               {rows.map(([label, value], index) => <tr key={label} className={index % 2 ? 'bg-teal-50' : 'bg-white/80'}>
+                 <th scope="row" className="border border-teal-700/20 p-2 text-right align-top w-1/3">{label}</th>
+-                <td className="border border-teal-700/20 p-2 align-top whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{value == null || value === '' ? 'ثبت نشده' : value}</td>
++                <td className="border border-teal-700/20 p-2 align-top whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}><span dir={label === 'شماره خرید' || label === 'شماره درخواست کار' ? 'ltr' : undefined} style={{ unicodeBidi: 'isolate' }}>{value == null || value === '' ? 'ثبت نشده' : value}</span></td>
+               </tr>)}
+             </tbody></table>
+             <h4 className="font-bold mb-2">سوابق پیگیری همین کار ({snapshot.followups.length})</h4>
+diff --git a/tests/task-inspector-purchase-numbers.test.mjs b/tests/task-inspector-purchase-numbers.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/task-inspector-purchase-numbers.test.mjs
+@@ -0,0 +1,37 @@
++// SQL/HTTP are mocked; no live database or Explorer is used.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import vm from 'node:vm';
++import fs from 'node:fs/promises';
++const routeSource = await fs.readFile(new URL('../app/api/task-inspector/route.js', import.meta.url), 'utf8');
++async function load(requests) {
++  const calls=[], context=vm.createContext({URL});
++  const module=new vm.SourceTextModule(routeSource,{context});
++  await module.link(spec=>{
++    const exports=spec==='next/server'?{NextResponse:{json:(body,options)=>({body,...options})}}:spec==='@/lib/task-inspection'?{parseTaskId:value=>/^\d+$/.test(String(value))&&Number(value)>0?Number(value):null}:{query:async(sql,params)=>{calls.push({sql,params});if(sql.includes('FROM Tsk_tbl'))return[{TaskID:202,RequestID:9999}];if(sql.includes('FROM Purchase_Request_tbl'))return requests;if(sql.includes('FROM Follow_tbl'))return[];throw Error('unexpected SQL');}};
++    return new vm.SyntheticModule(Object.keys(exports),function(){for(const[k,v]of Object.entries(exports))this.setExport(k,v);},{context});
++  });await module.evaluate();const response=await module.namespace.GET({url:'http://test/api/task-inspector?taskId=202&details=1'});return{response,calls,api:module.namespace};
++}
++test('Request and purchase numbers are returned together, never substituted with internal IDs',async()=>{
++  const {response}=await load([{RequestNumber:4671,RegisterNumber:'2734'}]);
++  assert.equal(response.status,200);assert.equal(response.body.data.task.RequestNumber,'4671');assert.equal(response.body.data.task.RegisterNumber,'2734');
++});
++test('All three purchase-number segments and leading zeroes are preserved verbatim',async()=>{
++  const {response}=await load([{RequestNumber:4671,RegisterNumber:'002734-0012-0009'}]);assert.equal(response.body.data.task.RegisterNumber,'002734-0012-0009');
++});
++test('Existing slash separators are not converted or reversed',async()=>{
++  const {response}=await load([{RequestNumber:4671,RegisterNumber:'2734/12/9'}]);assert.equal(response.body.data.task.RegisterNumber,'2734/12/9');
++});
++test('Multiple registered values are retained without repeating identical numbers',async()=>{
++  const {response}=await load([{RequestNumber:11,RegisterNumber:'001-2-3'},{RequestNumber:11,RegisterNumber:'001-2-3'},{RequestNumber:12,RegisterNumber:'004-5-6'}]);assert.equal(response.body.data.task.RequestNumber,'11، 12');assert.equal(response.body.data.task.RegisterNumber,'001-2-3، 004-5-6');
++});
++test('Missing purchase numbers are null, while zero remains a registered value',async()=>{
++  for(const value of [null,undefined,'','  ']){const {response}=await load([{RequestNumber:4671,RegisterNumber:value}]);assert.equal(response.body.data.task.RegisterNumber,null);assert.equal(response.body.data.task.RequestNumber,'4671');}
++  const {response}=await load([{RequestNumber:0,RegisterNumber:0}]);assert.equal(response.body.data.task.RegisterNumber,'0');assert.equal(response.body.data.task.RequestNumber,'0');
++});
++test('Numbers are read for the selected task using parameterized, read-only SQL',async()=>{
++  const {calls,response,api}=await load([]);const query=calls.find(row=>row.sql.includes('Purchase_Request_tbl'));assert.ok(query.sql.includes('SELECT RequestNumber, RegisterNumber'));assert.ok(query.sql.includes('WHERE TaskID = ?'));assert.deepEqual(Array.from(query.params),[202]);for(const row of calls)assert.ok(!/\b(UPDATE|INSERT|DELETE)\b/.test(row.sql));assert.equal(response.headers['Cache-Control'],'no-store');assert.deepEqual(Object.keys(api),['GET']);
++});
++test('Inspector retains attachments and renders both number rows with isolated LTR text',async()=>{
++  const source=await fs.readFile(new URL('../components/TaskInspector.jsx',import.meta.url),'utf8');assert.ok(source.includes("['شماره درخواست کار', task.RequestNumber]"));assert.ok(source.includes("['شماره خرید', task.RegisterNumber]"));assert.ok(source.includes("label === 'شماره خرید' || label === 'شماره درخواست کار' ? 'ltr'"));assert.ok(source.includes("unicodeBidi: 'isolate'"));assert.ok(source.includes('onClick={openAttachments}'));assert.ok(source.includes("'ثبت نشده' : value"));
++});

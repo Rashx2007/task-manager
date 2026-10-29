@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import TaskInspectionTable from './TaskInspectionTable';
+import { openTaskAttachmentFolder } from '@/lib/task-inspector-attachments';
 import { assetSummary, formatWallTime, parseTaskId, readTaskSnapshot, TASK_INSPECTOR_EVENT } from '@/lib/task-inspection';
 
 export default function TaskInspector() {
@@ -11,6 +12,9 @@ export default function TaskInspector() {
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderNotice, setFolderNotice] = useState(null);
+  const folderAbortRef = useRef(null);
   const requestRef = useRef(0);
   const abortRef = useRef(null);
   const panelRef = useRef(null);
@@ -19,7 +23,11 @@ export default function TaskInspector() {
   const openedRef = useRef(false);
   const openerRef = useRef(null);
 
-  const invalidate = () => { requestRef.current++; abortRef.current?.abort(); abortRef.current = null; };
+  const invalidate = () => {
+    requestRef.current++; abortRef.current?.abort(); abortRef.current = null;
+    folderAbortRef.current?.abort(); folderAbortRef.current = null;
+    setFolderBusy(false); setFolderNotice(null);
+  };
   const close = () => { invalidate(); openedRef.current = false; setOpened(false); setSnapshot(null); };
 
   useEffect(() => {
@@ -73,6 +81,33 @@ export default function TaskInspector() {
     };
   }, [opened]);
 
+  useEffect(() => {
+    if (!folderNotice) return;
+    const timer = setTimeout(() => setFolderNotice(null), 4500);
+    return () => clearTimeout(timer);
+  }, [folderNotice]);
+
+  const openAttachments = async () => {
+    const id = parseTaskId(snapshot?.task?.TaskID);
+    if (!id || folderAbortRef.current) return;
+    const requestId = requestRef.current;
+    const controller = new AbortController();
+    folderAbortRef.current = controller;
+    const isCurrent = () => openedRef.current && requestRef.current === requestId && !controller.signal.aborted;
+    setFolderBusy(true); setFolderNotice(null);
+    try {
+      const notice = await openTaskAttachmentFolder(id, { signal: controller.signal, isCurrent });
+      if (isCurrent() && notice) setFolderNotice(notice);
+    } catch (reason) {
+      if (isCurrent() && reason.name !== 'AbortError') setFolderNotice({ type: 'error', message: reason.message || 'بازکردن پوشهٔ ضمائم ناموفق بود.' });
+    } finally {
+      if (folderAbortRef.current === controller) {
+        folderAbortRef.current = null;
+        if (isCurrent()) setFolderBusy(false);
+      }
+    }
+  };
+
   const resetDetails = () => { invalidate(); setSnapshot(null); setError(''); setLoading(false); };
 
   const inspect = async (value) => {
@@ -95,7 +130,7 @@ export default function TaskInspector() {
   if (!opened) return null;
   const task = snapshot?.task;
   const rows = task ? [
-    ['کد کار', task.TaskID], ['موضوع', task.TaskTtl], ['دستگاه و نشانی', assetSummary(task)],
+    ['کد کار', task.TaskID], ['شماره درخواست کار', task.RequestNumber], ['شماره خرید', task.RegisterNumber], ['موضوع', task.TaskTtl], ['دستگاه و نشانی', assetSummary(task)],
     ['وضعیت', Number(task.Complited) === 1 ? 'اتمام' : 'جاری'], ['اولویت', task.Priorities],
     ['درخواست‌کننده', task.ApplicantName], ['انجام‌دهنده', task.FunctorName],
     ['زمان شروع', formatWallTime(task.DueDateTime)], ['زمان پایان', formatWallTime(task.EndDateTime)],
@@ -105,6 +140,11 @@ export default function TaskInspector() {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-2 sm:p-4" style={{ zIndex: 100050 }}
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => { event.stopPropagation(); if (event.button === 0 && event.target === event.currentTarget) close(); }}>
+      {folderNotice && <div role={folderNotice.type === 'error' ? 'alert' : 'status'}
+        className="fixed top-4 left-1/2 -translate-x-1/2 max-w-[90vw] rounded-xl px-5 py-3 text-white text-sm font-bold text-center whitespace-pre-line shadow-xl"
+        style={{ zIndex: 100060, background: ({ success: '#16a34a', warn: '#b45309', error: '#b91c1c' })[folderNotice.type] }} dir="rtl">
+        {folderNotice.message}
+      </div>}
       <section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" dir="rtl"
         className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[1180px] max-w-full h-full max-h-[94vh] flex flex-col">
         <div className="p-4 border-b border-teal-700/30 shrink-0">
@@ -122,11 +162,17 @@ export default function TaskInspector() {
           {error && <p role="alert" className="rounded bg-red-100 text-red-900 p-3">{error}</p>}
           {!task && !loading && !error && <p className="text-sm">با انتخاب یک ردیف، اطلاعات همان کار و سوابق آن در پایین جدول نمایش داده می‌شود؛ فرم اصلی دست‌نخورده می‌ماند.</p>}
           {task && <>
-            <h4 className="font-bold mb-2">در حال مشاهدهٔ کار {snapshot.id} — فقط‌خواندنی</h4>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h4 className="font-bold">در حال مشاهدهٔ کار {snapshot.id} — فقط‌خواندنی</h4>
+              <button type="button" className="btn-primary whitespace-nowrap disabled:opacity-60" onClick={openAttachments}
+                disabled={folderBusy} aria-busy={folderBusy} aria-label={`بازکردن پوشهٔ ضمائم کار ${task.TaskID}`}>
+                {folderBusy ? 'در حال بازکردن پوشه…' : '📂 بازکردن پوشهٔ ضمائم'}
+              </button>
+            </div>
             <table className="w-full border-collapse text-sm mb-5"><tbody>
               {rows.map(([label, value], index) => <tr key={label} className={index % 2 ? 'bg-teal-50' : 'bg-white/80'}>
                 <th scope="row" className="border border-teal-700/20 p-2 text-right align-top w-1/3">{label}</th>
-                <td className="border border-teal-700/20 p-2 align-top whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{value == null || value === '' ? 'ثبت نشده' : value}</td>
+                <td className="border border-teal-700/20 p-2 align-top whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}><span dir={label === 'شماره خرید' || label === 'شماره درخواست کار' ? 'ltr' : undefined} style={{ unicodeBidi: 'isolate' }}>{value == null || value === '' ? 'ثبت نشده' : value}</span></td>
               </tr>)}
             </tbody></table>
             <h4 className="font-bold mb-2">سوابق پیگیری همین کار ({snapshot.followups.length})</h4>
