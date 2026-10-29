@@ -155,6 +155,7 @@ export default function TaskTable({
   const [menuQuery, setMenuQuery] = useState("");
   const [staged, setStaged] = useState(null);
   const menuRequestRef = useRef(0);
+  const menuSearchRef = useRef(null);
 
   // بعد از stateهای موجود، این‌ها رو اضافه کنید:
   const [pendingFilters, setPendingFilters] = useState(null); // null یعنی از filters اصلی استفاده کن
@@ -191,6 +192,13 @@ export default function TaskTable({
     return `زمان ثبت: ${date}\nساعت: ${time}`;
   };
   const draftActive = draft != null;
+
+  // The regular filter input is disabled until its options have loaded.
+  // Focus only on opening/changing a column or when loading finishes, never on typing.
+  useEffect(() => {
+    if (!menu || menuLoading) return;
+    menuSearchRef.current?.focus({ preventScroll: true });
+  }, [menu?.key, menuLoading, draftActive]);
   const centralDraft = isCentral(draft?.Building);
 
   const loadMenuValues = async (col) => {
@@ -679,7 +687,7 @@ export default function TaskTable({
                 </div>
                 {menuCol.assignable ? (
                   <>
-                                     <input className="col-menu-search" placeholder="تایپ = تیک‌زدن منطبق‌ها…" value={menuQuery} onChange={(e) => onSearchChange(e.target.value)} />
+                                     <input ref={menuSearchRef} className="col-menu-search" placeholder="تایپ = تیک‌زدن منطبق‌ها…" value={menuQuery} onChange={(e) => onSearchChange(e.target.value)} />
                     {menuLoading && (
                       <div className="col-menu-empty">
                         در حال خواندن گزینه‌ها…
@@ -763,6 +771,7 @@ export default function TaskTable({
                       مقدار)
                     </div>
                     <input
+                      ref={menuSearchRef}
                       className="col-menu-search"
                       placeholder="متن را بنویسید و اعمال فیلتر را بزنید…"
                       value={menuQuery}
