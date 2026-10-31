@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query, runTransaction } from "@/lib/db";
 import { normalizeDigits } from "@/lib/assetRules";
+import * as statusService from "@/lib/task-status-service";
 
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -24,49 +25,15 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  const { id } = await params;
+  let body;
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ success: false, error: "بدنهٔ درخواست معتبر نیست." }, { status: 400 }); }
   try {
-    const b = await request.json();
-    const tid = Number(id);
-
-    // ۱) معادل EditTask دسکتاپ: به‌روزرسانی فیلدهای متنی
-    await query(
-      `UPDATE Tsk_tbl SET TaskTtl=?, Descriptions=?, Priorities=?, tskType=?, IsConsiderableAction=?, Complited=?, fixedDueTime=? WHERE TaskID=?`,
-      [
-        b.TaskTtl,
-        b.Descriptions || null,
-        b.Priorities || "3.متوسط",
-        b.tskType || null,
-        b.IsConsiderableAction || null,
-        Number(b.Complited) || 0,
-        Number(b.FixedDueTime) || 0,
-        tid,
-      ],
-    );
-
-    if (b.AssetID) {
-      const ex = await query(
-        `SELECT AssetTaskID FROM Asset_Task_tbl WHERE TaskID=?`,
-        [tid],
-      );
-      if (ex.length)
-        await query(`UPDATE Asset_Task_tbl SET AssetID=? WHERE TaskID=?`, [
-          b.AssetID,
-          tid,
-        ]);
-      else
-        await query(
-          `INSERT INTO Asset_Task_tbl (TaskID, AssetID) VALUES (?,?)`,
-          [tid, b.AssetID],
-        );
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (e) {
-    return NextResponse.json(
-      { success: false, error: e.message },
-      { status: 500 },
-    );
+    const { id } = await params;
+    return NextResponse.json({ success: true, ...await statusService.saveTaskEdit(id, body) });
+  } catch (error) {
+    const failure = statusService.statusFailure(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
 }
 

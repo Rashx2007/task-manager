@@ -12,6 +12,7 @@ import FolderModal from "./FolderModal";
 import AssetsModal from "./AssetsModal";
 import MapModal from "./MapModal";
 import useDraftGuard from "./useDraftGuard";
+import { showToast } from "@/lib/toast";
 
 const PRIORITIES = [
   "0.آنی",
@@ -75,6 +76,7 @@ export default function TaskForm({
     initial ? initial.TaskID : null,
   );
   const isEdit = Boolean(currentTaskId);
+  const loadedStatusRef = useRef(Number(initial?.Complited) === 1 ? 1 : 0);
   const [assets, setAssets] = useState([]);
   const [persons, setPersons] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -177,6 +179,7 @@ export default function TaskForm({
         const res = await fetch(`/api/tasks/${initial.TaskID}`);
         const d = await res.json();
         const src = d.success && d.data ? d.data : initial;
+        loadedStatusRef.current = Number(src.Complited) === 1 ? 1 : 0;
         setForm({
           TaskTtl: src.TaskTtl || "",
           Descriptions: src.Descriptions || "",
@@ -317,19 +320,27 @@ export default function TaskForm({
         RequestDate: form.RequestDate || null,
       };
       const wasNew = !currentTaskId;
+      const statusRequested = Number(payload.Complited);
+      const statusWasChanged = !wasNew && statusRequested !== loadedStatusRef.current;
+      let persistedStatus = statusRequested;
       let taskId = currentTaskId;
       if (!wasNew) {
         const res = await fetch(`/api/tasks/${currentTaskId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, Complited: 0 }),
+          body: JSON.stringify({ ...payload,
+            statusIntent: statusWasChanged ? "change" : "preserve",
+            expectedStatus: loadedStatusRef.current,
+          }),
         });
         const data = await res.json();
-        if (!data.success) {
-          alert("خطا: " + (data.error || "نامشخص"));
-          setSaving(false);
+        if (!res.ok || !data.success) {
+          showToast("ذخیره انجام نشد: " + (data.error || "خطای نامشخص"), "error");
           return;
         }
+        persistedStatus = Number(data.Complited) === 1 ? 1 : 0;
+        loadedStatusRef.current = persistedStatus;
+        setForm((previous) => ({ ...previous, Complited: persistedStatus }));
       } else {
         const res = await fetch("/api/tasks", {
           method: "POST",
@@ -352,18 +363,25 @@ export default function TaskForm({
         );
         if (onSaved) onSaved();
       } else {
-        alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
+        showToast(`تغییرات کار کد ${taskId} ذخیره شد.`, "success");
         if (onSaved) onSaved();
+        // An explicit status choice is final: do not immediately ask to undo it.
+        if (statusWasChanged || persistedStatus === 1) return;
         const done = await askComplete();
         if (done) {
-          try {
-            await fetch(`/api/tasks/${taskId}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ...payload, Complited: 1 }),
-            });
-          } catch {}
-          alert("کار موردنظر اتمام یافت!");
+          const completion = await fetch("/api/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskId }),
+          });
+          const completionData = await completion.json();
+          if (!completion.ok || !completionData.success) {
+            showToast("تغییرات فرم ذخیره شد، اما ثبت اتمام انجام نشد: " + (completionData.error || "خطای نامشخص"), "error");
+            return;
+          }
+          loadedStatusRef.current = 1;
+          setForm((previous) => ({ ...previous, Complited: 1 }));
+          showToast("اتمام کار ثبت شد و زمان برنامه‌ای حفظ شد.", "success");
           if (onSaved) onSaved();
           if (!applicantClickedRef.current) {
             pendingCloseAskRef.current = true;
@@ -385,9 +403,10 @@ export default function TaskForm({
         }
       }
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور؛ وضعیت کار را تازه‌سازی و بررسی کنید.", "error");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const inp = "search-input w-full";

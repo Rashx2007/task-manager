@@ -1,24 +1,18 @@
-// SQL transactions and browser APIs are mocked; no real database is modified.
+// Route services and browser APIs are mocked. No real database writes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 const routeText=await fs.readFile(new URL('../app/api/complete/route.js',import.meta.url),'utf8');
 const pageText=await fs.readFile(new URL('../app/page.js',import.meta.url),'utf8');
-const normalizeDigits=v=>String(v??'').replace(/[۰-۹]/g,c=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(c)).replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c));
-async function route({exists=true,completed=false,failAt,withTime=true}={}){
- const calls=[],state={completed,finish:null,commits:0,rollbacks:0},context=vm.createContext({Date});
- const tx=async(sql,params)=>{calls.push({sql,params});if(failAt&&sql.includes(failAt))throw Error('private SQL: '+failAt);if(sql.startsWith('SELECT'))return exists?[{TaskID:202,Complited:state.completed?1:0}]:[];if(sql.startsWith('UPDATE Tsk'))state.completed=true;if(sql.startsWith('UPDATE TimeDate')&&withTime)state.finish=params[0];return[];};
- const m=new vm.SourceTextModule(routeText,{context});await m.link(spec=>{const exports=spec==='next/server'?{NextResponse:{json:(body,options={})=>({body,status:options.status||200})}}:spec==='@/lib/assetRules'?{normalizeDigits}:spec==='@/lib/schedule-logic'?{nowWall:()=>new Date('2026-10-29T11:22:33Z'),formatSqlDateTime:d=>d.toISOString().slice(0,19).replace('T',' ')}:{runTransaction:async work=>{const before={completed:state.completed,finish:state.finish};try{const value=await work(tx);state.commits++;return value;}catch(e){Object.assign(state,before);state.rollbacks++;throw e;}}};return new vm.SyntheticModule(Object.keys(exports),function(){for(const[k,v]of Object.entries(exports))this.setExport(k,v);},{context});});await m.evaluate();return{calls,state,api:m.namespace,post:body=>m.namespace.POST({json:async()=>body})};
+const normalizeDigits=v=>String(v??'').replace(/[۰-۹]/g,c=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(c));
+async function wrapped({failure=false}={}) {
+ const calls=[],context=vm.createContext({});const module=new vm.SourceTextModule(routeText,{context});
+ await module.link(name=>{const ex=name==='next/server'?{NextResponse:{json:(body,options={})=>({body,status:options.status||200})}}:{completeTask:async id=>{calls.push(id);if(failure)throw Error('mock');return{taskId:id,Complited:1,statusChanged:true,historyId:'1'};},statusFailure:()=>({status:503,body:{success:false,code:'STATUS_HISTORY_NOT_READY',error:'safe'}})};return new vm.SyntheticModule(Object.keys(ex),function(){for(const[k,v]of Object.entries(ex))this.setExport(k,v);},{context});});await module.evaluate();return{api:module.namespace,calls};
 }
-test('Completion uses one transaction and never writes Finish_DateTime to Tsk_tbl',async()=>{const h=await route();const r=await h.post({taskId:'۲۰۲'});assert.equal(r.status,200);assert.equal(r.body.success,true);assert.equal(r.body.taskId,202);assert.equal(h.state.commits,1);assert.equal(h.calls.length,3);assert.ok(h.calls[0].sql.includes('WITH (UPDLOCK, HOLDLOCK)'));assert.ok(!h.calls[1].sql.includes('Finish_DateTime'));assert.ok(h.calls[2].sql.includes('Finish_DateTime'));assert.deepEqual(Array.from(h.calls[2].params),['2026-10-29 11:22:33','2026-10-29 11:22:33',202]);for(const row of h.calls)assert.equal((row.sql.match(/\?/g)||[]).length,row.params.length);});
-test('Invalid IDs never reach SQL',async()=>{const h=await route();for(const taskId of [null,{},[],true,'',0,-1,'1.5','1e2','2147483648','1;DELETE'])assert.equal((await h.post({taskId})).status,400);assert.equal(h.calls.length,0);});
-test('Malformed JSON is 400 before a transaction',async()=>{const h=await route();const r=await h.api.POST({json:async()=>{throw Error('invalid JSON');}});assert.equal(r.status,400);assert.equal(h.calls.length,0);});
-test('Missing task is 404 without updates',async()=>{const h=await route({exists:false});assert.equal((await h.post({taskId:202})).status,404);assert.equal(h.calls.length,1);assert.equal(h.state.rollbacks,1);});
-test('Already-completed task is idempotent and keeps its original finish time',async()=>{const h=await route({completed:true});h.state.finish='original';const r=await h.post({taskId:202});assert.equal(r.body.alreadyCompleted,true);assert.equal(h.calls.length,1);assert.equal(h.state.finish,'original');});
-test('Second update failure rolls back the SQL double instead of leaving completion half-written',async()=>{const h=await route({failAt:'UPDATE TimeDate_tbl'});const r=await h.post({taskId:202});assert.equal(r.status,500);assert.equal(h.state.completed,false);assert.equal(h.state.rollbacks,1);assert.equal(h.state.commits,0);});
-test('Unexpected SQL failure does not leak column names or SQL details',async()=>{const h=await route({failAt:'SELECT'});const r=await h.post({taskId:202});assert.equal(r.status,500);assert.ok(!JSON.stringify(r).includes('private SQL'));assert.equal(h.state.completed,false);});
-test('Task without time rows can complete without fabricating a schedule row',async()=>{const h=await route({withTime:false});const r=await h.post({taskId:202});assert.equal(r.body.success,true);assert.equal(h.state.completed,true);assert.equal(h.state.finish,null);assert.ok(!h.calls.some(r=>r.sql.startsWith('INSERT')));});
+test('Complete route delegates to audited service and keeps success contract',async()=>{const h=await wrapped();const r=await h.api.POST({json:async()=>({taskId:202})});assert.equal(r.status,200);assert.equal(r.body.success,true);assert.equal(r.body.historyId,'1');assert.deepEqual(h.calls,[202]);});
+test('Malformed completion JSON fails before invoking service',async()=>{const h=await wrapped();const r=await h.api.POST({json:async()=>{throw Error('bad');}});assert.equal(r.status,400);assert.equal(h.calls.length,0);});
+test('Audited completion error and status are propagated without SQL details',async()=>{const h=await wrapped({failure:true});const r=await h.api.POST({json:async()=>({taskId:202})});assert.equal(r.status,503);assert.equal(r.body.code,'STATUS_HISTORY_NOT_READY');});
 const a=pageText.indexOf('  const handleComplete = '),b=pageText.indexOf('\n  const handleDelete',a),handler=pageText.slice(a,b);
 function browser({response={success:true},ok=true,networkError=false}={}){
  const state={pending:{current:false},confirms:[],toasts:[],fetches:[],reloads:0};
