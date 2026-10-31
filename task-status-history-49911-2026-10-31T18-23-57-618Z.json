@@ -1,0 +1,166 @@
+{
+  "taskId": 49911,
+  "exportedAtUTC": "2026-10-31T18:23:57.618Z",
+  "rows": [
+    {
+      "HistoryID": "6",
+      "OperationID": "933094F8-6713-4131-A034-4343034AA37E",
+      "TaskID": 49911,
+      "Action": "REOPEN",
+      "BeforeStatus": true,
+      "AfterStatus": false,
+      "BeforeState": {
+        "schemaVersion": 1,
+        "dateConvention": "SQL UTC-tagged wall components; not timezone conversion",
+        "task": {
+          "TaskID": 49911,
+          "Complited": 1,
+          "Priorities": "زمان انجام ثابت",
+          "FixedDueTime": 1,
+          "Durationtime": "00:05:00",
+          "DueDateTime": "2026-11-01T12:15:00.000Z",
+          "EndDateTime": "2026-11-01T12:20:00.000Z",
+          "Due_Date": "2026-11-01T12:15:00.000Z",
+          "Due_Time": "1970-01-01T12:15:00.000Z",
+          "End_Date": "2026-11-01T12:20:00.000Z",
+          "End_Time": "1970-01-01T12:20:00.000Z"
+        },
+        "timeDates": [
+          {
+            "TimeDateID": 22183,
+            "TaskID": 49911,
+            "Priorities": "زمان انجام ثابت",
+            "FixedDueTime": 1,
+            "Durationtime": "00:05:00",
+            "DueDateTime": "2026-11-01T12:15:00.000Z",
+            "EndDateTime": "2026-11-01T12:20:00.000Z",
+            "Due_Date": null,
+            "Due_Time": null,
+            "End_Date": null,
+            "End_Time": null,
+            "Finish_DateTime": "2026-10-31T21:51:47.000Z"
+          }
+        ]
+      },
+      "AfterState": {
+        "schemaVersion": 1,
+        "dateConvention": "SQL UTC-tagged wall components; not timezone conversion",
+        "task": {
+          "TaskID": 49911,
+          "Complited": 0,
+          "Priorities": "زمان انجام ثابت",
+          "FixedDueTime": 1,
+          "Durationtime": "00:05:00",
+          "DueDateTime": "2026-11-01T12:15:00.000Z",
+          "EndDateTime": "2026-11-01T12:20:00.000Z",
+          "Due_Date": "2026-11-01T12:15:00.000Z",
+          "Due_Time": "1970-01-01T12:15:00.000Z",
+          "End_Date": "2026-11-01T12:20:00.000Z",
+          "End_Time": "1970-01-01T12:20:00.000Z"
+        },
+        "timeDates": [
+          {
+            "TimeDateID": 22183,
+            "TaskID": 49911,
+            "Priorities": "زمان انجام ثابت",
+            "FixedDueTime": 1,
+            "Durationtime": "00:05:00",
+            "DueDateTime": "2026-11-01T12:15:00.000Z",
+            "EndDateTime": "2026-11-01T12:20:00.000Z",
+            "Due_Date": null,
+            "Due_Time": null,
+            "End_Date": null,
+            "End_Time": null,
+            "Finish_DateTime": null
+          }
+        ]
+      },
+      "CreatedAtUTC": "2026-10-31T18:22:55.224Z",
+      "OccurredAtWall": "2026-10-31T21:52:55.000Z",
+      "Source": "/api/tasks/[id]",
+      "DatabaseLogin": "MicrosoftAccount\\rashx2007@gmail.com",
+      "AppActor": null,
+      "RestoresHistoryID": null
+    },
+    {
+      "HistoryID": "5",
+      "OperationID": "C393EBF9-0E1F-4231-BD55-14E3C9499BA5",
+      "TaskID": 49911,
+      "Action": "COMPLETE",
+      "BeforeStatus": false,
+      "AfterStatus": true,
+      "BeforeState": {
+        "schemaVersion": 1,
+        "dateConvention": "SQL UTC-tagged wall components; not timezone conversion",
+        "task": {
+          "TaskID": 49911,
+          "Complited": 0,
+          "Priorities": "زمان انجام ثابت",
+          "FixedDueTime": 1,
+          "Durationtime": "00:05:00",
+          "DueDateTime": "2026-11-01T12:15:00.000Z",
+          "EndDateTime": "2026-11-01T12:20:00.000Z",
+          "Due_Date": "2026-11-01T12:15:00.000Z",
+          "Due_Time": "1970-01-01T12:15:00.000Z",
+          "End_Date": "2026-11-01T12:20:00.000Z",
+          "End_Time": "1970-01-01T12:20:00.000Z"
+        },
+        "timeDates": [
+          {
+            "TimeDateID": 22183,
+            "TaskID": 49911,
+            "Priorities": "زمان انجام ثابت",
+            "FixedDueTime": 1,
+            "Durationtime": "00:05:00",
+            "DueDateTime": "2026-11-01T12:15:00.000Z",
+            "EndDateTime": "2026-11-01T12:20:00.000Z",
+            "Due_Date": null,
+            "Due_Time": null,
+            "End_Date": null,
+            "End_Time": null,
+            "Finish_DateTime": "2026-10-28T12:09:22.000Z"
+          }
+        ]
+      },
+      "AfterState": {
+        "schemaVersion": 1,
+        "dateConvention": "SQL UTC-tagged wall components; not timezone conversion",
+        "task": {
+          "TaskID": 49911,
+          "Complited": 1,
+          "Priorities": "زمان انجام ثابت",
+          "FixedDueTime": 1,
+          "Durationtime": "00:05:00",
+          "DueDateTime": "2026-11-01T12:15:00.000Z",
+          "EndDateTime": "2026-11-01T12:20:00.000Z",
+          "Due_Date": "2026-11-01T12:15:00.000Z",
+          "Due_Time": "1970-01-01T12:15:00.000Z",
+          "End_Date": "2026-11-01T12:20:00.000Z",
+          "End_Time": "1970-01-01T12:20:00.000Z"
+        },
+        "timeDates": [
+          {
+            "TimeDateID": 22183,
+            "TaskID": 49911,
+            "Priorities": "زمان انجام ثابت",
+            "FixedDueTime": 1,
+            "Durationtime": "00:05:00",
+            "DueDateTime": "2026-11-01T12:15:00.000Z",
+            "EndDateTime": "2026-11-01T12:20:00.000Z",
+            "Due_Date": null,
+            "Due_Time": null,
+            "End_Date": null,
+            "End_Time": null,
+            "Finish_DateTime": "2026-10-31T21:51:47.000Z"
+          }
+        ]
+      },
+      "CreatedAtUTC": "2026-10-31T18:21:47.295Z",
+      "OccurredAtWall": "2026-10-31T21:51:47.000Z",
+      "Source": "/api/tasks/[id]",
+      "DatabaseLogin": "MicrosoftAccount\\rashx2007@gmail.com",
+      "AppActor": null,
+      "RestoresHistoryID": null
+    }
+  ]
+}

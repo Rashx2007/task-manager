@@ -5,6 +5,7 @@ import persian from 'react-date-object/calendars/persian';
 import persian_fa from 'react-date-object/locales/persian_fa';
 import useDraftGuard from './useDraftGuard';
 import TodayPlugin from './TodayPlugin';
+import { showToast } from '@/lib/toast';
 
 const shamsiStampOf = (d) => '\u200F✏ ' + new DateObject({ date: d, calendar: persian }).format('YYYY.MM.DD') + ' ';
 const shamsiStamp = () => shamsiStampOf(new Date());
@@ -216,6 +217,15 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const [copyToDesc, setCopyToDesc] = useState(true); // ✅ پیش‌فرض همیشه فعال
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const operationRef = useRef(false);
+  const currentTaskRef = useRef(taskId);
+  currentTaskRef.current = taskId;
+  const loadSequenceRef = useRef(0);
+  const [deleteAsk, setDeleteAsk] = useState(null);
+  const closeSafely = () => {
+    if (operationRef.current) { showToast('عملیات پیگیری در حال انجام است؛ کمی صبر کنید.', 'warn'); return; }
+    onClose();
+  };
   const taRef = useRef(null);
 
   const { touch, markSaved, draft } = useDraftGuard(() => textRef.current, 'draft_follow_' + taskId);
@@ -265,11 +275,18 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   }, []);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequenceRef.current;
     try {
-      const res = await fetch(`/api/follow?taskId=${taskId}`);
+      const res = await fetch(`/api/follow?taskId=${encodeURIComponent(taskId)}`);
       const d = await res.json();
-      if (d.success) setRows(d.rows || []);
-    } catch { }
+      if (sequence !== loadSequenceRef.current || currentTaskRef.current !== taskId) return;
+      if (!res.ok || !d.success || !Array.isArray(d.rows) || d.rows.some(row => Number(row.TaskID) !== Number(taskId))) {
+        showToast('دریافت پیگیری ناموفق بود: ' + (d.error || 'پاسخ با این کار تطابق ندارد.'), 'error'); return;
+      }
+      setRows(d.rows);
+    } catch {
+      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) showToast('دریافت فهرست پیگیری ناموفق بود.', 'error');
+    }
   }, [taskId]);
   useEffect(() => { load(); }, [load]);
 
@@ -278,6 +295,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     document.body.style.overflow = 'hidden';
     const h = (e) => {
       if (e.key !== 'Escape') return;
+      if (deleteAsk) { deleteAsk.resolve(false); setDeleteAsk(null); return; }
+      if (operationRef.current) return;
       if (openClock) {
         setOpenClock(null);
         return;
@@ -286,7 +305,7 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     };
     window.addEventListener('keydown', h);
     return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', h); };
-  }, [onClose, openClock]);
+  }, [onClose, openClock, deleteAsk]);
 
   const setCaret = (pos) => requestAnimationFrame(() => {
     const ta = taRef.current;
@@ -332,38 +351,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   //    محاسبه‌شده (خودکار یا دستی) بلافاصله به‌عنوان ردیف پیگیریِ جدید در دیتابیس ثبت می‌شود،
   //    در جدول مودال نمایش داده می‌شود و در صورت فعال‌بودن «کپی متن در شرح کار» در شرح کار هم کپی می‌شود؛
   //    سپس ویرایشگر برای جلسهٔ تازه پاک می‌شود. در غیر این صورت = پاک‌سازی کاملِ قبلی.
-  const resetEditor = async () => {
-    const seated = loadedAtRef.current;
-    if (seated && textRef.current.trim()) {
-      // شروع = زمان نشستن متن (مگر تنظیم دستی) | پایان = لحظهٔ کلیک «ردیف جدید» (مگر تنظیم دستی)
-      const ns = startTouchedRef.current ? startRef.current : seated;
-      const ne = endTouchedRef.current ? endRef.current : new Date();
-      rowTimesRef.current = false;
-      if (ne < ns) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
-      // ✅ تاریخ داخل باکس = تاریخ همان ردیف جدید
-      const newText = textRef.current.replace(/\u200F?✏ \d{4}\.\d{2}\.\d{2}/, shamsiStampOf(ns));
-      setText(newText, false);
-      setBusy(true);
-      try {
-        const res = await fetch('/api/follow', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId,
-            description: newText,
-            dueDateTime: toWallISO(ns),
-            endDateTime: toWallISO(ne),
-            updateDescription: copyToDesc, // ✅ کپی در شرح کار (سمت سرور) در صورت فعال‌بودن
-          }),
-        });
-        const d = await res.json();
-        if (!d.success) { alert('خطا در ثبت ردیف جدید: ' + d.error); setBusy(false); return; }
-        markSaved();
-        await load();            // ✅ ردیف جدید در جدول همین مودال
-        if (onSaved) onSaved();  // ✅ به‌روزرسانی والد (شرح کار در مودال ویرایش)
-      } catch { alert('خطا در ارتباط با سرور'); setBusy(false); return; }
-      setBusy(false);
-    }
+  // Clearing is local-only: deleting a row must NEVER call the copy/insert action.
+  const clearEditor = () => {
     // شروع جلسهٔ تازه
     setEditingId(null);
     setText(shamsiStamp(), false);
@@ -380,50 +369,88 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
     }, 30);
   };
 
+  const resetEditor = async () => {
+    if (operationRef.current) return;
+    const seated = loadedAtRef.current;
+    if (seated && textRef.current.trim()) {
+      const ns = startTouchedRef.current ? startRef.current : seated;
+      const ne = endTouchedRef.current ? endRef.current : new Date();
+      if (ne < ns) { showToast('زمان پایان نباید قبل از زمان شروع باشد.', 'error'); return; }
+      const newText = textRef.current.replace(/\u200F?✏ \d{4}\.\d{2}\.\d{2}/, shamsiStampOf(ns));
+      operationRef.current = true;
+      setBusy(true);
+      try {
+        const res = await fetch('/api/follow', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId, description: newText, dueDateTime: toWallISO(ns), endDateTime: toWallISO(ne), updateDescription: copyToDesc }),
+        });
+        const d = await res.json();
+        if (currentTaskRef.current !== taskId) return;
+        if (!res.ok || !d.success || Number(d.taskId) !== Number(taskId)) {
+          showToast('ردیف جدید ثبت نشد: ' + (d.error || 'پاسخ نامعتبر'), 'error'); return;
+        }
+        markSaved();
+        await load();
+        if (onSaved) onSaved();
+      } catch { showToast('پاسخ ذخیره دریافت نشد؛ پیش از تکرار، فهرست را تازه‌سازی و بررسی کنید.', 'error'); return; }
+      finally { operationRef.current = false; setBusy(false); }
+    }
+    clearEditor();
+  };
+
   const save = async () => {
-    if (!text.trim()) { alert('متن پیگیری خالی است!'); return; }
+    if (operationRef.current) return;
+    if (!text.trim()) { showToast('متن پیگیری خالی است!', 'warn'); return; }
     const s = startRef.current;
-    // ✅ پایان = لحظهٔ زدن دکمه ذخیره (مگر اینکه دستی تغییر کرده یا ردیفی برای ویرایش باز شده باشد)
     const e2 = endTouchedRef.current || rowTimesRef.current ? endRef.current : new Date();
     setEnd(e2);
-    if (e2 < s) { alert('زمان پایان نباید قبل از زمان شروع باشد.'); return; }
+    if (e2 < s) { showToast('زمان پایان نباید قبل از زمان شروع باشد.', 'error'); return; }
+    operationRef.current = true;
     setBusy(true);
     try {
-      const res = editingId
-        ? await fetch('/api/follow', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ followId: editingId, taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
-        })
-        : await fetch('/api/follow', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc })
-        });
+      const res = await fetch('/api/follow', {
+        method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(editingId ? { followId: editingId } : {}), taskId, description: text, dueDateTime: toWallISO(s), endDateTime: toWallISO(e2), updateDescription: copyToDesc }),
+      });
       const d = await res.json();
-      if (d.success) {
-        markSaved();
-        alert('مورد با موفقیت ثبت شد.');
-        load();
-        if (onSaved) onSaved();
-      } else {
-        alert('خطا: ' + d.error);
+      if (currentTaskRef.current !== taskId) return;
+      if (!res.ok || !d.success || Number(d.taskId) !== Number(taskId)) {
+        showToast('پیگیری ذخیره نشد: ' + (d.error || 'پاسخ نامعتبر'), 'error'); return;
       }
-    } catch { alert('خطا در ارتباط با سرور'); }
-    setBusy(false);
+      markSaved();
+      showToast('پیگیری ذخیره شد؛ زمان برنامه‌ای و زمان اتمام کار تغییر نکرد.', 'success');
+      await load();
+      if (onSaved) onSaved();
+    } catch { showToast('پاسخ ذخیره دریافت نشد؛ پیش از تکرار، فهرست را تازه‌سازی و بررسی کنید.', 'error'); }
+    finally { operationRef.current = false; setBusy(false); }
   };
 
   const del = async () => {
-    if (!editingId) { alert('ابتدا یک ردیف را انتخاب کنید.'); return; }
-    if (!confirm('آیا از حذف این مورد مطمئن هستید؟')) return;
+    if (operationRef.current) return;
+    if (!editingId) { showToast('ابتدا یک ردیف را انتخاب کنید.', 'warn'); return; }
+    const selectedId = editingId;
+    operationRef.current = true;
+    setBusy(true);
     try {
-      const res = await fetch(`/api/follow?id=${editingId}`, { method: 'DELETE' });
+      const confirmed = await new Promise(resolve => setDeleteAsk({ resolve, followId: selectedId }));
+      if (!confirmed || currentTaskRef.current !== taskId) return;
+      const res = await fetch(`/api/follow?id=${encodeURIComponent(selectedId)}&taskId=${encodeURIComponent(taskId)}`, { method: 'DELETE' });
       const d = await res.json();
-      if (d.success) { markSaved(); resetEditor(); load(); }
-    } catch { }
+      if (currentTaskRef.current !== taskId) return;
+      if (!res.ok || !d.success || Number(d.taskId) !== Number(taskId) || Number(d.followId) !== Number(selectedId)) {
+        showToast('پیگیری حذف نشد: ' + (d.error || 'پاسخ نامعتبر'), 'error'); return;
+      }
+      markSaved();
+      clearEditor();
+      await load();
+      showToast('ردیف پیگیری حذف شد.', 'success');
+      if (onSaved) onSaved();
+    } catch { showToast('پاسخ حذف دریافت نشد؛ فهرست را تازه‌سازی و بررسی کنید.', 'error'); }
+    finally { operationRef.current = false; setBusy(false); }
   };
 
   const pickRow = (r) => {
+    if (operationRef.current) return;
     setEditingId(r.FollowID);
     setText(r.Description || '', false);
     const sd = fromWall(r.DueDateTime); if (sd) setStart(sd);
@@ -439,11 +466,11 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onMouseDown={(e) => { if (e.button === 0 && e.target === e.currentTarget) closeSafely(); }}>
       <div className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[860px] max-w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-3 border-b border-teal-700">
           <h3 className="font-bold">سوابق پیگیری — کد کار: {taskId}{subject ? ` | ${subject}` : ''}</h3>
-          <button onClick={onClose} className="text-xl">✕</button>
+          <button onClick={closeSafely} className="text-xl">✕</button>
         </div>
 
         <TaskContextHeader taskId={taskId} className="mx-6 my-2 shrink-0" />
@@ -512,8 +539,8 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
             <button onClick={save} disabled={busy} className="btn-success">
               {editingId ? 'ویرایش پیگیری' : 'ذخیره پیگیری'}
             </button>
-            <button onClick={del} className="btn-danger">حذف ردیف پیگیری</button>
-            <button onClick={resetEditor} className="btn-primary">ردیف جدید</button>
+            <button onClick={del} disabled={busy} className="btn-danger">حذف ردیف پیگیری</button>
+            <button onClick={resetEditor} disabled={busy} className="btn-primary">ردیف جدید</button>
           </div>
 
           <div className="mt-4 overflow-x-auto">
@@ -555,9 +582,23 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
         </div>
 
         <div className="px-6 py-3 border-t border-teal-700">
-          <button onClick={onClose} className="btn-danger">بستن</button>
+          <button onClick={closeSafely} className="btn-danger">بستن</button>
         </div>
       </div>
+      {deleteAsk && (
+        <div className="fixed inset-0 z-[10003] bg-black/60 flex items-center justify-center p-4"
+          onMouseDown={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="follow-delete-title" dir="rtl"
+            className="bg-[#CCE6DF] rounded-lg shadow-2xl p-6 w-[380px] max-w-full border border-red-300">
+            <h4 id="follow-delete-title" className="font-bold text-red-800 mb-3">تأیید حذف پیگیری</h4>
+            <p className="mb-4">پیگیری کد {deleteAsk.followId} از کار {taskId} حذف شود؟</p>
+            <div className="flex gap-3">
+              <button type="button" className="btn-danger" onClick={() => { deleteAsk.resolve(true); setDeleteAsk(null); }}>حذف پیگیری</button>
+              <button type="button" autoFocus className="btn-primary" onClick={() => { deleteAsk.resolve(false); setDeleteAsk(null); }}>انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
