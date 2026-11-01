@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { INSPECTION_COLUMNS, inspectionSearchText, readInspectionSearch } from '@/lib/task-inspector-filters';
+import { INSPECTION_COLUMNS, inspectionSearchText, nextInspectionSort, readInspectionSearch } from '@/lib/task-inspector-filters';
 import { formatWallTime, parseTaskId } from '@/lib/task-inspection';
 
 function ColumnFilter({ column, filters, onApply, onClose }) {
@@ -67,6 +67,7 @@ function ColumnFilter({ column, filters, onApply, onClose }) {
 
 const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, onResultsChange, selectedId }, ref) {
   const [filters, setFilters] = useState({});
+  const [sort, setSort] = useState({ key: 'TaskID', direction: 'desc' });
   const [started, setStarted] = useState(false);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState({ rows: [], total: 0, page: 1 });
@@ -82,17 +83,21 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, 
     const token = ++generationRef.current;
     const controller = new AbortController(); abortRef.current = controller;
     setLoading(true); setError(''); setResult({ rows: [], total: 0, page });
-    readInspectionSearch({ mode: 'rows', filters, page, pageSize: 20 }, controller.signal).then((data) => {
+    readInspectionSearch({ mode: 'rows', filters, sort, page, pageSize: 20 }, controller.signal).then((data) => {
       if (token !== generationRef.current) return;
-      if (!Array.isArray(data.rows) || !Number.isSafeInteger(data.total) || data.total < 0 || !Number.isSafeInteger(data.page) || data.page < 1 || data.rows.some((row) => !parseTaskId(row.TaskID)) || data.rows.some((row, i) => i && Number(data.rows[i - 1].TaskID) <= Number(row.TaskID))) throw new Error('پاسخ جدول جستجو معتبر نیست.');
+      if (!Array.isArray(data.rows) || !Number.isSafeInteger(data.total) || data.total < 0 || !Number.isSafeInteger(data.page) || data.page < 1 || data.rows.some((row) => !parseTaskId(row.TaskID)) || new Set(data.rows.map((row) => Number(row.TaskID))).size !== data.rows.length || data.sort?.key !== sort.key || data.sort?.direction !== sort.direction) throw new Error('پاسخ جدول جستجو معتبر نیست.');
       setResult({ rows: data.rows, total: data.total, page: data.page });
     }).catch((reason) => { if (token === generationRef.current && reason.name !== 'AbortError') setError(reason.message); })
       .finally(() => { if (token === generationRef.current) setLoading(false); });
     return () => { generationRef.current++; controller.abort(); };
-  }, [filters, page, started]);
+  }, [filters, sort, page, started]);
   const change = (next, nextStarted = true) => {
     invalidate(); onResultsChange(); closeMenu(); setFilters(next); setPage(1); setStarted(nextStarted);
     setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
+  };
+  const changeSort = (key) => {
+    invalidate(); onResultsChange(); closeMenu(); setSort((previous) => nextInspectionSort(previous, key));
+    setPage(1); setStarted(true); setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
   };
   const turnPage = (next) => { invalidate(); onResultsChange(); setPage(next); };
   const pages = Math.max(1, Math.ceil(result.total / 20));
@@ -105,7 +110,7 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, 
     <div className="flex flex-wrap items-center gap-2 mb-3">
       <button type="button" className="btn-primary" onClick={() => change({})}>نمایش همهٔ کارها</button>
       <button type="button" className="btn-danger" onClick={() => change({}, false)}>پاک‌کردن جستجو</button>
-      <span className="text-xs">سرستون را بزنید؛ نتایج در تمام صفحات با کد کار نزولی مرتب می‌شوند.</span>
+      <span className="text-xs">برای فیلتر، نام ستون و برای مرتب‌سازی، پیکان کنار آن را بزنید؛ ترتیب انتخاب‌شده در تمام صفحات اعمال می‌شود.</span>
     </div>
     {Object.keys(filters).length > 0 && <div className="flex flex-wrap gap-2 mb-2" aria-label="فیلترهای فعال">
       {Object.entries(filters).map(([key, values]) => <button key={key} type="button" className="rounded bg-teal-800 text-white px-2 py-1 text-xs"
@@ -117,9 +122,17 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, 
       <table className="border-collapse text-sm w-full" style={{ minWidth: 1600 }} aria-label="نتایج جستجوی کارها">
         <thead className="bg-teal-800 text-white sticky top-0"><tr>
           <th scope="col" className="p-2">ردیف</th>
-          {INSPECTION_COLUMNS.map((column) => <th scope="col" key={column.key} className="border border-teal-600 p-2 whitespace-nowrap text-right">
-            {column.filterable ? <button type="button" className="w-full text-right" aria-label={`فیلتر ${column.label}`} aria-haspopup="dialog"
-              onClick={() => { menuRef.current = column.key; setMenu(column); }}>{column.label} {Object.hasOwn(filters, column.key) ? '●' : '▾'}</button> : column.label}
+          {INSPECTION_COLUMNS.map((column) => <th scope="col" key={column.key} className="border border-teal-600 p-2 whitespace-nowrap text-right"
+            aria-sort={sort.key === column.key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+            <div className="flex items-center justify-between gap-2">
+              {column.filterable ? <button type="button" className="text-right" aria-label={`فیلتر ${column.label}`} aria-haspopup="dialog"
+                onClick={() => { menuRef.current = column.key; setMenu(column); }}>{column.label} {Object.hasOwn(filters, column.key) ? '●' : '▾'}</button> : column.label}
+              <button type="button" className="px-1 rounded hover:bg-teal-700 focus-visible:outline focus-visible:outline-2"
+                aria-label={`مرتب‌سازی ${column.label} ${sort.key === column.key && sort.direction === 'asc' ? 'نزولی' : 'صعودی'}`}
+                title="تغییر ترتیب در همهٔ صفحات" onClick={() => changeSort(column.key)}>
+                {sort.key === column.key ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+              </button>
+            </div>
           </th>)}
         </tr></thead>
         <tbody>{result.rows.map((row, index) => <tr key={row.TaskID} className={Number(selectedId) === Number(row.TaskID) ? 'bg-teal-200' : index % 2 ? 'bg-teal-50' : 'bg-white/90'}

@@ -9,6 +9,12 @@ const COLUMNS = {
   Priorities: 'COALESCE(TD.Priorities, tsk.Priorities)',
   status: "CASE WHEN tsk.Complited = 1 THEN N'اتمام' ELSE N'جاری' END",
 };
+const SORT_COLUMNS = {
+  TaskID: 'TaskID', AssetName: 'AssetName', AssetNumber: 'TRY_CONVERT(decimal(38, 10), AssetNumber)',
+  Building: 'Building', Block: 'Block', Floor: 'TRY_CONVERT(decimal(38, 10), Floor)',
+  Entrance: 'Entrance', Location: 'Location', TaskTtl: 'TaskTtl', Descriptions: 'Descriptions',
+  Priorities: 'Priorities', status: 'Complited', DueDateTime: 'DueDateTime', EndDateTime: 'EndDateTime',
+};
 const NUMERIC = new Set(['TaskID', 'AssetNumber', 'Floor']);
 const FROM = `FROM Tsk_tbl tsk
   LEFT JOIN Asset_Task_tbl atk ON atk.TaskID = tsk.TaskID
@@ -30,7 +36,7 @@ function conditions(filters, except) {
       const col = COLUMNS[key];
       if (NUMERIC.has(key)) {
         const raw = normalizeDigits(value).trim();
-        if (!/^-?\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) invalid('مقدار فیلتر عددی معتبر نیست.');
+        if (!(key === 'TaskID' ? /^-?\d+$/ : /^-?\d+(?:\.\d+)?$/).test(raw) || !Number.isFinite(Number(raw)) || Math.abs(Number(raw)) > Number.MAX_SAFE_INTEGER) invalid('مقدار فیلتر عددی معتبر نیست.');
         params.push(Number(raw)); return `${col} = ?`;
       }
       if (key === 'status' || key === 'Priorities') {
@@ -71,6 +77,13 @@ export async function POST(request) {
       values.sort((a, b) => NUMERIC.has(body.field) ? Number(a) - Number(b) : a.localeCompare(b, 'fa', { numeric: true }));
       return reply({ success: true, values });
     }
+    const sort = body.sort ?? { key: 'TaskID', direction: 'desc' };
+    if (!sort || typeof sort !== 'object' || Array.isArray(sort) ||
+      !Object.prototype.hasOwnProperty.call(SORT_COLUMNS, sort.key) || !['asc', 'desc'].includes(sort.direction)) invalid('مرتب‌سازی معتبر نیست.');
+    // شناسه‌ها فقط از فهرست ثابت؛ مقادیر کاربر هرگز وارد متن SQL نمی‌شوند.
+    const sortColumn = SORT_COLUMNS[sort.key];
+    const orderBy = sort.key === 'TaskID' ? `TaskID ${sort.direction.toUpperCase()}`
+      : `CASE WHEN ${sortColumn} IS NULL THEN 1 ELSE 0 END ASC, ${sortColumn} ${sort.direction.toUpperCase()}, TaskID DESC`;
     const page = body.page ?? 1, pageSize = body.pageSize ?? 20;
     if (!Number.isSafeInteger(page) || page < 1 || page > 10000000 || ![10, 20, 50].includes(pageSize)) invalid('صفحهٔ جستجو معتبر نیست.');
     const { where, params } = conditions(filters);
@@ -87,8 +100,8 @@ export async function POST(request) {
     ) SELECT TaskID, TaskTtl, Descriptions, Complited, Priorities,
       AssetName, AssetNumber, Building, Block, Floor, Entrance, Location, DueDateTime, EndDateTime
       FROM matches WHERE inspectionRank = 1
-      ORDER BY TaskID DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, (resolvedPage - 1) * pageSize, pageSize]) : [];
-    return reply({ success: true, rows, total, page: resolvedPage, pageSize });
+      ORDER BY ${orderBy} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, (resolvedPage - 1) * pageSize, pageSize]) : [];
+    return reply({ success: true, rows, total, page: resolvedPage, pageSize, sort: { key: sort.key, direction: sort.direction } });
   } catch (error) {
     return reply({ success: false, error: error.inputError ? error.message : 'دریافت نتایج جستجو ناموفق بود.' }, error.inputError ? 400 : 500);
   }
