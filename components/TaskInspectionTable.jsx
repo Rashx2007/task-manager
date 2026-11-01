@@ -51,10 +51,10 @@ function ColumnFilter({ column, filters, onApply, onClose }) {
           })} /> (انتخاب همه) — {visible.length} گزینه</label>
         <div className="overflow-auto border rounded p-2" style={{ minHeight: 80, maxHeight: '40vh' }}>
           {!visible.length && <p>گزینه‌ای مطابق متن پیدا نشد.</p>}
-          {visible.map((value) => <label key={value} className="flex items-start gap-2 py-1 break-words">
-            <input type="checkbox" checked={picked.has(value)} onChange={() => setPicked((previous) => {
+          {visible.map((value) => <label key={value} className="flex items-start gap-2 py-1 min-w-0">
+            <input type="checkbox" style={{ flexShrink: 0, marginTop: 3 }} checked={picked.has(value)} onChange={() => setPicked((previous) => {
               const next = new Set(previous); next.has(value) ? next.delete(value) : next.add(value); return next;
-            })} /><span style={{ overflowWrap: 'anywhere' }}>{value}</span></label>)}
+            })} /><span title={value} style={{ minWidth: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{value}</span></label>)}
         </div></>}
       <div className="flex flex-wrap gap-2 mt-3">
         <button type="submit" className="btn-success" disabled={loading || !!error}>اعمال فیلتر</button>

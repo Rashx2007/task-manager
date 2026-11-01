@@ -10,6 +10,7 @@ import SupplierModal from "./SupplierModal";
 import TaskPurchaseTip from "./TaskPurchaseTip";
 import FolderModal from "./FolderModal";
 import AssetsModal from "./AssetsModal";
+import AssetAutocomplete from "./AssetAutocomplete";
 import MapModal from "./MapModal";
 import useDraftGuard from "./useDraftGuard";
 import { showToast } from "@/lib/toast";
@@ -471,17 +472,17 @@ export default function TaskForm({
               دستگاه/مجموعه
             </label>
             <div className="flex gap-2">
-              <input
-                className={inp}
-                list="assets-list"
-                placeholder="تایپ کنید یا از لیست انتخاب کنید..."
+              <AssetAutocomplete
+                assets={assets}
                 value={assetQuery}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setAssetQuery(v);
-                  const f = assets.find((a) => assetSpec(a) === v);
-                  if (f) setForm((x) => ({ ...x, AssetID: String(f.AssetID) }));
-                  else if (!v) setForm((x) => ({ ...x, AssetID: "" }));
+                formatAsset={assetSpec}
+                className={inp}
+                onSelect={(asset) => setForm((previous) => ({ ...previous, AssetID: String(asset.AssetID) }))}
+                onChange={(value) => {
+                  setAssetQuery(value);
+                  const asset = assets.find((item) => assetSpec(item) === value);
+                  if (asset) setForm((previous) => ({ ...previous, AssetID: String(asset.AssetID) }));
+                  else if (!value) setForm((previous) => ({ ...previous, AssetID: "" }));
                 }}
               />
               <button
@@ -523,11 +524,6 @@ export default function TaskForm({
                 </svg>
               </button>{" "}
             </div>
-            <datalist id="assets-list">
-              {assets.map((a) => (
-                <option key={a.AssetID} value={assetSpec(a)} />
-              ))}
-            </datalist>
             {form.AssetID && (
               <div className="text-xs text-gray-700 mt-1">
                 کد دستگاه: {form.AssetID}

@@ -702,6 +702,8 @@ export default function TaskTable({
                           <button
                             key={v}
                             type="button"
+                            style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "right", maxWidth: "100%" }}
+                            title={String(v)}
                             onClick={() => {
                               onDraftAssign(menuCol.key, v);
                               setMenu(null);
@@ -805,13 +807,14 @@ export default function TaskTable({
                     {!menuLoading && (
                       <div className="col-menu-list">
                         {shownValues.map((v) => (
-                          <label key={v} className="col-menu-item">
+                          <label key={v} className="col-menu-item" style={{ alignItems: "flex-start", minWidth: 0 }}>
                             <input
                               type="checkbox"
+                              style={{ flexShrink: 0, marginTop: 3 }}
                               checked={isChecked(menuCol.key, v)}
                               onChange={() => toggleFilterValue(menuCol.key, v)}
                             />
-                            <span className="truncate">{v}</span>
+                            <span title={String(v)} style={{ minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "normal" }}>{v}</span>
                           </label>
                         ))}
                       </div>
