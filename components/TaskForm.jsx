@@ -471,7 +471,7 @@ export default function TaskForm({
             <label className="block text-sm font-bold mb-1">
               دستگاه/مجموعه
             </label>
-            <div className="flex gap-2">
+            <div className="flex items-start gap-2">
               <AssetAutocomplete
                 assets={assets}
                 value={assetQuery}
