@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import TaskInspectionTable from './TaskInspectionTable';
@@ -158,7 +159,7 @@ export default function TaskInspector() {
         </div>
         <div className="flex-1 min-h-0 overflow-auto overscroll-contain p-4">
           <TaskInspectionTable ref={tableRef} onSelect={inspect} onResultsChange={resetDetails} selectedId={snapshot?.id} />
-          {loading && <p role="status">در حال دریافت اطلاعات کار…</p>}
+          {loading && <LoadingIndicator label="دریافت اطلاعات کار انتخابی" />}
           {error && <p role="alert" className="rounded bg-red-100 text-red-900 p-3">{error}</p>}
           {!task && !loading && !error && <p className="text-sm">با انتخاب یک ردیف، اطلاعات همان کار و سوابق آن در پایین جدول نمایش داده می‌شود؛ فرم اصلی دست‌نخورده می‌ماند.</p>}
           {task && <>
@@ -166,7 +167,7 @@ export default function TaskInspector() {
               <h4 className="font-bold">در حال مشاهدهٔ کار {snapshot.id} — فقط‌خواندنی</h4>
               <button type="button" className="btn-primary whitespace-nowrap disabled:opacity-60" onClick={openAttachments}
                 disabled={folderBusy} aria-busy={folderBusy} aria-label={`بازکردن پوشهٔ ضمائم کار ${task.TaskID}`}>
-                {folderBusy ? 'در حال بازکردن پوشه…' : '📂 بازکردن پوشهٔ ضمائم'}
+                {folderBusy ? <LoadingIndicator inline label="بازکردن پوشه" /> : '📂 بازکردن پوشهٔ ضمائم'}
               </button>
             </div>
             <table className="w-full border-collapse text-sm mb-5"><tbody>

@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import LoadingIndicator from "./LoadingIndicator";
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const IMG_EXT = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
 const extOf = (name) => (name.includes('.') ? name.split('.').pop().toLowerCase() : '');
@@ -49,21 +50,24 @@ export default function FileBrowser({ contextTaskId = null, mode = 'folder', ini
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [pathInput, setPathInput] = useState('');
 
+  const loadSequenceRef = useRef(0);
   const load = useCallback(async (p) => {
+    const token = ++loadSequenceRef.current;
     setLoading(true); setErr(''); setSelected(null);
     try {
       const res = await fetch(`/api/files?path=${encodeURIComponent(p || '')}`);
       const d = await res.json();
-      if (d.success) {
+      if (token !== loadSequenceRef.current) return;
+      if (res.ok && d.success) {
         setCurrent(d.current || ''); setPathInput(d.current || '');
         setParent(d.parent || ''); setFolders(d.folders || []); setFiles(d.files || []);
       } else { setErr(d.error || 'خطا'); setFolders([]); setFiles([]); }
-    } catch { setErr('خطا در ارتباط با سرور'); }
-    setLoading(false);
+    } catch { if (token === loadSequenceRef.current) setErr('خطا در ارتباط با سرور'); }
+    if (token === loadSequenceRef.current) setLoading(false);
   }, []);
 
   useEffect(() => { load(initial || ''); }, [initial, load]);
@@ -123,7 +127,7 @@ export default function FileBrowser({ contextTaskId = null, mode = 'folder', ini
             </button>
           </div>
           <div className="overflow-y-auto bg-white rounded border border-gray-300" style={{ minHeight: 260, maxHeight: 420 }}>
-            {loading && <div className="p-3 text-sm">در حال بارگذاری...</div>}
+            {loading && <LoadingIndicator />}
             {!loading && err && <div className="p-3 text-sm text-red-600">{err}</div>}
             {!loading && !err && view === 'list' && (
               <>

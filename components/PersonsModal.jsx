@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import LoadingIndicator from "./LoadingIndicator";
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const EMPTY = { PersonName: '', OfficeName: '', WorkTellNumber1: '', WorkTellNumber2: '', WorkTellNumber3: '', MobileTellNumber1: '', MobileTellNumber2: '', MobileTellNumber3: '', Address: '' };
 
@@ -7,17 +8,24 @@ import TaskContextHeader from "./TaskContextHeader";
 
 export default function PersonsModal({ contextTaskId = null, onClose }) {
   const [list, setList] = useState([]);
+  const [reading, setReading] = useState(true);
+  const [readError, setReadError] = useState('');
+  const requestRef = useRef(0);
   const [term, setTerm] = useState('');
   const [form, setForm] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (t) => {
+    const token = ++requestRef.current; setReading(true); setReadError('');
     try {
       const res = await fetch(`/api/persons?term=${encodeURIComponent(t || '')}`);
       const d = await res.json();
-      if (d.success) setList(d.data || []);
-    } catch { }
+      if (token !== requestRef.current) return;
+      if (!res.ok || !d.success) throw new Error();
+      setList(d.data || []);
+    } catch { if (token === requestRef.current) setReadError('دریافت اشخاص ناموفق بود.'); }
+    finally { if (token === requestRef.current) setReading(false); }
   }, []);
   useEffect(() => { load(''); }, [load]);
 
@@ -89,8 +97,9 @@ export default function PersonsModal({ contextTaskId = null, onClose }) {
                     <tr><th>نام</th><th>دفتر/سمت</th><th>داخلی ۱</th><th>موبایل ۱</th><th>آدرس</th><th>عملیات</th></tr>
                   </thead>
                   <tbody>
-                    {list.length === 0 && <tr><td colSpan={6} className="text-center py-6">موردی یافت نشد</td></tr>}
-                    {list.map((p) => (
+                    {!reading && !readError && list.length === 0 && <tr><td colSpan={6} className="text-center py-6">موردی یافت نشد</td></tr>}
+                    {(reading || readError) && <tr><td colSpan={6}>{reading ? <LoadingIndicator label="دریافت اشخاص" /> : <p role="alert" className="text-red-800 p-3">{readError}</p>}</td></tr>}
+                    {!reading && !readError && list.map((p) => (
                       <tr key={p.PersonID}>
                         <td>{p.PersonName}</td>
                         <td>{p.OfficeName}</td>
@@ -118,7 +127,7 @@ export default function PersonsModal({ contextTaskId = null, onClose }) {
               <div><label className="text-sm font-bold">موبایل ۳</label><input className={inp} value={form.MobileTellNumber3} onChange={set('MobileTellNumber3')} /></div>
               <div className="md:col-span-3"><label className="text-sm font-bold">آدرس</label><textarea className={inp} rows={2} value={form.Address} onChange={set('Address')} /></div>
               <div className="md:col-span-3 flex gap-2">
-                <button className="btn-success" disabled={saving} onClick={save}>{saving ? '...' : 'ذخیره'}</button>
+                <button className="btn-success" disabled={saving} onClick={save}>{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}</button>
                 <button className="btn-danger" onClick={() => { setForm(null); setEditingId(null); }}>انصراف</button>
               </div>
             </div>

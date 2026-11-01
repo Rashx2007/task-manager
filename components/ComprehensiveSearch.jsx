@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef } from 'react';
 import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
@@ -60,7 +61,7 @@ function Sec({ k, title, badge, open, onToggle, children }) {
   );
 }
 
-export default function ComprehensiveSearch({ onResult, onClose, sync = null }) {
+export default function ComprehensiveSearch({ onResult, onClose, sync = null, onLoadingChange }) {
   const [status, setStatus] = useState('current');
   const [f, setF] = useState({ ...EMPTY_F });
   const [start, setStart] = useState(DEFAULT_START);
@@ -75,6 +76,11 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
   const [total, setTotal] = useState(null);
   const [loaded, setLoaded] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [readingDevices, setReadingDevices] = useState(true);
+  const [devicesError, setDevicesError] = useState('');
+  const searchSequenceRef = useRef(0);
+  useEffect(() => () => { searchSequenceRef.current++; onLoadingChange?.(false); }, [onLoadingChange]);
   const accRef = useRef([]);
   const lastPayloadRef = useRef(null);
 
@@ -110,7 +116,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
   }, [sync?.nonce]);
 
   useEffect(() => {
-    fetch('/api/smart-search?kind=devices').then((r) => r.json()).then((d) => { if (d.success) setDevices(d.rows || []); }).catch(() => {});
+    fetch('/api/smart-search?kind=devices').then((r) => r.json()).then((d) => { if (!d.success) throw new Error(); setDevices(d.rows || []); }).catch(() => setDevicesError('دریافت دستگاه‌ها ناموفق بود.')).finally(() => setReadingDevices(false));
     const h = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -219,9 +225,13 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
 
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ status, f: { ...f, ...extra }, start: start ? start.toISOString() : null, end: end ? end.toISOString() : null, smartText, quick, facetFilters: facetsToUse, open })); } catch {}
 
+    const searchToken = ++searchSequenceRef.current;
+    setLoadingMore(false);
+    setSearching(true); onLoadingChange?.(true);
     try {
       const res = await fetch('/api/comprehensive-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await res.json();
+      if (searchToken !== searchSequenceRef.current) return;
       if (d.success) {
         accRef.current = d.data || [];
         setLoaded(accRef.current.length);
@@ -231,16 +241,20 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
         setFacets(d.facets || { buildings: [], blocks: [], floors: [], entrances: [], locations: [], deviceTypes: [], systems: [], priorities: [] });
         setOpen((o) => ({ ...o, form: false, statusDate: false }));
       } else alert('خطا: ' + d.error);
-    } catch { alert('خطا در ارتباط با سرور'); }
+    } catch { if (searchToken === searchSequenceRef.current) alert('خطا در ارتباط با سرور'); }
+    finally { if (searchToken === searchSequenceRef.current) { setSearching(false); onLoadingChange?.(false); } }
   };
 
   const loadMore = async () => {
     const base = lastPayloadRef.current;
     if (!base) return;
     setLoadingMore(true);
+    const searchToken = ++searchSequenceRef.current;
+    setSearching(true); onLoadingChange?.(true);
     try {
       const res = await fetch('/api/comprehensive-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, offset: accRef.current.length }) });
       const d = await res.json();
+      if (searchToken !== searchSequenceRef.current) return;
       if (d.success) {
         accRef.current = accRef.current.concat(d.data || []);
         setLoaded(accRef.current.length);
@@ -248,7 +262,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
         if (onResult) onResult(accRef.current);
       }
     } catch {}
-    setLoadingMore(false);
+    if (searchToken === searchSequenceRef.current) { setSearching(false); onLoadingChange?.(false); setLoadingMore(false); }
   };
 
   const finalize = (device) => {
@@ -377,6 +391,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
         </div>
       </div>
 
+      {(searching || loadingMore) && <LoadingIndicator label="جستجوی کارها" />}
       <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
         <div className="flex flex-wrap gap-2 items-center">
           <button type="button" onClick={() => applyPreset('today')} className="btn-primary px-3 py-1 text-xs">امروز</button>
@@ -432,7 +447,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
 
       <Sec k="facets" open={open.facets} onToggle={toggleSec} title="🎯 باریک‌کردن نتیجه (کلیکی)">
         <div className="bg-white p-2 rounded">
-          {!anyFacetData ? (
+          {searching ? <LoadingIndicator label="دریافت گزینه‌های نتیجه" /> : !anyFacetData ? (
             <div className="text-xs text-gray-500">پس از اولین جستجو، گزینه‌های باریک‌کردن اینجا ظاهر می‌شوند.</div>
           ) : (
             <>
@@ -467,10 +482,12 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
         </div>
       )}
 
+      {readingDevices && <LoadingIndicator label="دریافت فهرست دستگاه‌ها" />}
+      {devicesError && <p role="alert" className="text-red-200">{devicesError}</p>}
       <Sec k="smart" open={open.smart} onToggle={toggleSec} title="🩺 جستجوی هوشمند دستگاه" badge={smartText ? 'فعال' : ''}>
         <div className="relative bg-white p-2 rounded">
           <div className="flex items-center gap-2">
-            <input value={smartText} onChange={(e) => onSmartChange(e.target.value)}
+            <input disabled={readingDevices || !!devicesError} value={smartText} onChange={(e) => onSmartChange(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
               className="search-input flex-1" placeholder="مثلاً: ط14 ، د فن‌کویل ، م موضوع ، ت توضیحات" />
             <span className="font-bold text-sm whitespace-nowrap">{deviceStatus}</span>
@@ -511,12 +528,12 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null }) 
         </form>
       </Sec>
 
-      {total != null && (
+      {!searching && total != null && (
         <div className="mt-2 bg-white/90 rounded p-2 flex items-center gap-2 flex-wrap">
           <span className="text-sm font-bold">نمایش {loaded} از {total} نتیجه</span>
           {loaded < total && (
             <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={loadingMore} onClick={loadMore}>
-              {loadingMore ? '...' : 'نمایش بیشتر…'}
+              {loadingMore ? <LoadingIndicator inline label="دریافت نتایج بیشتر" /> : 'نمایش بیشتر…'}
             </button>
           )}
         </div>

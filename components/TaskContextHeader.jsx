@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
 import { useEffect, useState } from 'react';
 import { assetSummary, parseTaskId, readTaskSnapshot, TASK_INSPECTOR_EVENT } from '@/lib/task-inspection';
 
@@ -33,7 +34,7 @@ export default function TaskContextHeader({ taskId = null, draftMode = false, dr
       {id && <div className="mt-1 break-words">
         {task ? <><span className="font-bold">مشخصات ثبت‌شده: </span>{assetSummary(task)}</>
           : error ? <span role="status" className="text-red-800">{error} <button type="button" className="underline" onClick={() => setRetry((value) => value + 1)}>تلاش مجدد</button></span>
-          : <span role="status">در حال دریافت مشخصات همین کار…</span>}
+          : <LoadingIndicator inline label="دریافت مشخصات همین کار" />}
       </div>}
       {draftMode && draftAsset && <div className="mt-1 break-words">دستگاه انتخابی فرم، هنوز ثبت‌نشده: {assetSummary(draftAsset)}</div>}
     </aside>

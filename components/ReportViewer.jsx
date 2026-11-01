@@ -1,5 +1,6 @@
 // components/ReportViewer.jsx
 "use client";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useRef, useEffect } from "react";
 import DatePicker from "react-multi-date-picker";
 import { showToast } from "@/lib/toast";
@@ -17,17 +18,22 @@ export default function ReportViewer({ config, onClose }) {
   const [withTaskId, setWithTaskId] = useState(false);
   const [assetName, setAssetName] = useState("");
   const [assetNames, setAssetNames] = useState([]);
+  const [readingNames, setReadingNames] = useState(Boolean(config.needsAsset));
+  const [namesError, setNamesError] = useState("");
   const bufferRef = useRef(null);
 
   // ✅ پیشنهاد نام دستگاه‌ها برای گزارش‌های needsAsset
   useEffect(() => {
     if (!config.needsAsset) return;
+    setReadingNames(true); setNamesError("");
     fetch("/api/asset-names")
       .then((r) => r.json())
       .then((d) => {
-        if (d.success) setAssetNames(d.names || []);
+        if (!d.success) throw new Error();
+        setAssetNames(d.names || []);
       })
-      .catch(() => {});
+      .catch(() => setNamesError("دریافت نام دستگاه‌ها ناموفق بود."))
+      .finally(() => setReadingNames(false));
   }, [config.needsAsset]);
 
   const generate = async () => {
@@ -158,6 +164,8 @@ export default function ReportViewer({ config, onClose }) {
         </div>
 
         <TaskContextHeader className="mx-4 my-2 shrink-0" />
+        {readingNames && <LoadingIndicator label="دریافت گزینه‌های گزارش" />}
+        {namesError && <p role="alert" className="text-red-800">{namesError}</p>}
         <div className="p-4 border-b border-teal-800/20 flex flex-wrap gap-3 items-end">
           {config.needsDateRange && (
             <>
@@ -212,8 +220,8 @@ export default function ReportViewer({ config, onClose }) {
               </datalist>
             </div>
           )}
-          <button onClick={generate} disabled={loading} className="btn-primary">
-            {loading ? "در حال تولید..." : "تولید گزارش"}
+          <button onClick={generate} disabled={loading || readingNames || !!namesError} className="btn-primary">
+            {loading ? <LoadingIndicator inline label="تولید گزارش" /> : "تولید گزارش"}
           </button>
           {content && (
             <>
@@ -226,12 +234,13 @@ export default function ReportViewer({ config, onClose }) {
         </div>
 
         <div className="flex-1 overflow-auto p-4 bg-white">
-          {!content && (
+          {loading && <LoadingIndicator label="دریافت محتوای گزارش" />}
+          {!loading && !content && (
             <div className="text-center text-gray-500 py-8">
               برای مشاهده، ابتدا گزارش را تولید کنید.
             </div>
           )}
-          {content?.kind === "text" && (
+          {!loading && content?.kind === "text" && (
             <pre
               className="whitespace-pre-wrap font-[Vazirmatn] text-sm leading-relaxed text-gray-800"
               dir="rtl"
@@ -239,7 +248,7 @@ export default function ReportViewer({ config, onClose }) {
               {content.text}
             </pre>
           )}
-          {content?.kind === "excel" && (
+          {!loading && content?.kind === "excel" && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📊</div>
               <div className="text-lg font-bold text-teal-900 mb-2">

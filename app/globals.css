@@ -652,3 +652,15 @@ body {
   border-top: 1px solid rgba(0, 0, 0, 0.12);
   margin-top: 4px;
 }
+/* Shared async loading: visual spinner/skeleton, accessible label, reduced motion. */
+.app-loading { display:flex; align-items:center; justify-content:center; gap:14px; min-height:76px; padding:14px; color:#0f766e; box-sizing:border-box; direction:rtl; }
+.app-loading__spinner { display:inline-block; flex:0 0 auto; width:28px; height:28px; box-sizing:border-box; border:3px solid rgba(15,118,110,.18); border-top-color:currentColor; border-radius:50%; animation:app-loading-spin .8s linear infinite; }
+.app-loading__lines { display:flex; flex-direction:column; gap:7px; width:min(180px,50%); }
+.app-loading__lines > span { display:block; height:7px; width:100%; border-radius:99px; background:currentColor; opacity:.16; animation:app-loading-pulse 1.4s ease-in-out infinite; }
+.app-loading__lines > span:nth-child(2) { width:78%; animation-delay:.12s; }
+.app-loading__lines > span:nth-child(3) { width:54%; animation-delay:.24s; }
+.app-loading--inline { display:inline-flex; vertical-align:middle; min-height:0; padding:0 4px; gap:0; color:inherit; }
+.app-loading--inline .app-loading__spinner { width:18px; height:18px; border-width:2px; }
+@keyframes app-loading-spin { to { transform:rotate(360deg); } }
+@keyframes app-loading-pulse { 50% { opacity:.36; } }
+@media (prefers-reduced-motion: reduce) { .app-loading__spinner, .app-loading__lines > span { animation:none; } }

@@ -56,6 +56,11 @@ export default function Home() {
   const completionPendingRef = useRef(false);
   const [totalFiltered, setTotalFiltered] = useState(0);
   const [loadError, setLoadError] = useState("");
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [searchReads, setSearchReads] = useState({ simple: false, comprehensive: false });
+  const searchLoading = searchReads.simple || searchReads.comprehensive;
+  const setSimpleSearchLoading = useCallback((value) => setSearchReads((previous) => ({ ...previous, simple: value })), []);
+  const setComprehensiveSearchLoading = useCallback((value) => setSearchReads((previous) => ({ ...previous, comprehensive: value })), []);
   const [selectedTask, setSelectedTask] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -255,6 +260,7 @@ export default function Home() {
   const loadTasks = useCallback(async (filtersObj, pageNum) => {
     const requestId = ++loadRequestRef.current;
     const type = loadTypeRef.current;
+    setTasksLoading(true);
     setLoadError("");
     try {
       if (type === "search") {
@@ -297,6 +303,8 @@ export default function Home() {
     } catch (e) {
       if (requestId !== loadRequestRef.current) return;
       setLoadError("خطا در ارتباط با سرور: " + e.message);
+    } finally {
+      if (requestId === loadRequestRef.current) setTasksLoading(false);
     }
   }, []);
 
@@ -353,6 +361,7 @@ export default function Home() {
       if (v == null) continue;
       serializable[k] = Array.from(v);
     }
+    setTasksLoading(true);
     setActiveFilters(serializable);
     setPage(1);
     // ✅ بازتاب هم‌زمان فیلترهای ستونی در فرم فیلترها و بخش «وضعیت و بازهٔ تاریخ»
@@ -463,6 +472,7 @@ export default function Home() {
 
   // ✅ معادل دکمهٔ «پاک‌کردن» دسکتاپ: بازگشت به نمای اولیه (کارهای روز) پس از جستجو
   const handleResetView = () => {
+    setTasksLoading(true);
     loadTypeRef.current = "daily";
     searchRowsRef.current = [];
     setIsSearchView(false);
@@ -663,10 +673,11 @@ export default function Home() {
       {(showSearch || showComprehensive) && (
         <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
           {showSearch && (
-            <SearchPanel
+            <SearchPanel onLoadingChange={setSimpleSearchLoading}
               onResult={(rows) => {
                 loadTypeRef.current = "search";
                 loadRequestRef.current++;
+                setTasksLoading(false); setLoadError("");
                 const orderedRows = sortSearchRows(rows);
                 searchRowsRef.current = orderedRows;
                 setTasks(orderedRows.slice(0, PAGE_SIZE));
@@ -678,11 +689,12 @@ export default function Home() {
             />
           )}
           {showComprehensive && (
-            <ComprehensiveSearch
+            <ComprehensiveSearch onLoadingChange={setComprehensiveSearchLoading}
               sync={compSync}
               onResult={(rows) => {
                 loadTypeRef.current = "search";
                 loadRequestRef.current++;
+                setTasksLoading(false); setLoadError("");
                 const orderedRows = sortSearchRows(rows);
                 searchRowsRef.current = orderedRows;
                 setTasks(orderedRows.slice(0, PAGE_SIZE));
@@ -731,6 +743,8 @@ export default function Home() {
         <FullHeight>
           <TaskTable
             tasks={tasks}
+            loading={tasksLoading || searchLoading}
+            loadError={loadError}
             forceTaskIdDescending={!draft && (isSearchView || Object.values(activeFilters).some(Array.isArray))}
             startNumber={(page - 1) * PAGE_SIZE}
             onRowClick={setSelectedTask}
@@ -752,16 +766,16 @@ export default function Home() {
           <button
             type="button"
             className="btn-primary px-3 py-1 text-xs"
-            disabled={page <= 1}
-            onClick={() => setPage(1)}
+            disabled={tasksLoading || searchLoading || page <= 1}
+            onClick={() => { setTasksLoading(true); setPage(1); }}
           >
             اولین
           </button>
           <button
             type="button"
             className="btn-primary px-3 py-1 text-xs"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
+            disabled={tasksLoading || searchLoading || page <= 1}
+            onClick={() => { setTasksLoading(true); setPage((p) => p - 1); }}
           >
             قبلی
           </button>
@@ -771,16 +785,16 @@ export default function Home() {
           <button
             type="button"
             className="btn-primary px-3 py-1 text-xs"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            disabled={tasksLoading || searchLoading || page >= totalPages}
+            onClick={() => { setTasksLoading(true); setPage((p) => p + 1); }}
           >
             بعدی
           </button>
           <button
             type="button"
             className="btn-primary px-3 py-1 text-xs"
-            disabled={page >= totalPages}
-            onClick={() => setPage(totalPages)}
+            disabled={tasksLoading || searchLoading || page >= totalPages}
+            onClick={() => { setTasksLoading(true); setPage(totalPages); }}
           >
             آخرین
           </button>

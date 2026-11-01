@@ -1,4 +1,5 @@
 "use client";
+import LoadingIndicator from "./LoadingIndicator";
 import { useEffect, useRef, useState } from 'react';
 import Tip from './Tip';
 import { parseTaskId } from '@/lib/task-inspection';
@@ -35,7 +36,7 @@ export default function TaskPurchaseTip({ taskId, children, block = false }) {
 
   const text = key => {
     if (!id) return 'پس از ثبت کار';
-    if (result?.id !== id || result.status === 'loading') return 'در حال دریافت…';
+    if (result?.id !== id || result.status === 'loading') return <LoadingIndicator inline label="دریافت شماره‌ها" />;
     if (result.status === 'error') return 'دریافت ناموفق؛ دوباره هاور کنید';
     return result.data[key].join('، ') || 'ثبت نشده';
   };

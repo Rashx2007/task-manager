@@ -1,4 +1,6 @@
 'use client';
+import ReadLoadingModal from "./ReadLoadingModal";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect } from 'react';
 
 import TaskContextHeader from "./TaskContextHeader";
@@ -6,9 +8,11 @@ import TaskContextHeader from "./TaskContextHeader";
 export default function SettingsModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ startWork: '07:30', restStart: '12:00', restEnd: '13:00', endWork: '16:00', ignore: false });
   const [saving, setSaving] = useState(false);
+  const [reading, setReading] = useState(true);
+  const [readError, setReadError] = useState('');
 
   useEffect(() => {
-    fetch('/api/settings').then((r) => r.json()).then((d) => { if (d.success && d.data) setForm(d.data); }).catch(() => {});
+    fetch('/api/settings').then((r) => r.json()).then((d) => { if (!d.success || !d.data) throw new Error(); setForm(d.data); }).catch(() => setReadError('دریافت تنظیمات ناموفق بود.')).finally(() => setReading(false));
   }, []);
 
   useEffect(() => {
@@ -31,6 +35,7 @@ export default function SettingsModal({ onClose, onSaved }) {
   };
 
   const inp = 'search-input w-full';
+  if (reading || readError) return <ReadLoadingModal title="دریافت تنظیمات" error={readError} onClose={onClose} />;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
@@ -50,7 +55,7 @@ export default function SettingsModal({ onClose, onSaved }) {
           <span className="text-sm font-bold">نادیده گرفتن تنظیمات زمانی</span>
         </label>
         <div className="flex gap-3 mt-6">
-          <button onClick={save} disabled={saving} className="btn-success">{saving ? 'در حال ذخیره...' : 'تأیید'}</button>
+          <button onClick={save} disabled={saving} className="btn-success">{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : 'تأیید'}</button>
           <button onClick={onClose} className="btn-danger">انصراف</button>
         </div>
       </div>

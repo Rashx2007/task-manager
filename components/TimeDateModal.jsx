@@ -1,4 +1,6 @@
 'use client';
+import ReadLoadingModal from "./ReadLoadingModal";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef, useMemo } from 'react';
 import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
@@ -199,6 +201,10 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const endRef = useRef(effEnd);
   endRef.current = effEnd;
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(true);
+  const [readError, setReadError] = useState('');
+  const [fixedLoading, setFixedLoading] = useState(true);
+  const [fixedError, setFixedError] = useState('');
   const [fixedRows, setFixedRows] = useState([]);
   const isFixed = priority === 'زمان انجام ثابت';
   const tableWrapRef = useRef(null);
@@ -293,10 +299,13 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   };
 
   useEffect(() => {
+    let active = true; setReading(true); setReadError(''); setFixedLoading(true); setFixedError('');
     (async () => {
       try {
         const res = await fetch(`/api/tasks/${taskId}`);
         const d = await res.json();
+        if (!active) return;
+        if (!res.ok || !d.success || !d.data) throw new Error();
         if (d.success && d.data) {
           const src = d.data;
           const prio = src.TDP || src.Priorities || '';
@@ -317,12 +326,15 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
             setEndTimeTouched(true);
           }
         }
-      } catch (err) {}
+      } catch { if (active) setReadError('دریافت زمان‌بندی کار ناموفق بود.'); }
+      finally { if (active) setReading(false); }
     })();
     fetch('/api/load-data?type=fixed&limit=1000')
       .then((r) => r.json())
-      .then((d) => { if (d.success) setFixedRows(d.data || []); })
-      .catch(() => {});
+      .then((d) => { if (!active) return; if (!d.success) throw new Error(); setFixedRows(d.data || []); })
+      .catch(() => { if (active) setFixedError('دریافت کارهای زمان ثابت ناموفق بود.'); })
+      .finally(() => { if (active) setFixedLoading(false); });
+    return () => { active = false; };
   }, [taskId]);
 
   useEffect(() => {
@@ -371,6 +383,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
   const inp = 'search-input w-full';
   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
 
+  if (reading || readError) return <ReadLoadingModal title="دریافت اولویت و زمان" taskId={taskId} error={readError} onClose={onClose} />;
   return (
     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -456,8 +469,9 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
                   <tr><th>کدکار</th><th>موضوع</th><th>الویت</th><th>طول بازه</th><th>زمان آغاز</th><th>زمان پایان</th><th>وضعیت</th></tr>
                 </thead>
                 <tbody>
-                  {fixedRows.length === 0 && <tr><td colSpan={7} className="text-center py-3">موردی وجود ندارد</td></tr>}
-                  {fixedRows.map((r) => {
+                  {!fixedLoading && !fixedError && fixedRows.length === 0 && <tr><td colSpan={7} className="text-center py-3">موردی وجود ندارد</td></tr>}
+                  {(fixedLoading || fixedError) && <tr><td colSpan={7}>{fixedLoading ? <LoadingIndicator label="دریافت کارهای زمان ثابت" /> : <p role="alert" className="text-red-800 p-3">{fixedError}</p>}</td></tr>}
+                  {!fixedLoading && !fixedError && fixedRows.map((r) => {
                     const bad = conflictIds.has(Number(r.TaskID));
                     return (
                       <tr
@@ -489,7 +503,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
         </div>
 
         <div className="flex gap-2 mt-6">
-          <button type="submit" disabled={busy} className="btn-success flex-1">{busy ? 'در حال ذخیره...' : 'ثبت'}</button>
+          <button type="submit" disabled={busy} className="btn-success flex-1">{busy ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : 'ثبت'}</button>
           <button type="button" onClick={onClose} className="btn-danger">بستن</button>
         </div>
       </form>

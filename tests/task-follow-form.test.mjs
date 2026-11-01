@@ -22,7 +22,7 @@ test('Touched operations use toasts and styled delete confirmation; clocks/picke
 async function loadHarness(){
  const a=src.indexOf('  const load = useCallback(async () => {'),b=src.indexOf('  useEffect(() => { load(); }, [load]);',a);
  const pending=[],rows=[],notices=[],owner={current:202},sequence={current:0};
- const c=vm.createContext({taskId:202,currentTaskRef:owner,loadSequenceRef:sequence,useCallback:fn=>fn,encodeURIComponent,showToast:(...v)=>notices.push(v),setRows:r=>rows.push(r),fetch:()=>new Promise(resolve=>pending.push(result=>resolve({ok:true,json:async()=>result})))});
+ const c=vm.createContext({taskId:202,currentTaskRef:owner,loadSequenceRef:sequence,useCallback:fn=>fn,encodeURIComponent,showToast:(...v)=>notices.push(v),setRows:r=>rows.push(r),setReadingRows:()=>{},setReadError:()=>{},fetch:()=>new Promise(resolve=>pending.push(result=>resolve({ok:true,json:async()=>result})))});
  vm.runInContext(src.slice(a,b)+'\nthis.run=load;',c);return{run:c.run,pending,rows,notices,owner};
 }
 test('Late earlier GET cannot overwrite a newer follow list',async()=>{const h=await loadHarness(),a=h.run(),b=h.run();h.pending[1]({success:true,rows:[{TaskID:202,FollowID:42}]});await b;h.pending[0]({success:true,rows:[{TaskID:202,FollowID:41}]});await a;assert.equal(h.rows.length,1);assert.equal(h.rows[0][0].FollowID,42);});

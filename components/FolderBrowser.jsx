@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import LoadingIndicator from "./LoadingIndicator";
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 import TaskContextHeader from "./TaskContextHeader";
 
@@ -7,15 +8,18 @@ export default function FolderBrowser({ contextTaskId = null, initial = '', onSe
   const [current, setCurrent] = useState('');
   const [parent, setParent] = useState('');
   const [folders, setFolders] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
+  const loadSequenceRef = useRef(0);
   const load = useCallback(async (p) => {
+    const token = ++loadSequenceRef.current;
     setLoading(true); setErr('');
     try {
       const res = await fetch(`/api/browse?path=${encodeURIComponent(p || '')}`);
       const d = await res.json();
-      if (d.success) {
+      if (token !== loadSequenceRef.current) return;
+      if (res.ok && d.success) {
         setCurrent(d.current || '');
         setParent(d.parent || '');
         setFolders(d.folders || []);
@@ -24,10 +28,9 @@ export default function FolderBrowser({ contextTaskId = null, initial = '', onSe
         setFolders([]);
       }
     } catch {
-      setErr('خطا در ارتباط با سرور');
-      setFolders([]);
+      if (token === loadSequenceRef.current) { setErr('خطا در ارتباط با سرور'); setFolders([]); }
     }
-    setLoading(false);
+    if (token === loadSequenceRef.current) setLoading(false);
   }, []);
 
   useEffect(() => { load(initial || ''); }, [initial, load]);
@@ -50,7 +53,7 @@ export default function FolderBrowser({ contextTaskId = null, initial = '', onSe
         </div>
 
         <div className="flex-1 overflow-y-auto bg-white rounded border border-gray-300 min-h-[220px] max-h-[320px]">
-          {loading && <div className="p-3 text-sm">در حال بارگذاری...</div>}
+          {loading && <LoadingIndicator />}
           {!loading && err && <div className="p-3 text-sm text-red-600">{err}</div>}
           {!loading && !err && folders.length === 0 && <div className="p-3 text-sm">پوشه‌ای وجود ندارد.</div>}
           {!loading && !err && folders.map((f) => (

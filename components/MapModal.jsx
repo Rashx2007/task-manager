@@ -1,4 +1,5 @@
 "use client";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef, useMemo } from "react";
 // ✅ مودال مرورگر سفارشی حذف شد؛ فقط دیالوگ بومی ویندوز (route: /api/open-dwg-dialog)
 
@@ -177,6 +178,8 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
   const [answers, setAnswers] = useState({});
   const [newNames, setNewNames] = useState({});
   const [busy, setBusy] = useState(false);
+  const [readingMap, setReadingMap] = useState(false);
+  const [readingAssets, setReadingAssets] = useState(true);
   const [centerMode, setCenterMode] = useState(false);
   const [chosenDwg, setChosenDwg] = useState("");
   // ✅ میانبر مسیرهای قبلی نقشه
@@ -234,7 +237,8 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
       .then((d) => {
         if (d.success) setAssets(d.data || []);
       })
-      .catch(() => { });
+      .catch(() => { })
+      .finally(() => setReadingAssets(false));
   }, []);
 
   const distinct = (arr) =>
@@ -286,6 +290,7 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
       alert("لطفاً «ساختمان» و «طبقه» را وارد کنید.");
       return;
     }
+    setReadingMap(true);
     try {
       let res = await fetch(
         `/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`,
@@ -338,7 +343,7 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
       }
     } catch (e) {
       alert("خطا در بارگذاری نقشه: " + e.message);
-    }
+    } finally { setReadingMap(false); }
   };
 
   const convert = async (mapIdArg) => {
@@ -876,6 +881,7 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
         </div>
 
         <TaskContextHeader taskId={contextTaskId} className="mb-3" />
+        {(readingMap || readingAssets || busy) && <LoadingIndicator label="دریافت یا پردازش نقشه" />}
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <label className="text-xs font-bold">
             ساختمان
@@ -1097,10 +1103,12 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
             {center && <span className="mr-2 text-red-600">🎯</span>}
             {centerMode && <span className="mr-2 text-orange-600">کلیک روی نقشه</span>}
           </div>
+          {(readingMap || busy) && <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/90"
+            onPointerDown={(event) => event.stopPropagation()}><LoadingIndicator label="دریافت نقشه" /></div>}
           <div
             className="mapzoom-wrap"
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
-            dangerouslySetInnerHTML={{ __html: svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }}
+            dangerouslySetInnerHTML={{ __html: (readingMap || busy) ? '' : svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }}
           />
         </div>
         <div className="text-[11px] text-gray-600 mt-1">

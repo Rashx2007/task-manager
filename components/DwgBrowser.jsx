@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import TaskContextHeader from "./TaskContextHeader";
@@ -9,17 +10,20 @@ export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onC
   const [dirs, setDirs] = useState([]);
   const [files, setFiles] = useState([]);
   const [sel, setSel] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState('');
   const nativeRef = useRef(null);
   const startedRef = useRef(false);
+  const loadSequenceRef = useRef(0);
 
   const load = useCallback(async (p) => {
-    setBusy(true);
+    const token = ++loadSequenceRef.current;
+    setBusy(true); setMsg('');
     try {
       const res = await fetch(`/api/browse-dwg?path=${encodeURIComponent(p || '')}`);
       const d = await res.json();
-      if (d.success) {
+      if (token !== loadSequenceRef.current) return;
+      if (res.ok && d.success) {
         setPath(d.path || '');
         setRoots(d.roots || []);
         setDirs(d.dirs || []);
@@ -27,9 +31,9 @@ export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onC
         setMsg('');
       } else setMsg('خطا: ' + d.error);
     } catch {
-      setMsg('خطا در ارتباط با سرور');
+      if (token === loadSequenceRef.current) setMsg('خطا در ارتباط با سرور');
     }
-    setBusy(false);
+    if (token === loadSequenceRef.current) setBusy(false);
   }, []);
 
   useEffect(() => {
@@ -99,20 +103,20 @@ export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onC
             <button key={r} type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => load(r)}>{r}</button>
           ))}
         </div>
-        {msg && <div className="mb-2 bg-red-100 text-red-800 rounded px-2 py-1 text-sm font-bold">{msg}</div>}
+        {!busy && msg && <div className="mb-2 bg-red-100 text-red-800 rounded px-2 py-1 text-sm font-bold">{msg}</div>}
         <div className="flex-1 min-h-[300px] overflow-auto bg-white rounded border border-gray-400">
-          {busy && <div className="p-3 text-sm font-bold">در حال خواندن…</div>}
-          {!busy && dirs.length === 0 && files.length === 0 && (
+          {busy && <LoadingIndicator label="دریافت فایل‌های نقشه" />}
+          {!busy && !msg && dirs.length === 0 && files.length === 0 && (
             <div className="p-3 text-sm text-gray-600">موردی یافت نشد؛ مسیر را بررسی کنید یا از «دیالوگ ویندوز» استفاده کنید.</div>
           )}
-          {dirs.map((d) => (
+          {!busy && !msg && dirs.map((d) => (
             <div key={d.full} className="flex items-center gap-2 px-3 py-1 cursor-pointer hover:bg-teal-50 border-b border-gray-100"
               onDoubleClick={() => load(d.full)}>
               <span>📁</span><span className="text-sm font-bold">{d.name}</span>
               <button type="button" className="btn-primary px-2 py-0.5 text-xs mr-auto" onClick={() => load(d.full)}>بازکن</button>
             </div>
           ))}
-          {files.map((f) => (
+          {!busy && !msg && files.map((f) => (
             <div key={f.full}
               className={`flex items-center gap-2 px-3 py-1 cursor-pointer border-b border-gray-100 ${sel === f.full ? 'bg-teal-200' : 'hover:bg-teal-50'}`}
               onClick={() => setSel(f.full)}

@@ -1,4 +1,6 @@
 "use client";
+import ReadLoadingModal from "./ReadLoadingModal";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useCallback, useRef } from "react";
 import FileBrowser from "./FileBrowser";
 import { showConfirm } from "@/lib/toast";
@@ -141,6 +143,12 @@ export default function AssetsModal({
   const [folderAskAsset, setFolderAskAsset] = useState(null);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [formHint, setFormHint] = useState("");
+  const [readingAssets, setReadingAssets] = useState(true);
+  const [readingBase, setReadingBase] = useState(true);
+  const [assetReadError, setAssetReadError] = useState("");
+  const [baseReadError, setBaseReadError] = useState("");
+  const assetReadRef = useRef(0);
+  const baseReadRef = useRef(0);
   const [base, setBase] = useState({ names: [], systems: [] });
   const [selectedBaseSystemId, setSelectedBaseSystemId] = useState("");
   const [selectedBaseAssetNameId, setSelectedBaseAssetNameId] = useState("");
@@ -148,16 +156,23 @@ export default function AssetsModal({
   const [newSystem, setNewSystem] = useState("");
 
   const loadAll = useCallback(async () => {
+    const token = ++assetReadRef.current; setReadingAssets(true); setAssetReadError("");
     try {
       const r = await fetch("/api/assets");
       const d = await r.json();
-      if (d.success) setAll(d.data || []);
-    } catch { }
+      if (token !== assetReadRef.current) return;
+      if (!r.ok || !d.success) throw new Error();
+      setAll(d.data || []);
+    } catch { if (token === assetReadRef.current) setAssetReadError("دریافت دستگاه‌ها ناموفق بود."); }
+    finally { if (token === assetReadRef.current) setReadingAssets(false); }
   }, []);
   const loadBase = useCallback(async () => {
+    const token = ++baseReadRef.current; setReadingBase(true); setBaseReadError("");
     try {
       const r = await fetch("/api/base-info");
       const d = await r.json();
+      if (token !== baseReadRef.current) return;
+      if (!r.ok || !d.success) throw new Error();
       if (d.success) {
         const systems = d.systems || [];
         setBase({ names: d.names || [], systems });
@@ -167,7 +182,8 @@ export default function AssetsModal({
             : String(systems[0]?.MechSystemsID ?? ""),
         );
       }
-    } catch { }
+    } catch { if (token === baseReadRef.current) setBaseReadError("دریافت اطلاعات پایه ناموفق بود."); }
+    finally { if (token === baseReadRef.current) setReadingBase(false); }
   }, []);
   useEffect(() => {
     loadAll();
@@ -528,6 +544,7 @@ const optionsFor = (field) => {
   };
 
   const inp = "search-input w-full";
+  if ((tab !== "devices" || form) && (readingBase || baseReadError)) return <ReadLoadingModal title="اطلاعات پایهٔ دستگاه‌ها" error={baseReadError} onClose={onClose} />;
   return (
     <div
       className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-3"
@@ -704,14 +721,15 @@ const optionsFor = (field) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.length === 0 && (
+                    {!readingAssets && !assetReadError && filtered.length === 0 && (
                       <tr>
                         <td colSpan={11} className="text-center py-6">
                           موردی یافت نشد
                         </td>
                       </tr>
                     )}
-                    {filtered.map((a) => (
+                    {(readingAssets || assetReadError) && <tr><td colSpan={11}>{readingAssets ? <LoadingIndicator label="دریافت دستگاه‌ها" /> : <p role="alert" className="p-3 text-red-800">{assetReadError}</p>}</td></tr>}
+                    {!readingAssets && !assetReadError && filtered.map((a) => (
                       <tr
                         key={a.AssetID}
                         onClick={() => selectAsset(a)}
@@ -938,7 +956,7 @@ const optionsFor = (field) => {
                   disabled={saving}
                   onClick={save}
                 >
-                  {saving ? "..." : "ذخیره"}
+                  {saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}
                 </button>
                 <button
                   className="btn-danger"

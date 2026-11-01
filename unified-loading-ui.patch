@@ -1,0 +1,1810 @@
+diff --git a/app/globals.css b/app/globals.css
+index 43e9b26..97a7bf0 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -651,4 +651,16 @@ body {
+   padding-bottom: 8px;
+   border-top: 1px solid rgba(0, 0, 0, 0.12);
+   margin-top: 4px;
+-}
+\ No newline at end of file
++}
++/* Shared async loading: visual spinner/skeleton, accessible label, reduced motion. */
++.app-loading { display:flex; align-items:center; justify-content:center; gap:14px; min-height:76px; padding:14px; color:#0f766e; box-sizing:border-box; direction:rtl; }
++.app-loading__spinner { display:inline-block; flex:0 0 auto; width:28px; height:28px; box-sizing:border-box; border:3px solid rgba(15,118,110,.18); border-top-color:currentColor; border-radius:50%; animation:app-loading-spin .8s linear infinite; }
++.app-loading__lines { display:flex; flex-direction:column; gap:7px; width:min(180px,50%); }
++.app-loading__lines > span { display:block; height:7px; width:100%; border-radius:99px; background:currentColor; opacity:.16; animation:app-loading-pulse 1.4s ease-in-out infinite; }
++.app-loading__lines > span:nth-child(2) { width:78%; animation-delay:.12s; }
++.app-loading__lines > span:nth-child(3) { width:54%; animation-delay:.24s; }
++.app-loading--inline { display:inline-flex; vertical-align:middle; min-height:0; padding:0 4px; gap:0; color:inherit; }
++.app-loading--inline .app-loading__spinner { width:18px; height:18px; border-width:2px; }
++@keyframes app-loading-spin { to { transform:rotate(360deg); } }
++@keyframes app-loading-pulse { 50% { opacity:.36; } }
++@media (prefers-reduced-motion: reduce) { .app-loading__spinner, .app-loading__lines > span { animation:none; } }
+diff --git a/app/page.js b/app/page.js
+index e96c846..cb1b883 100644
+--- a/app/page.js
++++ b/app/page.js
+@@ -56,6 +56,11 @@ export default function Home() {
+   const completionPendingRef = useRef(false);
+   const [totalFiltered, setTotalFiltered] = useState(0);
+   const [loadError, setLoadError] = useState("");
++  const [tasksLoading, setTasksLoading] = useState(true);
++  const [searchReads, setSearchReads] = useState({ simple: false, comprehensive: false });
++  const searchLoading = searchReads.simple || searchReads.comprehensive;
++  const setSimpleSearchLoading = useCallback((value) => setSearchReads((previous) => ({ ...previous, simple: value })), []);
++  const setComprehensiveSearchLoading = useCallback((value) => setSearchReads((previous) => ({ ...previous, comprehensive: value })), []);
+   const [selectedTask, setSelectedTask] = useState(null);
+   const [showSearch, setShowSearch] = useState(false);
+   const [showTaskForm, setShowTaskForm] = useState(false);
+@@ -255,6 +260,7 @@ export default function Home() {
+   const loadTasks = useCallback(async (filtersObj, pageNum) => {
+     const requestId = ++loadRequestRef.current;
+     const type = loadTypeRef.current;
++    setTasksLoading(true);
+     setLoadError("");
+     try {
+       if (type === "search") {
+@@ -297,6 +303,8 @@ export default function Home() {
+     } catch (e) {
+       if (requestId !== loadRequestRef.current) return;
+       setLoadError("خطا در ارتباط با سرور: " + e.message);
++    } finally {
++      if (requestId === loadRequestRef.current) setTasksLoading(false);
+     }
+   }, []);
+ 
+@@ -353,6 +361,7 @@ export default function Home() {
+       if (v == null) continue;
+       serializable[k] = Array.from(v);
+     }
++    setTasksLoading(true);
+     setActiveFilters(serializable);
+     setPage(1);
+     // ✅ بازتاب هم‌زمان فیلترهای ستونی در فرم فیلترها و بخش «وضعیت و بازهٔ تاریخ»
+@@ -463,6 +472,7 @@ export default function Home() {
+ 
+   // ✅ معادل دکمهٔ «پاک‌کردن» دسکتاپ: بازگشت به نمای اولیه (کارهای روز) پس از جستجو
+   const handleResetView = () => {
++    setTasksLoading(true);
+     loadTypeRef.current = "daily";
+     searchRowsRef.current = [];
+     setIsSearchView(false);
+@@ -663,10 +673,11 @@ export default function Home() {
+       {(showSearch || showComprehensive) && (
+         <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
+           {showSearch && (
+-            <SearchPanel
++            <SearchPanel onLoadingChange={setSimpleSearchLoading}
+               onResult={(rows) => {
+                 loadTypeRef.current = "search";
+                 loadRequestRef.current++;
++                setTasksLoading(false); setLoadError("");
+                 const orderedRows = sortSearchRows(rows);
+                 searchRowsRef.current = orderedRows;
+                 setTasks(orderedRows.slice(0, PAGE_SIZE));
+@@ -678,11 +689,12 @@ export default function Home() {
+             />
+           )}
+           {showComprehensive && (
+-            <ComprehensiveSearch
++            <ComprehensiveSearch onLoadingChange={setComprehensiveSearchLoading}
+               sync={compSync}
+               onResult={(rows) => {
+                 loadTypeRef.current = "search";
+                 loadRequestRef.current++;
++                setTasksLoading(false); setLoadError("");
+                 const orderedRows = sortSearchRows(rows);
+                 searchRowsRef.current = orderedRows;
+                 setTasks(orderedRows.slice(0, PAGE_SIZE));
+@@ -731,6 +743,8 @@ export default function Home() {
+         <FullHeight>
+           <TaskTable
+             tasks={tasks}
++            loading={tasksLoading || searchLoading}
++            loadError={loadError}
+             forceTaskIdDescending={!draft && (isSearchView || Object.values(activeFilters).some(Array.isArray))}
+             startNumber={(page - 1) * PAGE_SIZE}
+             onRowClick={setSelectedTask}
+@@ -752,16 +766,16 @@ export default function Home() {
+           <button
+             type="button"
+             className="btn-primary px-3 py-1 text-xs"
+-            disabled={page <= 1}
+-            onClick={() => setPage(1)}
++            disabled={tasksLoading || searchLoading || page <= 1}
++            onClick={() => { setTasksLoading(true); setPage(1); }}
+           >
+             اولین
+           </button>
+           <button
+             type="button"
+             className="btn-primary px-3 py-1 text-xs"
+-            disabled={page <= 1}
+-            onClick={() => setPage((p) => p - 1)}
++            disabled={tasksLoading || searchLoading || page <= 1}
++            onClick={() => { setTasksLoading(true); setPage((p) => p - 1); }}
+           >
+             قبلی
+           </button>
+@@ -771,16 +785,16 @@ export default function Home() {
+           <button
+             type="button"
+             className="btn-primary px-3 py-1 text-xs"
+-            disabled={page >= totalPages}
+-            onClick={() => setPage((p) => p + 1)}
++            disabled={tasksLoading || searchLoading || page >= totalPages}
++            onClick={() => { setTasksLoading(true); setPage((p) => p + 1); }}
+           >
+             بعدی
+           </button>
+           <button
+             type="button"
+             className="btn-primary px-3 py-1 text-xs"
+-            disabled={page >= totalPages}
+-            onClick={() => setPage(totalPages)}
++            disabled={tasksLoading || searchLoading || page >= totalPages}
++            onClick={() => { setTasksLoading(true); setPage(totalPages); }}
+           >
+             آخرین
+           </button>
+diff --git a/components/ApplicantFunctorModal.jsx b/components/ApplicantFunctorModal.jsx
+index c2000b2..5cdc601 100644
+--- a/components/ApplicantFunctorModal.jsx
++++ b/components/ApplicantFunctorModal.jsx
+@@ -1,4 +1,6 @@
+ 'use client';
++import ReadLoadingModal from "./ReadLoadingModal";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef } from 'react';
+ import { normalizeFa } from '@/lib/assetRules';
+ import { showToast } from '@/lib/toast';
+@@ -19,6 +21,9 @@ import TaskContextHeader from "./TaskContextHeader";
+ 
+ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
+   const [persons, setPersons] = useState([]);
++  const [readingPersons, setReadingPersons] = useState(true);
++  const [readingAssignment, setReadingAssignment] = useState(true);
++  const [readError, setReadError] = useState('');
+   const [applicant, setApplicant] = useState('');
+   const [functor, setFunctor] = useState('');
+   const [saving, setSaving] = useState(false);
+@@ -27,14 +32,16 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
+   const detailsCloseRef = useRef(null);
+ 
+   useEffect(() => {
+-    fetch('/api/persons').then((r) => r.json()).then((d) => { if (d.success) setPersons(d.data || []); }).catch(() => {});
++    setReadingPersons(true); setReadingAssignment(true); setReadError('');
++    fetch('/api/persons').then((r) => r.json()).then((d) => { if (!d.success) throw new Error(); setPersons(d.data || []); }).catch(() => setReadError('دریافت اشخاص ناموفق بود.')).finally(() => setReadingPersons(false));
+     fetch(`/api/applicant-functor?taskId=${taskId}`).then((r) => r.json()).then((d) => {
++      if (!d.success) throw new Error();
+       if (d.success && d.exists && d.data) {
+         setApplicant(d.data.ApplicantName || '');
+         setFunctor(d.data.FunctorName || '');
+         setPersonIds({ applicant: d.data.ApplicantID ?? null, functor: d.data.FunctorID ?? null });
+       }
+-    }).catch(() => {});
++    }).catch(() => setReadError('دریافت درخواست‌کننده و انجام‌دهنده ناموفق بود.')).finally(() => setReadingAssignment(false));
+   }, [taskId]);
+ 
+   useEffect(() => {
+@@ -111,6 +118,7 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
+     setSaving(false);
+   };
+ 
++  if (readingPersons || readingAssignment || readError) return <ReadLoadingModal title="دریافت اطلاعات اشخاص کار" taskId={taskId} error={readError} onClose={onClose} />;
+     return (
+     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000]"
+       onClick={(e) => e.stopPropagation()}
+@@ -124,7 +132,7 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
+         {personField('انجام‌دهنده', 'functor', functor, setFunctor)}
+         <datalist id="af-persons">{persons.map((p) => <option key={p.PersonID} value={p.PersonName} />)}</datalist>
+         <div className="flex gap-3">
+-          <button type="submit" disabled={saving} className="btn-success">{saving ? '...' : 'ذخیره'}</button>
++          <button type="submit" disabled={saving} className="btn-success">{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}</button>
+           <button type="button" onClick={onClose} className="btn-danger">بستن</button>
+         </div>
+       </form>
+diff --git a/components/AssetsModal.jsx b/components/AssetsModal.jsx
+index 961ab65..6746a99 100644
+--- a/components/AssetsModal.jsx
++++ b/components/AssetsModal.jsx
+@@ -1,4 +1,6 @@
+ "use client";
++import ReadLoadingModal from "./ReadLoadingModal";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useCallback, useRef } from "react";
+ import FileBrowser from "./FileBrowser";
+ import { showConfirm } from "@/lib/toast";
+@@ -141,6 +143,12 @@ export default function AssetsModal({
+   const [folderAskAsset, setFolderAskAsset] = useState(null);
+   const [selectedAsset, setSelectedAsset] = useState(null);
+   const [formHint, setFormHint] = useState("");
++  const [readingAssets, setReadingAssets] = useState(true);
++  const [readingBase, setReadingBase] = useState(true);
++  const [assetReadError, setAssetReadError] = useState("");
++  const [baseReadError, setBaseReadError] = useState("");
++  const assetReadRef = useRef(0);
++  const baseReadRef = useRef(0);
+   const [base, setBase] = useState({ names: [], systems: [] });
+   const [selectedBaseSystemId, setSelectedBaseSystemId] = useState("");
+   const [selectedBaseAssetNameId, setSelectedBaseAssetNameId] = useState("");
+@@ -148,16 +156,23 @@ export default function AssetsModal({
+   const [newSystem, setNewSystem] = useState("");
+ 
+   const loadAll = useCallback(async () => {
++    const token = ++assetReadRef.current; setReadingAssets(true); setAssetReadError("");
+     try {
+       const r = await fetch("/api/assets");
+       const d = await r.json();
+-      if (d.success) setAll(d.data || []);
+-    } catch { }
++      if (token !== assetReadRef.current) return;
++      if (!r.ok || !d.success) throw new Error();
++      setAll(d.data || []);
++    } catch { if (token === assetReadRef.current) setAssetReadError("دریافت دستگاه‌ها ناموفق بود."); }
++    finally { if (token === assetReadRef.current) setReadingAssets(false); }
+   }, []);
+   const loadBase = useCallback(async () => {
++    const token = ++baseReadRef.current; setReadingBase(true); setBaseReadError("");
+     try {
+       const r = await fetch("/api/base-info");
+       const d = await r.json();
++      if (token !== baseReadRef.current) return;
++      if (!r.ok || !d.success) throw new Error();
+       if (d.success) {
+         const systems = d.systems || [];
+         setBase({ names: d.names || [], systems });
+@@ -167,7 +182,8 @@ export default function AssetsModal({
+             : String(systems[0]?.MechSystemsID ?? ""),
+         );
+       }
+-    } catch { }
++    } catch { if (token === baseReadRef.current) setBaseReadError("دریافت اطلاعات پایه ناموفق بود."); }
++    finally { if (token === baseReadRef.current) setReadingBase(false); }
+   }, []);
+   useEffect(() => {
+     loadAll();
+@@ -528,6 +544,7 @@ const optionsFor = (field) => {
+   };
+ 
+   const inp = "search-input w-full";
++  if ((tab !== "devices" || form) && (readingBase || baseReadError)) return <ReadLoadingModal title="اطلاعات پایهٔ دستگاه‌ها" error={baseReadError} onClose={onClose} />;
+   return (
+     <div
+       className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-3"
+@@ -704,14 +721,15 @@ const optionsFor = (field) => {
+                     </tr>
+                   </thead>
+                   <tbody>
+-                    {filtered.length === 0 && (
++                    {!readingAssets && !assetReadError && filtered.length === 0 && (
+                       <tr>
+                         <td colSpan={11} className="text-center py-6">
+                           موردی یافت نشد
+                         </td>
+                       </tr>
+                     )}
+-                    {filtered.map((a) => (
++                    {(readingAssets || assetReadError) && <tr><td colSpan={11}>{readingAssets ? <LoadingIndicator label="دریافت دستگاه‌ها" /> : <p role="alert" className="p-3 text-red-800">{assetReadError}</p>}</td></tr>}
++                    {!readingAssets && !assetReadError && filtered.map((a) => (
+                       <tr
+                         key={a.AssetID}
+                         onClick={() => selectAsset(a)}
+@@ -938,7 +956,7 @@ const optionsFor = (field) => {
+                   disabled={saving}
+                   onClick={save}
+                 >
+-                  {saving ? "..." : "ذخیره"}
++                  {saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}
+                 </button>
+                 <button
+                   className="btn-danger"
+diff --git a/components/BackupModal.jsx b/components/BackupModal.jsx
+index 5f0b3e9..1be7065 100644
+--- a/components/BackupModal.jsx
++++ b/components/BackupModal.jsx
+@@ -1,4 +1,5 @@
+ "use client";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef } from "react";
+ 
+ import TaskContextHeader from "./TaskContextHeader";
+@@ -9,14 +10,21 @@ export default function BackupModal({ onClose }) {
+   const [selFile, setSelFile] = useState("");
+   const [restorePath, setRestorePath] = useState("");
+   const [busy, setBusy] = useState(false);
++  const [readingFiles, setReadingFiles] = useState(true);
++  const [readError, setReadError] = useState("");
++  const readSequenceRef = useRef(0);
+   const fileRef = useRef(null);
+ 
+   const load = async () => {
++    const token = ++readSequenceRef.current; setReadingFiles(true); setReadError("");
+     try {
+       const res = await fetch(`/api/backup?root=${encodeURIComponent(folder)}`);
+       const d = await res.json();
+-      if (d.success) setFiles(d.files || []);
+-    } catch {}
++      if (token !== readSequenceRef.current) return;
++      if (!res.ok || !d.success) throw new Error();
++      setFiles(d.files || []);
++    } catch { if (token === readSequenceRef.current) setReadError("دریافت فایل‌های پشتیبان ناموفق بود."); }
++    finally { if (token === readSequenceRef.current) setReadingFiles(false); }
+   };
+   useEffect(() => {
+     load();
+@@ -143,6 +151,7 @@ export default function BackupModal({ onClose }) {
+         <h3 className="text-lg font-bold mb-4">پشتیبان‌گیری / بازگردانی پایگاه داده</h3>
+ 
+         <TaskContextHeader className="mb-4" />
++        {busy && <LoadingIndicator label="عملیات پشتیبان‌گیری یا بازگردانی" />}
+         <label className="block text-sm font-bold mb-1">پوشهٔ پشتیبان‌ها</label>
+         <div className="flex gap-2 mb-3">
+           <input className={inp} dir="ltr" value={folder} onChange={(e) => setFolder(e.target.value)} />
+@@ -164,9 +173,12 @@ export default function BackupModal({ onClose }) {
+           </button>
+         </div>
+ 
++        {readingFiles && <LoadingIndicator label="دریافت فایل‌های پشتیبان" />}
++        {readError && <p role="alert" className="text-red-800">{readError}</p>}
+         <label className="block text-sm font-bold mb-1">فایل‌های موجود (برای بازگردانی)</label>
+         <select
+           className={inp}
++          disabled={readingFiles || !!readError}
+           value={selFile}
+           onChange={(e) => {
+             setSelFile(e.target.value);
+diff --git a/components/ComprehensiveSearch.jsx b/components/ComprehensiveSearch.jsx
+index f5ac52b..c3b0edb 100644
+--- a/components/ComprehensiveSearch.jsx
++++ b/components/ComprehensiveSearch.jsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef } from 'react';
+ import DatePicker, { DateObject } from 'react-multi-date-picker';
+ import persian from 'react-date-object/calendars/persian';
+@@ -60,7 +61,7 @@ function Sec({ k, title, badge, open, onToggle, children }) {
+   );
+ }
+ 
+-export default function ComprehensiveSearch({ onResult, onClose, sync = null }) {
++export default function ComprehensiveSearch({ onResult, onClose, sync = null, onLoadingChange }) {
+   const [status, setStatus] = useState('current');
+   const [f, setF] = useState({ ...EMPTY_F });
+   const [start, setStart] = useState(DEFAULT_START);
+@@ -75,6 +76,11 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+   const [total, setTotal] = useState(null);
+   const [loaded, setLoaded] = useState(0);
+   const [loadingMore, setLoadingMore] = useState(false);
++  const [searching, setSearching] = useState(false);
++  const [readingDevices, setReadingDevices] = useState(true);
++  const [devicesError, setDevicesError] = useState('');
++  const searchSequenceRef = useRef(0);
++  useEffect(() => () => { searchSequenceRef.current++; onLoadingChange?.(false); }, [onLoadingChange]);
+   const accRef = useRef([]);
+   const lastPayloadRef = useRef(null);
+ 
+@@ -110,7 +116,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+   }, [sync?.nonce]);
+ 
+   useEffect(() => {
+-    fetch('/api/smart-search?kind=devices').then((r) => r.json()).then((d) => { if (d.success) setDevices(d.rows || []); }).catch(() => {});
++    fetch('/api/smart-search?kind=devices').then((r) => r.json()).then((d) => { if (!d.success) throw new Error(); setDevices(d.rows || []); }).catch(() => setDevicesError('دریافت دستگاه‌ها ناموفق بود.')).finally(() => setReadingDevices(false));
+     const h = (e) => { if (e.key === 'Escape') onClose(); };
+     window.addEventListener('keydown', h);
+     return () => window.removeEventListener('keydown', h);
+@@ -219,9 +225,13 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+ 
+     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ status, f: { ...f, ...extra }, start: start ? start.toISOString() : null, end: end ? end.toISOString() : null, smartText, quick, facetFilters: facetsToUse, open })); } catch {}
+ 
++    const searchToken = ++searchSequenceRef.current;
++    setLoadingMore(false);
++    setSearching(true); onLoadingChange?.(true);
+     try {
+       const res = await fetch('/api/comprehensive-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+       const d = await res.json();
++      if (searchToken !== searchSequenceRef.current) return;
+       if (d.success) {
+         accRef.current = d.data || [];
+         setLoaded(accRef.current.length);
+@@ -231,16 +241,20 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+         setFacets(d.facets || { buildings: [], blocks: [], floors: [], entrances: [], locations: [], deviceTypes: [], systems: [], priorities: [] });
+         setOpen((o) => ({ ...o, form: false, statusDate: false }));
+       } else alert('خطا: ' + d.error);
+-    } catch { alert('خطا در ارتباط با سرور'); }
++    } catch { if (searchToken === searchSequenceRef.current) alert('خطا در ارتباط با سرور'); }
++    finally { if (searchToken === searchSequenceRef.current) { setSearching(false); onLoadingChange?.(false); } }
+   };
+ 
+   const loadMore = async () => {
+     const base = lastPayloadRef.current;
+     if (!base) return;
+     setLoadingMore(true);
++    const searchToken = ++searchSequenceRef.current;
++    setSearching(true); onLoadingChange?.(true);
+     try {
+       const res = await fetch('/api/comprehensive-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, offset: accRef.current.length }) });
+       const d = await res.json();
++      if (searchToken !== searchSequenceRef.current) return;
+       if (d.success) {
+         accRef.current = accRef.current.concat(d.data || []);
+         setLoaded(accRef.current.length);
+@@ -248,7 +262,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+         if (onResult) onResult(accRef.current);
+       }
+     } catch {}
+-    setLoadingMore(false);
++    if (searchToken === searchSequenceRef.current) { setSearching(false); onLoadingChange?.(false); setLoadingMore(false); }
+   };
+ 
+   const finalize = (device) => {
+@@ -377,6 +391,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+         </div>
+       </div>
+ 
++      {(searching || loadingMore) && <LoadingIndicator label="جستجوی کارها" />}
+       <Sec k="presets" open={open.presets} onToggle={toggleSec} title="⚡ جستجوی سریع (پریست‌ها)">
+         <div className="flex flex-wrap gap-2 items-center">
+           <button type="button" onClick={() => applyPreset('today')} className="btn-primary px-3 py-1 text-xs">امروز</button>
+@@ -432,7 +447,7 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+ 
+       <Sec k="facets" open={open.facets} onToggle={toggleSec} title="🎯 باریک‌کردن نتیجه (کلیکی)">
+         <div className="bg-white p-2 rounded">
+-          {!anyFacetData ? (
++          {searching ? <LoadingIndicator label="دریافت گزینه‌های نتیجه" /> : !anyFacetData ? (
+             <div className="text-xs text-gray-500">پس از اولین جستجو، گزینه‌های باریک‌کردن اینجا ظاهر می‌شوند.</div>
+           ) : (
+             <>
+@@ -467,10 +482,12 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+         </div>
+       )}
+ 
++      {readingDevices && <LoadingIndicator label="دریافت فهرست دستگاه‌ها" />}
++      {devicesError && <p role="alert" className="text-red-200">{devicesError}</p>}
+       <Sec k="smart" open={open.smart} onToggle={toggleSec} title="🩺 جستجوی هوشمند دستگاه" badge={smartText ? 'فعال' : ''}>
+         <div className="relative bg-white p-2 rounded">
+           <div className="flex items-center gap-2">
+-            <input value={smartText} onChange={(e) => onSmartChange(e.target.value)}
++            <input disabled={readingDevices || !!devicesError} value={smartText} onChange={(e) => onSmartChange(e.target.value)}
+               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+               className="search-input flex-1" placeholder="مثلاً: ط14 ، د فن‌کویل ، م موضوع ، ت توضیحات" />
+             <span className="font-bold text-sm whitespace-nowrap">{deviceStatus}</span>
+@@ -511,12 +528,12 @@ export default function ComprehensiveSearch({ onResult, onClose, sync = null })
+         </form>
+       </Sec>
+ 
+-      {total != null && (
++      {!searching && total != null && (
+         <div className="mt-2 bg-white/90 rounded p-2 flex items-center gap-2 flex-wrap">
+           <span className="text-sm font-bold">نمایش {loaded} از {total} نتیجه</span>
+           {loaded < total && (
+             <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={loadingMore} onClick={loadMore}>
+-              {loadingMore ? '...' : 'نمایش بیشتر…'}
++              {loadingMore ? <LoadingIndicator inline label="دریافت نتایج بیشتر" /> : 'نمایش بیشتر…'}
+             </button>
+           )}
+         </div>
+diff --git a/components/DwgBrowser.jsx b/components/DwgBrowser.jsx
+index 3f465f8..6bb210b 100644
+--- a/components/DwgBrowser.jsx
++++ b/components/DwgBrowser.jsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef, useCallback } from 'react';
+ 
+ import TaskContextHeader from "./TaskContextHeader";
+@@ -9,17 +10,20 @@ export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onC
+   const [dirs, setDirs] = useState([]);
+   const [files, setFiles] = useState([]);
+   const [sel, setSel] = useState('');
+-  const [busy, setBusy] = useState(false);
++  const [busy, setBusy] = useState(true);
+   const [msg, setMsg] = useState('');
+   const nativeRef = useRef(null);
+   const startedRef = useRef(false);
++  const loadSequenceRef = useRef(0);
+ 
+   const load = useCallback(async (p) => {
+-    setBusy(true);
++    const token = ++loadSequenceRef.current;
++    setBusy(true); setMsg('');
+     try {
+       const res = await fetch(`/api/browse-dwg?path=${encodeURIComponent(p || '')}`);
+       const d = await res.json();
+-      if (d.success) {
++      if (token !== loadSequenceRef.current) return;
++      if (res.ok && d.success) {
+         setPath(d.path || '');
+         setRoots(d.roots || []);
+         setDirs(d.dirs || []);
+@@ -27,9 +31,9 @@ export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onC
+         setMsg('');
+       } else setMsg('خطا: ' + d.error);
+     } catch {
+-      setMsg('خطا در ارتباط با سرور');
++      if (token === loadSequenceRef.current) setMsg('خطا در ارتباط با سرور');
+     }
+-    setBusy(false);
++    if (token === loadSequenceRef.current) setBusy(false);
+   }, []);
+ 
+   useEffect(() => {
+@@ -99,20 +103,20 @@ export default function DwgBrowser({ contextTaskId = null, defaultPath = '', onC
+             <button key={r} type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => load(r)}>{r}</button>
+           ))}
+         </div>
+-        {msg && <div className="mb-2 bg-red-100 text-red-800 rounded px-2 py-1 text-sm font-bold">{msg}</div>}
++        {!busy && msg && <div className="mb-2 bg-red-100 text-red-800 rounded px-2 py-1 text-sm font-bold">{msg}</div>}
+         <div className="flex-1 min-h-[300px] overflow-auto bg-white rounded border border-gray-400">
+-          {busy && <div className="p-3 text-sm font-bold">در حال خواندن…</div>}
+-          {!busy && dirs.length === 0 && files.length === 0 && (
++          {busy && <LoadingIndicator label="دریافت فایل‌های نقشه" />}
++          {!busy && !msg && dirs.length === 0 && files.length === 0 && (
+             <div className="p-3 text-sm text-gray-600">موردی یافت نشد؛ مسیر را بررسی کنید یا از «دیالوگ ویندوز» استفاده کنید.</div>
+           )}
+-          {dirs.map((d) => (
++          {!busy && !msg && dirs.map((d) => (
+             <div key={d.full} className="flex items-center gap-2 px-3 py-1 cursor-pointer hover:bg-teal-50 border-b border-gray-100"
+               onDoubleClick={() => load(d.full)}>
+               <span>📁</span><span className="text-sm font-bold">{d.name}</span>
+               <button type="button" className="btn-primary px-2 py-0.5 text-xs mr-auto" onClick={() => load(d.full)}>بازکن</button>
+             </div>
+           ))}
+-          {files.map((f) => (
++          {!busy && !msg && files.map((f) => (
+             <div key={f.full}
+               className={`flex items-center gap-2 px-3 py-1 cursor-pointer border-b border-gray-100 ${sel === f.full ? 'bg-teal-200' : 'hover:bg-teal-50'}`}
+               onClick={() => setSel(f.full)}
+diff --git a/components/FileBrowser.jsx b/components/FileBrowser.jsx
+index f57abac..01c7981 100644
+--- a/components/FileBrowser.jsx
++++ b/components/FileBrowser.jsx
+@@ -1,5 +1,6 @@
+ 'use client';
+-import { useState, useEffect, useCallback } from 'react';
++import LoadingIndicator from "./LoadingIndicator";
++import { useState, useEffect, useCallback, useRef } from 'react';
+ 
+ const IMG_EXT = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
+ const extOf = (name) => (name.includes('.') ? name.split('.').pop().toLowerCase() : '');
+@@ -49,21 +50,24 @@ export default function FileBrowser({ contextTaskId = null, mode = 'folder', ini
+   const [folders, setFolders] = useState([]);
+   const [files, setFiles] = useState([]);
+   const [selected, setSelected] = useState(null);
+-  const [loading, setLoading] = useState(false);
++  const [loading, setLoading] = useState(true);
+   const [err, setErr] = useState('');
+   const [pathInput, setPathInput] = useState('');
+ 
++  const loadSequenceRef = useRef(0);
+   const load = useCallback(async (p) => {
++    const token = ++loadSequenceRef.current;
+     setLoading(true); setErr(''); setSelected(null);
+     try {
+       const res = await fetch(`/api/files?path=${encodeURIComponent(p || '')}`);
+       const d = await res.json();
+-      if (d.success) {
++      if (token !== loadSequenceRef.current) return;
++      if (res.ok && d.success) {
+         setCurrent(d.current || ''); setPathInput(d.current || '');
+         setParent(d.parent || ''); setFolders(d.folders || []); setFiles(d.files || []);
+       } else { setErr(d.error || 'خطا'); setFolders([]); setFiles([]); }
+-    } catch { setErr('خطا در ارتباط با سرور'); }
+-    setLoading(false);
++    } catch { if (token === loadSequenceRef.current) setErr('خطا در ارتباط با سرور'); }
++    if (token === loadSequenceRef.current) setLoading(false);
+   }, []);
+ 
+   useEffect(() => { load(initial || ''); }, [initial, load]);
+@@ -123,7 +127,7 @@ export default function FileBrowser({ contextTaskId = null, mode = 'folder', ini
+             </button>
+           </div>
+           <div className="overflow-y-auto bg-white rounded border border-gray-300" style={{ minHeight: 260, maxHeight: 420 }}>
+-            {loading && <div className="p-3 text-sm">در حال بارگذاری...</div>}
++            {loading && <LoadingIndicator />}
+             {!loading && err && <div className="p-3 text-sm text-red-600">{err}</div>}
+             {!loading && !err && view === 'list' && (
+               <>
+diff --git a/components/FolderBrowser.jsx b/components/FolderBrowser.jsx
+index 7db7910..0d8c249 100644
+--- a/components/FolderBrowser.jsx
++++ b/components/FolderBrowser.jsx
+@@ -1,5 +1,6 @@
+ 'use client';
+-import { useState, useEffect, useCallback } from 'react';
++import LoadingIndicator from "./LoadingIndicator";
++import { useState, useEffect, useCallback, useRef } from 'react';
+ 
+ import TaskContextHeader from "./TaskContextHeader";
+ 
+@@ -7,15 +8,18 @@ export default function FolderBrowser({ contextTaskId = null, initial = '', onSe
+   const [current, setCurrent] = useState('');
+   const [parent, setParent] = useState('');
+   const [folders, setFolders] = useState([]);
+-  const [loading, setLoading] = useState(false);
++  const [loading, setLoading] = useState(true);
+   const [err, setErr] = useState('');
+ 
++  const loadSequenceRef = useRef(0);
+   const load = useCallback(async (p) => {
++    const token = ++loadSequenceRef.current;
+     setLoading(true); setErr('');
+     try {
+       const res = await fetch(`/api/browse?path=${encodeURIComponent(p || '')}`);
+       const d = await res.json();
+-      if (d.success) {
++      if (token !== loadSequenceRef.current) return;
++      if (res.ok && d.success) {
+         setCurrent(d.current || '');
+         setParent(d.parent || '');
+         setFolders(d.folders || []);
+@@ -24,10 +28,9 @@ export default function FolderBrowser({ contextTaskId = null, initial = '', onSe
+         setFolders([]);
+       }
+     } catch {
+-      setErr('خطا در ارتباط با سرور');
+-      setFolders([]);
++      if (token === loadSequenceRef.current) { setErr('خطا در ارتباط با سرور'); setFolders([]); }
+     }
+-    setLoading(false);
++    if (token === loadSequenceRef.current) setLoading(false);
+   }, []);
+ 
+   useEffect(() => { load(initial || ''); }, [initial, load]);
+@@ -50,7 +53,7 @@ export default function FolderBrowser({ contextTaskId = null, initial = '', onSe
+         </div>
+ 
+         <div className="flex-1 overflow-y-auto bg-white rounded border border-gray-300 min-h-[220px] max-h-[320px]">
+-          {loading && <div className="p-3 text-sm">در حال بارگذاری...</div>}
++          {loading && <LoadingIndicator />}
+           {!loading && err && <div className="p-3 text-sm text-red-600">{err}</div>}
+           {!loading && !err && folders.length === 0 && <div className="p-3 text-sm">پوشه‌ای وجود ندارد.</div>}
+           {!loading && !err && folders.map((f) => (
+diff --git a/components/FolderModal.jsx b/components/FolderModal.jsx
+index 80a3946..851f13d 100644
+--- a/components/FolderModal.jsx
++++ b/components/FolderModal.jsx
+@@ -1,5 +1,7 @@
+ // components/FolderModal.jsx
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
++import ReadLoadingModal from "./ReadLoadingModal";
+ import { useState, useEffect } from 'react';
+ import FileBrowser from './FileBrowser';
+ import { showToast, showConfirm } from '@/lib/toast';
+@@ -16,6 +18,8 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
+   const [fileName, setFileName] = useState('');
+   const [folderPath, setFolderPath] = useState('');
+   const [saving, setSaving] = useState(false);
++  const [reading, setReading] = useState(true);
++  const [readError, setReadError] = useState('');
+   const [allowCopy, setAllowCopy] = useState(true);
+   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+   const [showFileBrowser, setShowFileBrowser] = useState(false);
+@@ -30,6 +34,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
+   }, []);
+ 
+   useEffect(() => {
++    setReading(true); setReadError('');
+     (async () => {
+       try {
+         const r = await fetch(`/api/folder?taskId=${taskId}`);
+@@ -41,7 +46,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
+         }
+         const res = await fetch(`/api/task-folder?taskId=${taskId}`);
+         const t = await res.json();
+-        if (!t.success) return;
++        if (!t.success) throw new Error();
+         setAssetId(t.assetId);
+         if (t.assetFolder) { setFolderPath(t.subPath); return; }
+         showConfirm('پوشه‌ای برای این دستگاه تعیین نشده است.\nابتدا پوشهٔ دستگاه را تعیین می‌کنید؟', {
+@@ -54,7 +59,8 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
+             setShowFolderBrowser(true);
+           },
+         });
+-      } catch {}
++      } catch { setReadError('دریافت مسیر ضمائم ناموفق بود.'); }
++      finally { setReading(false); }
+     })();
+   }, [taskId]);
+ 
+@@ -211,6 +217,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
+   };
+ 
+   const inp = 'search-input w-full';
++  if (reading || readError) return <ReadLoadingModal title="دریافت پوشهٔ ضمائم" taskId={taskId} error={readError} onClose={onClose} />;
+   return (
+     <div
+       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+@@ -251,7 +258,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
+         </div>
+ 
+         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-teal-800/20">
+-          <button onClick={save} disabled={saving} className="btn-success flex-1">{saving ? '...' : 'ذخیره'}</button>
++          <button onClick={save} disabled={saving} className="btn-success flex-1">{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}</button>
+           <button onClick={onClose} className="btn-danger flex-1">بستن</button>
+         </div>
+       </div>
+diff --git a/components/FollowModal.jsx b/components/FollowModal.jsx
+index c50c631..0d20546 100644
+--- a/components/FollowModal.jsx
++++ b/components/FollowModal.jsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useCallback, useRef } from 'react';
+ import DatePicker, { DateObject } from 'react-multi-date-picker';
+ import persian from 'react-date-object/calendars/persian';
+@@ -200,6 +201,8 @@ import TaskContextHeader from "./TaskContextHeader";
+ 
+ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
+   const [rows, setRows] = useState([]);
++  const [readingRows, setReadingRows] = useState(true);
++  const [readError, setReadError] = useState('');
+   const [text, setTextState] = useState(shamsiStamp);
+   const textRef = useRef(text);
+   // ✅ شروع و پایان = لحظهٔ باز شدن مودال
+@@ -276,16 +279,20 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
+ 
+   const load = useCallback(async () => {
+     const sequence = ++loadSequenceRef.current;
++    setReadingRows(true); setReadError('');
+     try {
+       const res = await fetch(`/api/follow?taskId=${encodeURIComponent(taskId)}`);
+       const d = await res.json();
+       if (sequence !== loadSequenceRef.current || currentTaskRef.current !== taskId) return;
+       if (!res.ok || !d.success || !Array.isArray(d.rows) || d.rows.some(row => Number(row.TaskID) !== Number(taskId))) {
++        setReadError('دریافت پیگیری ناموفق بود: ' + (d.error || 'پاسخ با این کار تطابق ندارد.'));
+         showToast('دریافت پیگیری ناموفق بود: ' + (d.error || 'پاسخ با این کار تطابق ندارد.'), 'error'); return;
+       }
+       setRows(d.rows);
+     } catch {
+-      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) showToast('دریافت فهرست پیگیری ناموفق بود.', 'error');
++      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) { setReadError('دریافت فهرست پیگیری ناموفق بود.'); showToast('دریافت فهرست پیگیری ناموفق بود.', 'error'); }
++    } finally {
++      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) setReadingRows(false);
+     }
+   }, [taskId]);
+   useEffect(() => { load(); }, [load]);
+@@ -556,12 +563,13 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
+                 </tr>
+               </thead>
+               <tbody>
+-                {rows.length === 0 && (
++                {!readingRows && !readError && rows.length === 0 && (
+                   <tr>
+                     <td colSpan={6} className="text-center py-4">ردیفی وجود ندارد</td>
+                   </tr>
+                 )}
+-                {rows.map((r) => (
++                {(readingRows || readError) && <tr><td colSpan={6}>{readingRows ? <LoadingIndicator label="دریافت سوابق پیگیری" /> : <p role="alert" className="p-3 text-red-800">{readError}</p>}</td></tr>}
++                {!readingRows && !readError && rows.map((r) => (
+                   <tr
+                     key={r.FollowID}
+                     onClick={() => pickRow(r)}
+diff --git a/components/LoadingIndicator.jsx b/components/LoadingIndicator.jsx
+new file mode 100644
+index 0000000..059186e
+--- /dev/null
++++ b/components/LoadingIndicator.jsx
+@@ -0,0 +1,10 @@
++"use client";
++
++export default function LoadingIndicator({ label = "در حال بارگذاری اطلاعات", inline = false }) {
++  return <span role="status" aria-live="polite" aria-atomic="true" aria-label={label}
++    className={`app-loading${inline ? ' app-loading--inline' : ''}`}>
++    <span className="app-loading__spinner" aria-hidden="true" />
++    {!inline && <span className="app-loading__lines" aria-hidden="true"><span /><span /><span /></span>}
++    <span className="sr-only">{label}</span>
++  </span>;
++}
+diff --git a/components/MapModal.jsx b/components/MapModal.jsx
+index 4b3fa6e..82dd443 100644
+--- a/components/MapModal.jsx
++++ b/components/MapModal.jsx
+@@ -1,4 +1,5 @@
+ "use client";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef, useMemo } from "react";
+ // ✅ مودال مرورگر سفارشی حذف شد؛ فقط دیالوگ بومی ویندوز (route: /api/open-dwg-dialog)
+ 
+@@ -177,6 +178,8 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
+   const [answers, setAnswers] = useState({});
+   const [newNames, setNewNames] = useState({});
+   const [busy, setBusy] = useState(false);
++  const [readingMap, setReadingMap] = useState(false);
++  const [readingAssets, setReadingAssets] = useState(true);
+   const [centerMode, setCenterMode] = useState(false);
+   const [chosenDwg, setChosenDwg] = useState("");
+   // ✅ میانبر مسیرهای قبلی نقشه
+@@ -234,7 +237,8 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
+       .then((d) => {
+         if (d.success) setAssets(d.data || []);
+       })
+-      .catch(() => { });
++      .catch(() => { })
++      .finally(() => setReadingAssets(false));
+   }, []);
+ 
+   const distinct = (arr) =>
+@@ -286,6 +290,7 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
+       alert("لطفاً «ساختمان» و «طبقه» را وارد کنید.");
+       return;
+     }
++    setReadingMap(true);
+     try {
+       let res = await fetch(
+         `/api/maps?building=${encodeURIComponent(b)}&block=${encodeURIComponent(bl)}&floor=${encodeURIComponent(f)}`,
+@@ -338,7 +343,7 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
+       }
+     } catch (e) {
+       alert("خطا در بارگذاری نقشه: " + e.message);
+-    }
++    } finally { setReadingMap(false); }
+   };
+ 
+   const convert = async (mapIdArg) => {
+@@ -876,6 +881,7 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
+         </div>
+ 
+         <TaskContextHeader taskId={contextTaskId} className="mb-3" />
++        {(readingMap || readingAssets || busy) && <LoadingIndicator label="دریافت یا پردازش نقشه" />}
+         <div className="flex flex-wrap gap-2 items-end mb-2">
+           <label className="text-xs font-bold">
+             ساختمان
+@@ -1097,10 +1103,12 @@ export default function MapModal({ contextTaskId = null, onPickAsset, onOpenDefi
+             {center && <span className="mr-2 text-red-600">🎯</span>}
+             {centerMode && <span className="mr-2 text-orange-600">کلیک روی نقشه</span>}
+           </div>
++          {(readingMap || busy) && <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/90"
++            onPointerDown={(event) => event.stopPropagation()}><LoadingIndicator label="دریافت نقشه" /></div>}
+           <div
+             className="mapzoom-wrap"
+             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
+-            dangerouslySetInnerHTML={{ __html: svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }}
++            dangerouslySetInnerHTML={{ __html: (readingMap || busy) ? '' : svgText || '<div style="padding:40px;text-align:center">نقشه‌ای بارگذاری نشده</div>' }}
+           />
+         </div>
+         <div className="text-[11px] text-gray-600 mt-1">
+diff --git a/components/PersonsModal.jsx b/components/PersonsModal.jsx
+index 79a7fa5..95fe49c 100644
+--- a/components/PersonsModal.jsx
++++ b/components/PersonsModal.jsx
+@@ -1,5 +1,6 @@
+ 'use client';
+-import { useState, useEffect, useCallback } from 'react';
++import LoadingIndicator from "./LoadingIndicator";
++import { useState, useEffect, useCallback, useRef } from 'react';
+ 
+ const EMPTY = { PersonName: '', OfficeName: '', WorkTellNumber1: '', WorkTellNumber2: '', WorkTellNumber3: '', MobileTellNumber1: '', MobileTellNumber2: '', MobileTellNumber3: '', Address: '' };
+ 
+@@ -7,17 +8,24 @@ import TaskContextHeader from "./TaskContextHeader";
+ 
+ export default function PersonsModal({ contextTaskId = null, onClose }) {
+   const [list, setList] = useState([]);
++  const [reading, setReading] = useState(true);
++  const [readError, setReadError] = useState('');
++  const requestRef = useRef(0);
+   const [term, setTerm] = useState('');
+   const [form, setForm] = useState(null);
+   const [editingId, setEditingId] = useState(null);
+   const [saving, setSaving] = useState(false);
+ 
+   const load = useCallback(async (t) => {
++    const token = ++requestRef.current; setReading(true); setReadError('');
+     try {
+       const res = await fetch(`/api/persons?term=${encodeURIComponent(t || '')}`);
+       const d = await res.json();
+-      if (d.success) setList(d.data || []);
+-    } catch { }
++      if (token !== requestRef.current) return;
++      if (!res.ok || !d.success) throw new Error();
++      setList(d.data || []);
++    } catch { if (token === requestRef.current) setReadError('دریافت اشخاص ناموفق بود.'); }
++    finally { if (token === requestRef.current) setReading(false); }
+   }, []);
+   useEffect(() => { load(''); }, [load]);
+ 
+@@ -89,8 +97,9 @@ export default function PersonsModal({ contextTaskId = null, onClose }) {
+                     <tr><th>نام</th><th>دفتر/سمت</th><th>داخلی ۱</th><th>موبایل ۱</th><th>آدرس</th><th>عملیات</th></tr>
+                   </thead>
+                   <tbody>
+-                    {list.length === 0 && <tr><td colSpan={6} className="text-center py-6">موردی یافت نشد</td></tr>}
+-                    {list.map((p) => (
++                    {!reading && !readError && list.length === 0 && <tr><td colSpan={6} className="text-center py-6">موردی یافت نشد</td></tr>}
++                    {(reading || readError) && <tr><td colSpan={6}>{reading ? <LoadingIndicator label="دریافت اشخاص" /> : <p role="alert" className="text-red-800 p-3">{readError}</p>}</td></tr>}
++                    {!reading && !readError && list.map((p) => (
+                       <tr key={p.PersonID}>
+                         <td>{p.PersonName}</td>
+                         <td>{p.OfficeName}</td>
+@@ -118,7 +127,7 @@ export default function PersonsModal({ contextTaskId = null, onClose }) {
+               <div><label className="text-sm font-bold">موبایل ۳</label><input className={inp} value={form.MobileTellNumber3} onChange={set('MobileTellNumber3')} /></div>
+               <div className="md:col-span-3"><label className="text-sm font-bold">آدرس</label><textarea className={inp} rows={2} value={form.Address} onChange={set('Address')} /></div>
+               <div className="md:col-span-3 flex gap-2">
+-                <button className="btn-success" disabled={saving} onClick={save}>{saving ? '...' : 'ذخیره'}</button>
++                <button className="btn-success" disabled={saving} onClick={save}>{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}</button>
+                 <button className="btn-danger" onClick={() => { setForm(null); setEditingId(null); }}>انصراف</button>
+               </div>
+             </div>
+diff --git a/components/ReadLoadingModal.jsx b/components/ReadLoadingModal.jsx
+new file mode 100644
+index 0000000..a36fe73
+--- /dev/null
++++ b/components/ReadLoadingModal.jsx
+@@ -0,0 +1,14 @@
++"use client";
++import LoadingIndicator from './LoadingIndicator';
++
++export default function ReadLoadingModal({ title = 'دریافت اطلاعات', taskId, error = '', onClose }) {
++  return <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999]"
++    onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
++    <section role="dialog" aria-modal="true" aria-label={title} dir="rtl"
++      className="bg-[#CCE6DF] rounded-xl shadow-2xl w-[420px] max-w-full p-5">
++      <div className="flex items-center justify-between gap-3 mb-3"><h3 className="font-bold">{title}{taskId ? ` — کد کار: ${taskId}` : ''}</h3>
++        <button type="button" className="btn-danger self-start shrink-0" onClick={onClose}>بستن</button></div>
++      {error ? <p role="alert" className="text-red-800 text-sm">{error}</p> : <LoadingIndicator label={title} />}
++    </section>
++  </div>;
++}
+diff --git a/components/ReportViewer.jsx b/components/ReportViewer.jsx
+index b4a196a..f95efcf 100644
+--- a/components/ReportViewer.jsx
++++ b/components/ReportViewer.jsx
+@@ -1,5 +1,6 @@
+ // components/ReportViewer.jsx
+ "use client";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useRef, useEffect } from "react";
+ import DatePicker from "react-multi-date-picker";
+ import { showToast } from "@/lib/toast";
+@@ -17,17 +18,22 @@ export default function ReportViewer({ config, onClose }) {
+   const [withTaskId, setWithTaskId] = useState(false);
+   const [assetName, setAssetName] = useState("");
+   const [assetNames, setAssetNames] = useState([]);
++  const [readingNames, setReadingNames] = useState(Boolean(config.needsAsset));
++  const [namesError, setNamesError] = useState("");
+   const bufferRef = useRef(null);
+ 
+   // ✅ پیشنهاد نام دستگاه‌ها برای گزارش‌های needsAsset
+   useEffect(() => {
+     if (!config.needsAsset) return;
++    setReadingNames(true); setNamesError("");
+     fetch("/api/asset-names")
+       .then((r) => r.json())
+       .then((d) => {
+-        if (d.success) setAssetNames(d.names || []);
++        if (!d.success) throw new Error();
++        setAssetNames(d.names || []);
+       })
+-      .catch(() => {});
++      .catch(() => setNamesError("دریافت نام دستگاه‌ها ناموفق بود."))
++      .finally(() => setReadingNames(false));
+   }, [config.needsAsset]);
+ 
+   const generate = async () => {
+@@ -158,6 +164,8 @@ export default function ReportViewer({ config, onClose }) {
+         </div>
+ 
+         <TaskContextHeader className="mx-4 my-2 shrink-0" />
++        {readingNames && <LoadingIndicator label="دریافت گزینه‌های گزارش" />}
++        {namesError && <p role="alert" className="text-red-800">{namesError}</p>}
+         <div className="p-4 border-b border-teal-800/20 flex flex-wrap gap-3 items-end">
+           {config.needsDateRange && (
+             <>
+@@ -212,8 +220,8 @@ export default function ReportViewer({ config, onClose }) {
+               </datalist>
+             </div>
+           )}
+-          <button onClick={generate} disabled={loading} className="btn-primary">
+-            {loading ? "در حال تولید..." : "تولید گزارش"}
++          <button onClick={generate} disabled={loading || readingNames || !!namesError} className="btn-primary">
++            {loading ? <LoadingIndicator inline label="تولید گزارش" /> : "تولید گزارش"}
+           </button>
+           {content && (
+             <>
+@@ -226,12 +234,13 @@ export default function ReportViewer({ config, onClose }) {
+         </div>
+ 
+         <div className="flex-1 overflow-auto p-4 bg-white">
+-          {!content && (
++          {loading && <LoadingIndicator label="دریافت محتوای گزارش" />}
++          {!loading && !content && (
+             <div className="text-center text-gray-500 py-8">
+               برای مشاهده، ابتدا گزارش را تولید کنید.
+             </div>
+           )}
+-          {content?.kind === "text" && (
++          {!loading && content?.kind === "text" && (
+             <pre
+               className="whitespace-pre-wrap font-[Vazirmatn] text-sm leading-relaxed text-gray-800"
+               dir="rtl"
+@@ -239,7 +248,7 @@ export default function ReportViewer({ config, onClose }) {
+               {content.text}
+             </pre>
+           )}
+-          {content?.kind === "excel" && (
++          {!loading && content?.kind === "excel" && (
+             <div className="text-center py-12">
+               <div className="text-6xl mb-4">📊</div>
+               <div className="text-lg font-bold text-teal-900 mb-2">
+diff --git a/components/SearchPanel.jsx b/components/SearchPanel.jsx
+index 8eac52e..6e8f45f 100644
+--- a/components/SearchPanel.jsx
++++ b/components/SearchPanel.jsx
+@@ -1,13 +1,16 @@
+ // components/SearchPanel.jsx
+ 'use client';
+-import { useState } from 'react';
++import LoadingIndicator from "./LoadingIndicator";
++import { useState, useRef, useEffect } from 'react';
+ import { showToast } from '@/lib/toast';
+ 
+-export default function SearchPanel({ onResult, onClose }) {
++export default function SearchPanel({ onResult, onClose, onLoadingChange }) {
+   const [taskID, setTaskID] = useState('');
+   const [requestNumber, setRequestNumber] = useState('');
+   const [propertyCode, setPropertyCode] = useState('');
+   const [busy, setBusy] = useState(false);
++  const sequenceRef = useRef(0);
++  useEffect(() => () => { sequenceRef.current++; onLoadingChange?.(false); }, [onLoadingChange]);
+ 
+   // ✅ انحصار متقابل: وجود مقدار در هر فیلد → دو فیلد دیگر غیرفعال
+   const hasTask = taskID.trim() !== '';
+@@ -15,7 +18,8 @@ export default function SearchPanel({ onResult, onClose }) {
+   const hasProp = propertyCode.trim() !== '';
+ 
+   const doSearch = async () => {
+-    setBusy(true);
++    const token = ++sequenceRef.current;
++    setBusy(true); onLoadingChange?.(true);
+     try {
+       const res = await fetch('/api/search', {
+         method: 'POST',
+@@ -23,12 +27,13 @@ export default function SearchPanel({ onResult, onClose }) {
+         body: JSON.stringify({ taskID, requestNumber, propertyCode }),
+       });
+       const d = await res.json();
++      if (token !== sequenceRef.current) return;
+       if (d.success) onResult(d.data || []);
+       else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
+     } catch {
+       showToast('خطا در ارتباط با سرور.', 'error');
+     }
+-    setBusy(false);
++    if (token === sequenceRef.current) { setBusy(false); onLoadingChange?.(false); }
+   };
+ 
+   // ✅ پاک‌کردن = خالی‌کردن هر سه → هر سه دوباره فعال
+@@ -91,7 +96,7 @@ export default function SearchPanel({ onResult, onClose }) {
+           disabled={busy || (!hasTask && !hasReq && !hasProp)}
+           title="Enter"
+         >
+-          {busy ? '...' : 'جستجو'}
++          {busy ? <LoadingIndicator inline label="جستجوی کار" /> : 'جستجو'}
+         </button>
+         <button type="button" className="btn-primary whitespace-nowrap" onClick={clearAll}>
+           پاک‌کردن
+diff --git a/components/SettingsModal.jsx b/components/SettingsModal.jsx
+index 47eae1c..f55dcee 100644
+--- a/components/SettingsModal.jsx
++++ b/components/SettingsModal.jsx
+@@ -1,4 +1,6 @@
+ 'use client';
++import ReadLoadingModal from "./ReadLoadingModal";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect } from 'react';
+ 
+ import TaskContextHeader from "./TaskContextHeader";
+@@ -6,9 +8,11 @@ import TaskContextHeader from "./TaskContextHeader";
+ export default function SettingsModal({ onClose, onSaved }) {
+   const [form, setForm] = useState({ startWork: '07:30', restStart: '12:00', restEnd: '13:00', endWork: '16:00', ignore: false });
+   const [saving, setSaving] = useState(false);
++  const [reading, setReading] = useState(true);
++  const [readError, setReadError] = useState('');
+ 
+   useEffect(() => {
+-    fetch('/api/settings').then((r) => r.json()).then((d) => { if (d.success && d.data) setForm(d.data); }).catch(() => {});
++    fetch('/api/settings').then((r) => r.json()).then((d) => { if (!d.success || !d.data) throw new Error(); setForm(d.data); }).catch(() => setReadError('دریافت تنظیمات ناموفق بود.')).finally(() => setReading(false));
+   }, []);
+ 
+   useEffect(() => {
+@@ -31,6 +35,7 @@ export default function SettingsModal({ onClose, onSaved }) {
+   };
+ 
+   const inp = 'search-input w-full';
++  if (reading || readError) return <ReadLoadingModal title="دریافت تنظیمات" error={readError} onClose={onClose} />;
+ 
+   return (
+     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+@@ -50,7 +55,7 @@ export default function SettingsModal({ onClose, onSaved }) {
+           <span className="text-sm font-bold">نادیده گرفتن تنظیمات زمانی</span>
+         </label>
+         <div className="flex gap-3 mt-6">
+-          <button onClick={save} disabled={saving} className="btn-success">{saving ? 'در حال ذخیره...' : 'تأیید'}</button>
++          <button onClick={save} disabled={saving} className="btn-success">{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : 'تأیید'}</button>
+           <button onClick={onClose} className="btn-danger">انصراف</button>
+         </div>
+       </div>
+diff --git a/components/SupplierModal.jsx b/components/SupplierModal.jsx
+index 202cbbd..8d29730 100644
+--- a/components/SupplierModal.jsx
++++ b/components/SupplierModal.jsx
+@@ -1,4 +1,5 @@
+ "use client";
++import ReadLoadingModal from "./ReadLoadingModal";
+ import { useState, useEffect, useRef, useMemo } from "react";
+ import DatePicker, { DateObject } from "react-multi-date-picker";
+ import persian from "react-date-object/calendars/persian";
+@@ -37,6 +38,8 @@ import TaskContextHeader from "./TaskContextHeader";
+ 
+ export default function SupplierModal({ taskId, onClose, onSaved }) {
+   const [form, setForm] = useState(null);
++  const [reading, setReading] = useState(true);
++  const [readError, setReadError] = useState("");
+   const [buyers, setBuyers] = useState([]);
+   const [statuses, setStatuses] = useState([]);
+   const [saving, setSaving] = useState(false);
+@@ -51,22 +54,27 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
+   const digitsOnly = (s, max) => toEnDigits(s).replace(/\D/g, "").slice(0, max);
+ 
+   useEffect(() => {
++    setReading(true); setReadError("");
+     (async () => {
+       try {
+         const res = await fetch(`/api/supplier?taskId=${taskId}`);
+         const d = await res.json();
+-        if (d.success) setForm(d.data || {});
+-      } catch {}
++        if (!res.ok || !d.success) throw new Error();
++        setForm(d.data || {});
++      } catch { setReadError("دریافت اطلاعات خرید ناموفق بود."); }
+       try {
+         const r = await fetch("/api/buyers");
+         const bd = await r.json();
+-        if (bd.success) setBuyers(bd.buyers || []);
+-      } catch {}
++        if (!bd.success) throw new Error();
++        setBuyers(bd.buyers || []);
++      } catch { setReadError("دریافت کارپردازها ناموفق بود."); }
+       try {
+         const s = await fetch("/api/purchase-statuses");
+         const sd = await s.json();
+-        if (sd.success) setStatuses(sd.data || []);
+-      } catch {}
++        if (!sd.success) throw new Error();
++        setStatuses(sd.data || []);
++      } catch { setReadError("دریافت وضعیت‌های خرید ناموفق بود."); }
++      finally { setReading(false); }
+     })();
+   }, [taskId]);
+ 
+@@ -140,7 +148,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
+   };
+ 
+   const inp = "search-input w-full";
+-  if (!form) return null;
++  if (reading || readError || !form) return <ReadLoadingModal title="دریافت اطلاعات خرید" taskId={taskId} error={readError} onClose={onClose} />;
+ 
+   const todayButton = (field) => (
+     <button type="button" className="dp-today" onClick={() => setForm({ ...form, [field]: todayStr() })}>
+diff --git a/components/TaskContextHeader.jsx b/components/TaskContextHeader.jsx
+index b6b4726..55993b4 100644
+--- a/components/TaskContextHeader.jsx
++++ b/components/TaskContextHeader.jsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
+ import { useEffect, useState } from 'react';
+ import { assetSummary, parseTaskId, readTaskSnapshot, TASK_INSPECTOR_EVENT } from '@/lib/task-inspection';
+ 
+@@ -33,7 +34,7 @@ export default function TaskContextHeader({ taskId = null, draftMode = false, dr
+       {id && <div className="mt-1 break-words">
+         {task ? <><span className="font-bold">مشخصات ثبت‌شده: </span>{assetSummary(task)}</>
+           : error ? <span role="status" className="text-red-800">{error} <button type="button" className="underline" onClick={() => setRetry((value) => value + 1)}>تلاش مجدد</button></span>
+-          : <span role="status">در حال دریافت مشخصات همین کار…</span>}
++          : <LoadingIndicator inline label="دریافت مشخصات همین کار" />}
+       </div>}
+       {draftMode && draftAsset && <div className="mt-1 break-words">دستگاه انتخابی فرم، هنوز ثبت‌نشده: {assetSummary(draftAsset)}</div>}
+     </aside>
+diff --git a/components/TaskForm.jsx b/components/TaskForm.jsx
+index e79ec9b..7d8424a 100644
+--- a/components/TaskForm.jsx
++++ b/components/TaskForm.jsx
+@@ -1,4 +1,6 @@
+ "use client";
++import ReadLoadingModal from "./ReadLoadingModal";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef } from "react";
+ import DatePicker, { DateObject } from "react-multi-date-picker";
+ import persian from "react-date-object/calendars/persian";
+@@ -79,6 +81,10 @@ export default function TaskForm({
+   const isEdit = Boolean(currentTaskId);
+   const loadedStatusRef = useRef(Number(initial?.Complited) === 1 ? 1 : 0);
+   const [assets, setAssets] = useState([]);
++  const [readingTask, setReadingTask] = useState(Boolean(initial));
++  const [readingAssets, setReadingAssets] = useState(true);
++  const [readingPersons, setReadingPersons] = useState(true);
++  const [readError, setReadError] = useState("");
+   const [persons, setPersons] = useState([]);
+   const [saving, setSaving] = useState(false);
+   const [showTimeDate, setShowTimeDate] = useState(false);
+@@ -162,24 +168,30 @@ export default function TaskForm({
+     fetch("/api/assets")
+       .then((r) => r.json())
+       .then((d) => {
+-        if (d.success) setAssets(d.data || []);
++        if (!d.success) throw new Error();
++        setAssets(d.data || []);
+       })
+-      .catch(() => {});
++      .catch(() => setReadError("دریافت دستگاه‌ها ناموفق بود."))
++      .finally(() => setReadingAssets(false));
+     fetch("/api/persons")
+       .then((r) => r.json())
+       .then((d) => {
+-        if (d.success) setPersons(d.data || []);
++        if (!d.success) throw new Error();
++        setPersons(d.data || []);
+       })
+-      .catch(() => {});
++      .catch(() => setReadError("دریافت اشخاص ناموفق بود."))
++      .finally(() => setReadingPersons(false));
+   }, []);
+ 
+   useEffect(() => {
+     if (!initial) return;
++    setReadingTask(true);
+     (async () => {
+       try {
+         const res = await fetch(`/api/tasks/${initial.TaskID}`);
+         const d = await res.json();
+-        const src = d.success && d.data ? d.data : initial;
++        if (!res.ok || !d.success || !d.data) throw new Error();
++        const src = d.data;
+         loadedStatusRef.current = Number(src.Complited) === 1 ? 1 : 0;
+         setForm({
+           TaskTtl: src.TaskTtl || "",
+@@ -202,7 +214,7 @@ export default function TaskForm({
+             src.RegisterNumber != null ? String(src.RegisterNumber) : "",
+           RequestDate: src.RequestDate || "",
+         });
+-      } catch {}
++      } catch { setReadError("دریافت اطلاعات کار ناموفق بود."); }
+       fetch(`/api/applicant-functor?taskId=${initial.TaskID}`)
+         .then((r) => r.json())
+         .then((d) => {
+@@ -214,7 +226,8 @@ export default function TaskForm({
+             }));
+           }
+         })
+-        .catch(() => {});
++        .catch(() => {})
++        .finally(() => setReadingTask(false));
+     })();
+   }, [initial]);
+ 
+@@ -411,6 +424,7 @@ export default function TaskForm({
+   };
+ 
+   const inp = "search-input w-full";
++  if (readingTask || readingAssets || readingPersons || readError) return <ReadLoadingModal title="دریافت اطلاعات فرم کار" taskId={currentTaskId} error={readError} onClose={onClose} />;
+   return (
+     <div
+       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+@@ -753,7 +767,7 @@ export default function TaskForm({
+         </div>
+         <div className="flex gap-3 mt-6">
+           <button type="submit" disabled={saving} className="btn-success">
+-            {saving ? "در حال ذخیره..." : isEdit ? "ویرایش" : "افزودن"}
++            {saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : isEdit ? "ویرایش" : "افزودن"}
+           </button>
+           <button type="button" onClick={onClose} className="btn-danger">
+             بستن
+@@ -842,7 +856,8 @@ export default function TaskForm({
+             fetch("/api/assets")
+               .then((r) => r.json())
+               .then((d) => {
+-                if (d.success) setAssets(d.data || []);
++                if (!d.success) throw new Error();
++        setAssets(d.data || []);
+               })
+               .catch(() => {});
+           }}
+@@ -854,7 +869,8 @@ export default function TaskForm({
+             fetch("/api/assets")
+               .then((r) => r.json())
+               .then((d) => {
+-                if (d.success) setAssets(d.data || []);
++                if (!d.success) throw new Error();
++        setAssets(d.data || []);
+               })
+               .catch(() => {});
+           }}
+@@ -871,7 +887,8 @@ export default function TaskForm({
+               fetch("/api/assets")
+                 .then((r) => r.json())
+                 .then((d) => {
+-                  if (d.success) setAssets(d.data || []);
++                  if (!d.success) throw new Error();
++        setAssets(d.data || []);
+                       {showAssetPicker && (
+         <AssetsModal
+           contextTaskId={currentTaskId}
+@@ -887,7 +904,8 @@ export default function TaskForm({
+             fetch("/api/assets")
+               .then((r) => r.json())
+               .then((d) => {
+-                if (d.success) setAssets(d.data || []);
++                if (!d.success) throw new Error();
++        setAssets(d.data || []);
+               })
+               .catch(() => {});
+           }}
+diff --git a/components/TaskInspectionTable.jsx b/components/TaskInspectionTable.jsx
+index d91a386..d723670 100644
+--- a/components/TaskInspectionTable.jsx
++++ b/components/TaskInspectionTable.jsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
+ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+ import { INSPECTION_COLUMNS, inspectionSearchText, nextInspectionSort, readInspectionSearch } from '@/lib/task-inspector-filters';
+ import { formatWallTime, parseTaskId } from '@/lib/task-inspection';
+@@ -43,7 +44,7 @@ function ColumnFilter({ column, filters, onApply, onClose }) {
+           const next = event.target.value; setText(next);
+           setPicked(new Set(values.filter((value) => inspectionSearchText(value).includes(inspectionSearchText(next)))));
+         }} placeholder="بنویسید و Enter یا اعمال فیلتر را بزنید" />
+-      {loading ? <p role="status" className="p-2">دریافت گزینه‌ها…</p> : error ? <p role="alert" className="p-2 text-red-800">{error}</p> : <>
++      {loading ? <LoadingIndicator label="دریافت گزینه‌های فیلتر" /> : error ? <p role="alert" className="p-2 text-red-800">{error}</p> : <>
+         <label className="flex gap-2 p-2"><input type="checkbox" aria-label="انتخاب همهٔ نتایج فیلتر"
+           checked={visible.length > 0 && visible.every((value) => picked.has(value))}
+           onChange={(event) => setPicked((previous) => {
+@@ -93,13 +94,13 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect,
+   }, [filters, sort, page, started]);
+   const change = (next, nextStarted = true) => {
+     invalidate(); onResultsChange(); closeMenu(); setFilters(next); setPage(1); setStarted(nextStarted);
+-    setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
++    setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(nextStarted);
+   };
+   const changeSort = (key) => {
+     invalidate(); onResultsChange(); closeMenu(); setSort((previous) => nextInspectionSort(previous, key));
+-    setPage(1); setStarted(true); setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
++    setPage(1); setStarted(true); setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(true);
+   };
+-  const turnPage = (next) => { invalidate(); onResultsChange(); setPage(next); };
++  const turnPage = (next) => { invalidate(); onResultsChange(); setLoading(true); setResult({ rows: [], total: 0, page: next }); setPage(next); };
+   const pages = Math.max(1, Math.ceil(result.total / 20));
+   const cell = (row, key) => {
+     if (key === 'status') return Number(row.Complited) === 1 ? 'اتمام' : 'جاری';
+@@ -144,13 +145,13 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect,
+           </td>)}
+         </tr>)}
+         {!result.rows.length && <tr><td colSpan={INSPECTION_COLUMNS.length + 1} className="bg-white/80 p-4">
+-          {loading ? 'در حال جستجو…' : error ? 'دریافت نتایج ناموفق بود.' : started ? 'کاری مطابق فیلترها پیدا نشد.' : 'برای پیدا کردن کار، از فیلتر سرستون‌ها استفاده کنید یا «نمایش همهٔ کارها» را بزنید.'}
++          {loading ? <LoadingIndicator label="جستجوی کارها" /> : error ? 'دریافت نتایج ناموفق بود.' : started ? 'کاری مطابق فیلترها پیدا نشد.' : 'برای پیدا کردن کار، از فیلتر سرستون‌ها استفاده کنید یا «نمایش همهٔ کارها» را بزنید.'}
+         </td></tr>}
+         </tbody>
+       </table>
+     </div>
+     {error && <p role="alert" className="p-2 bg-red-100 text-red-900">{error}</p>}
+-    {loading && <p role="status" className="text-sm mt-2">در حال دریافت نتایج…</p>}
++    {loading && result.rows.length > 0 && <LoadingIndicator label="دریافت نتایج" />}
+     {started && !loading && !error && <div className="flex items-center flex-wrap gap-3 mt-2 text-sm">
+       <span>{result.total} کار — صفحهٔ {result.page} از {pages}</span>
+       <button type="button" className="btn-primary" disabled={result.page <= 1} onClick={() => turnPage(result.page - 1)}>صفحهٔ قبل</button>
+diff --git a/components/TaskInspector.jsx b/components/TaskInspector.jsx
+index f006c5f..ef21ff8 100644
+--- a/components/TaskInspector.jsx
++++ b/components/TaskInspector.jsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import LoadingIndicator from "./LoadingIndicator";
+ import { useEffect, useRef, useState } from 'react';
+ import { createPortal } from 'react-dom';
+ import TaskInspectionTable from './TaskInspectionTable';
+@@ -158,7 +159,7 @@ export default function TaskInspector() {
+         </div>
+         <div className="flex-1 min-h-0 overflow-auto overscroll-contain p-4">
+           <TaskInspectionTable ref={tableRef} onSelect={inspect} onResultsChange={resetDetails} selectedId={snapshot?.id} />
+-          {loading && <p role="status">در حال دریافت اطلاعات کار…</p>}
++          {loading && <LoadingIndicator label="دریافت اطلاعات کار انتخابی" />}
+           {error && <p role="alert" className="rounded bg-red-100 text-red-900 p-3">{error}</p>}
+           {!task && !loading && !error && <p className="text-sm">با انتخاب یک ردیف، اطلاعات همان کار و سوابق آن در پایین جدول نمایش داده می‌شود؛ فرم اصلی دست‌نخورده می‌ماند.</p>}
+           {task && <>
+@@ -166,7 +167,7 @@ export default function TaskInspector() {
+               <h4 className="font-bold">در حال مشاهدهٔ کار {snapshot.id} — فقط‌خواندنی</h4>
+               <button type="button" className="btn-primary whitespace-nowrap disabled:opacity-60" onClick={openAttachments}
+                 disabled={folderBusy} aria-busy={folderBusy} aria-label={`بازکردن پوشهٔ ضمائم کار ${task.TaskID}`}>
+-                {folderBusy ? 'در حال بازکردن پوشه…' : '📂 بازکردن پوشهٔ ضمائم'}
++                {folderBusy ? <LoadingIndicator inline label="بازکردن پوشه" /> : '📂 بازکردن پوشهٔ ضمائم'}
+               </button>
+             </div>
+             <table className="w-full border-collapse text-sm mb-5"><tbody>
+diff --git a/components/TaskPurchaseTip.jsx b/components/TaskPurchaseTip.jsx
+index 32a6d44..5cd3c0e 100644
+--- a/components/TaskPurchaseTip.jsx
++++ b/components/TaskPurchaseTip.jsx
+@@ -1,4 +1,5 @@
+ "use client";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useEffect, useRef, useState } from 'react';
+ import Tip from './Tip';
+ import { parseTaskId } from '@/lib/task-inspection';
+@@ -35,7 +36,7 @@ export default function TaskPurchaseTip({ taskId, children, block = false }) {
+ 
+   const text = key => {
+     if (!id) return 'پس از ثبت کار';
+-    if (result?.id !== id || result.status === 'loading') return 'در حال دریافت…';
++    if (result?.id !== id || result.status === 'loading') return <LoadingIndicator inline label="دریافت شماره‌ها" />;
+     if (result.status === 'error') return 'دریافت ناموفق؛ دوباره هاور کنید';
+     return result.data[key].join('، ') || 'ثبت نشده';
+   };
+diff --git a/components/TaskTable.jsx b/components/TaskTable.jsx
+index 2e3d532..d3c3b06 100644
+--- a/components/TaskTable.jsx
++++ b/components/TaskTable.jsx
+@@ -1,4 +1,5 @@
+ "use client";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useLayoutEffect, useRef } from "react";
+ import { trackColumnMenu } from "@/lib/column-menu-position.mjs";
+ import { createPortal } from "react-dom";
+@@ -146,6 +147,8 @@ export default function TaskTable({
+   onDraftFinish,
+   onDraftCancel,
+   onFiltersChange,
++  loading = false,
++  loadError = "",
+ }) {
+   const [sortKey, setSortKey] = useState(null);
+   const [sortDir, setSortDir] = useState("asc");
+@@ -153,6 +156,7 @@ export default function TaskTable({
+   const [menu, setMenu] = useState(null);
+   const [menuValues, setMenuValues] = useState(null);
+   const [menuLoading, setMenuLoading] = useState(false);
++  const [menuError, setMenuError] = useState("");
+   const [menuQuery, setMenuQuery] = useState("");
+   const [staged, setStaged] = useState(null);
+   const menuRequestRef = useRef(0);
+@@ -213,7 +217,7 @@ export default function TaskTable({
+     const requestId = ++menuRequestRef.current;
+     const cur = filters[col.key];
+     setStaged(cur == null ? null : new Set(cur));
+-    setMenuLoading(true);
++    setMenuLoading(true); setMenuError("");
+     setMenuValues(null);
+     if (col.key === "status") {
+       setMenuValues(["جاری", "اتمام"]);
+@@ -260,10 +264,11 @@ export default function TaskTable({
+       });
+       const d = await res.json();
+       if (requestId !== menuRequestRef.current) return;
+-      setMenuValues(d.success && Array.isArray(d.values) ? d.values : []);
++      if (!res.ok || !d.success || !Array.isArray(d.values)) throw new Error();
++      setMenuValues(d.values);
+     } catch {
+       if (requestId !== menuRequestRef.current) return;
+-      setMenuValues([]);
++      setMenuValues([]); setMenuError("دریافت گزینه‌های فیلتر ناموفق بود.");
+     }
+     if (requestId === menuRequestRef.current) setMenuLoading(false);
+   };
+@@ -421,7 +426,7 @@ export default function TaskTable({
+   
+ 
+   return (
+-    <div className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
++    <div aria-busy={loading} className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
+       <table className="task-table w-full min-w-[1650px]">
+         <thead>
+           <tr>
+@@ -529,7 +534,7 @@ export default function TaskTable({
+               </td>
+             </tr>
+           )}
+-          {sorted.length === 0 && !draftActive && (
++          {!loading && !loadError && sorted.length === 0 && !draftActive && (
+             <tr>
+               <td
+                 colSpan={COLUMNS.length}
+@@ -558,7 +563,10 @@ export default function TaskTable({
+               </td>
+             </tr>
+           )}
+-          {sorted.map((t, i) => (
++          {!draftActive && (loading || loadError) && <tr><td colSpan={COLUMNS.length}>
++            {loading ? <LoadingIndicator label="دریافت کارها" /> : <p role="alert" className="p-4 text-center text-red-800">{loadError}</p>}
++          </td></tr>}
++          {!loading && !loadError && sorted.map((t, i) => (
+             <tr
+               key={`${t.TaskID}-${t.AssetID ?? 0}-${i}`}
+               onClick={() => onRowClick(t)}
+@@ -697,15 +705,16 @@ export default function TaskTable({
+                 {menuCol.assignable ? (
+                   <>
+                                      <input ref={menuSearchRef} className="col-menu-search" placeholder="تایپ = تیک‌زدن منطبق‌ها…" value={menuQuery} onChange={(e) => onSearchChange(e.target.value)} />
++                    {menuError && <p role="alert" className="p-2 text-red-800">{menuError}</p>}
+                     {menuLoading && (
+                       <div className="col-menu-empty">
+-                        در حال خواندن گزینه‌ها…
++                        <LoadingIndicator label="دریافت گزینه‌های فیلتر" />
+                       </div>
+                     )}
+-                    {!menuLoading && shownValues.length === 0 && (
++                    {!menuLoading && !menuError && shownValues.length === 0 && (
+                       <div className="col-menu-empty">گزینه‌ای یافت نشد</div>
+                     )}
+-                    {!menuLoading && (
++                    {!menuLoading && !menuError && (
+                       <div className="col-menu-list">
+                         {shownValues.map((v) => (
+                           <button
+@@ -805,15 +814,16 @@ export default function TaskTable({
+                       />
+                       <span>{menuQuery ? "(انتخاب همهٔ نتایج جستجو)" : "(انتخاب همه)"}</span>
+                     </label>
++                    {menuError && <p role="alert" className="p-2 text-red-800">{menuError}</p>}
+                     {menuLoading && (
+                       <div className="col-menu-empty">
+-                        در حال خواندن گزینه‌ها…
++                        <LoadingIndicator label="دریافت گزینه‌های فیلتر" />
+                       </div>
+                     )}
+-                    {!menuLoading && shownValues.length === 0 && (
++                    {!menuLoading && !menuError && shownValues.length === 0 && (
+                       <div className="col-menu-empty">گزینه‌ای مطابق متن پیدا نشد.</div>
+                     )}
+-                    {!menuLoading && (
++                    {!menuLoading && !menuError && (
+                       <div className="col-menu-list">
+                         {shownValues.map((v) => (
+                           <label key={v} className="col-menu-item" style={{ alignItems: "flex-start", minWidth: 0 }}>
+@@ -835,7 +845,7 @@ export default function TaskTable({
+             <div className="col-menu-footer">
+               {menuCol.filterable ? (
+                 <>
+-                  <button type="button" className="col-menu-ok" disabled={menuLoading} onClick={() => applyStaged(menuCol.key)}>
++                  <button type="button" className="col-menu-ok" disabled={menuLoading || !!menuError} onClick={() => applyStaged(menuCol.key)}>
+                     اعمال فیلتر
+                   </button>
+                   <button type="button" className="col-menu-cancel" onClick={cancelMenu}>
+diff --git a/components/TimeDateModal.jsx b/components/TimeDateModal.jsx
+index 861762a..06784e4 100644
+--- a/components/TimeDateModal.jsx
++++ b/components/TimeDateModal.jsx
+@@ -1,4 +1,6 @@
+ 'use client';
++import ReadLoadingModal from "./ReadLoadingModal";
++import LoadingIndicator from "./LoadingIndicator";
+ import { useState, useEffect, useRef, useMemo } from 'react';
+ import DatePicker, { DateObject } from 'react-multi-date-picker';
+ import persian from 'react-date-object/calendars/persian';
+@@ -199,6 +201,10 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
+   const endRef = useRef(effEnd);
+   endRef.current = effEnd;
+   const [busy, setBusy] = useState(false);
++  const [reading, setReading] = useState(true);
++  const [readError, setReadError] = useState('');
++  const [fixedLoading, setFixedLoading] = useState(true);
++  const [fixedError, setFixedError] = useState('');
+   const [fixedRows, setFixedRows] = useState([]);
+   const isFixed = priority === 'زمان انجام ثابت';
+   const tableWrapRef = useRef(null);
+@@ -293,10 +299,13 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
+   };
+ 
+   useEffect(() => {
++    let active = true; setReading(true); setReadError(''); setFixedLoading(true); setFixedError('');
+     (async () => {
+       try {
+         const res = await fetch(`/api/tasks/${taskId}`);
+         const d = await res.json();
++        if (!active) return;
++        if (!res.ok || !d.success || !d.data) throw new Error();
+         if (d.success && d.data) {
+           const src = d.data;
+           const prio = src.TDP || src.Priorities || '';
+@@ -317,12 +326,15 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
+             setEndTimeTouched(true);
+           }
+         }
+-      } catch (err) {}
++      } catch { if (active) setReadError('دریافت زمان‌بندی کار ناموفق بود.'); }
++      finally { if (active) setReading(false); }
+     })();
+     fetch('/api/load-data?type=fixed&limit=1000')
+       .then((r) => r.json())
+-      .then((d) => { if (d.success) setFixedRows(d.data || []); })
+-      .catch(() => {});
++      .then((d) => { if (!active) return; if (!d.success) throw new Error(); setFixedRows(d.data || []); })
++      .catch(() => { if (active) setFixedError('دریافت کارهای زمان ثابت ناموفق بود.'); })
++      .finally(() => { if (active) setFixedLoading(false); });
++    return () => { active = false; };
+   }, [taskId]);
+ 
+   useEffect(() => {
+@@ -371,6 +383,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
+   const inp = 'search-input w-full';
+   const fmtFa = (v) => (v ? new Date(v).toLocaleString('fa-IR', { timeZone: 'UTC' }) : '-');
+ 
++  if (reading || readError) return <ReadLoadingModal title="دریافت اولویت و زمان" taskId={taskId} error={readError} onClose={onClose} />;
+   return (
+     <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
+       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+@@ -456,8 +469,9 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
+                   <tr><th>کدکار</th><th>موضوع</th><th>الویت</th><th>طول بازه</th><th>زمان آغاز</th><th>زمان پایان</th><th>وضعیت</th></tr>
+                 </thead>
+                 <tbody>
+-                  {fixedRows.length === 0 && <tr><td colSpan={7} className="text-center py-3">موردی وجود ندارد</td></tr>}
+-                  {fixedRows.map((r) => {
++                  {!fixedLoading && !fixedError && fixedRows.length === 0 && <tr><td colSpan={7} className="text-center py-3">موردی وجود ندارد</td></tr>}
++                  {(fixedLoading || fixedError) && <tr><td colSpan={7}>{fixedLoading ? <LoadingIndicator label="دریافت کارهای زمان ثابت" /> : <p role="alert" className="text-red-800 p-3">{fixedError}</p>}</td></tr>}
++                  {!fixedLoading && !fixedError && fixedRows.map((r) => {
+                     const bad = conflictIds.has(Number(r.TaskID));
+                     return (
+                       <tr
+@@ -489,7 +503,7 @@ export default function TimeDateModal({ taskId, onClose, onSaved }) {
+         </div>
+ 
+         <div className="flex gap-2 mt-6">
+-          <button type="submit" disabled={busy} className="btn-success flex-1">{busy ? 'در حال ذخیره...' : 'ثبت'}</button>
++          <button type="submit" disabled={busy} className="btn-success flex-1">{busy ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : 'ثبت'}</button>
+           <button type="button" onClick={onClose} className="btn-danger">بستن</button>
+         </div>
+       </form>
+diff --git a/docs/loading-ui.md b/docs/loading-ui.md
+new file mode 100644
+index 0000000..ecfca91
+--- /dev/null
++++ b/docs/loading-ui.md
+@@ -0,0 +1,20 @@
++# Loading UI
++
++Shared components: `LoadingIndicator` (spinner/skeleton, hidden accessible label, inline variant) and `ReadLoadingModal` (pending/error form boundary with Close).
++
++## Coverage
++- Main list: pending begins before fetch; latest-request-only completion; errors are distinct from successful empty results. Filters/page navigation set pending immediately. Simple/comprehensive search maintain separate main-list busy flags.
++- Main column options: common indicator; read errors are not empty options.
++- Independent inspector: filter options, sorting/pagination, selected task details and opening attachments.
++- Persons, assets/base information, follow-up rows, fixed-time rows: pending/error/empty separated.
++- Task, priority/time, purchase, applicant/functor, attachment-folder and settings forms: no editable initial defaults before their read finishes; failed reads cannot be mistaken for blank records.
++- File/folder/DWG browsers: pending before first request, common indicator and latest-request guards.
++- Reports, map/SVG read/conversion, backup file list/operations and search panels: shared indicators.
++- Context headers and request/purchase hover information: inline indicator.
++
++No new runtime dependency. No API/SQL/schema, scheduling, status-history or group behavior change. Existing write handlers remain unchanged; some busy-button text is replaced by an indicator.
++
++## Validation
++100 Node tests with mock I/O: normal LF and CRLF file contents. Four additional local React server-render checks: loading, empty success, error, and stale records hidden while pending. JSX parsed for all components/page. This is not a live SQL Server or full browser test.
++
++Visual checks: throttle/slow connection; check first main load, column options and filter/page transitions, inspector, persons/assets/follow/fixed lists, forms, files/folders, map/report and backup. Spinner must disappear after success/failure; empty text must occur only after successful empty reads. Close remains accessible. Respect `prefers-reduced-motion`.
+diff --git a/tests/loading-ui.test.mjs b/tests/loading-ui.test.mjs
+new file mode 100644
+index 0000000..368ac95
+--- /dev/null
++++ b/tests/loading-ui.test.mjs
+@@ -0,0 +1,108 @@
++// Executes actual request handlers with delayed fetch doubles; no real database/browser.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs/promises';
++import vm from 'node:vm';
++const read = async (path) => (await fs.readFile(new URL(`../${path}`, import.meta.url), 'utf8')).replace(/\r\n?/g, '\n');
++const home = await read('app/page.js');
++const table = await read('components/TaskTable.jsx');
++const a = home.indexOf('  const loadTasks = useCallback('), b = home.indexOf('\n  useEffect(', a);
++assert.ok(a > 0 && b > a);
++function harness(type = 'daily') {
++  const pending = [], state = { loading: false, error: '', rows: [], total: null };
++  const c = vm.createContext({
++    loadRequestRef: { current: 0 }, loadTypeRef: { current: type }, searchRowsRef: { current: [{ TaskID: 1 }] },
++    PAGE_SIZE: 10, useCallback: (fn) => fn,
++    setTasksLoading: (v) => { state.loading = v; }, setLoadError: (v) => { state.error = v; },
++    setTasks: (v) => { state.rows = v; }, setTotalFiltered: (v) => { state.total = v; }, setNextSwitch: () => {},
++    sortSearchRows: (rows) => rows, applyClientFilters: (rows) => rows,
++    fetch: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
++  });
++  vm.runInContext(home.slice(a, b) + '\nthis.run = loadTasks;', c);
++  const answer = (index, body, ok = true) => pending[index].resolve({ ok, status: ok ? 200 : 503, json: async () => body, text: async () => 'safe failure' });
++  return { run: c.run, state, pending, answer };
++}
++test('Main list switches to loading synchronously before its read resolves', async () => {
++  const h = harness(); const promise = h.run({}, 1); assert.equal(h.state.loading, true);
++  h.answer(0, { success: true, data: [], total: 0 }); await promise;
++  assert.equal(h.state.loading, false); assert.equal(h.state.error, ''); assert.equal(h.state.rows.length, 0);
++});
++test('Successful populated result ends loading and retains returned records', async () => {
++  const h = harness(), p = h.run({}, 1); h.answer(0, { success: true, data: [{ TaskID: 7 }], total: 1 }); await p;
++  assert.equal(h.state.rows[0].TaskID, 7); assert.equal(h.state.loading, false);
++});
++test('An earlier response cannot stop a later request spinner or replace its rows', async () => {
++  const h = harness(), first = h.run({}, 1), second = h.run({}, 2);
++  h.answer(0, { success: true, data: [{ TaskID: 1 }], total: 1 }); await first;
++  assert.equal(h.state.loading, true); assert.equal(h.state.rows.length, 0);
++  h.answer(1, { success: true, data: [{ TaskID: 2 }], total: 1 }); await second;
++  assert.equal(h.state.loading, false); assert.equal(h.state.rows[0].TaskID, 2);
++});
++test('Latest successful read is not overwritten by late failing read', async () => {
++  const h = harness(), first = h.run({}, 1), second = h.run({}, 2);
++  h.answer(1, { success: true, data: [{ TaskID: 2 }], total: 1 }); await second;
++  h.pending[0].reject(Error('old failure')); await first;
++  assert.equal(h.state.error, ''); assert.equal(h.state.rows[0].TaskID, 2); assert.equal(h.state.loading, false);
++});
++for (const kind of ['http', 'body', 'network', 'json']) test(`Failure ${kind} ends spinner and sets error, not an empty-success state`, async () => {
++  const h = harness(), p = h.run({}, 1);
++  if (kind === 'http') h.answer(0, {}, false);
++  if (kind === 'body') h.answer(0, { success: false, error: 'safe error' });
++  if (kind === 'network') h.pending[0].reject(Error('network'));
++  if (kind === 'json') h.pending[0].resolve({ ok: true, json: async () => { throw Error('bad JSON'); } });
++  await p; assert.equal(h.state.loading, false); assert.ok(h.state.error);
++});
++test('Local search path also releases loading in finally', async () => {
++  const h = harness('search'); await h.run({}, 1); assert.equal(h.pending.length, 0); assert.equal(h.state.loading, false); assert.equal(h.state.rows.length, 1);
++});
++test('Table empty row is gated by successful finished read for both initial and filtered empty results', () => {
++  const expression = table.match(/\{(!loading && !loadError && sorted.length === 0 && !draftActive) && \(/)?.[1]; assert.ok(expression);
++  for (const loading of [true, false]) for (const loadError of ['', 'failed']) {
++    const result = vm.runInNewContext(expression, { loading, loadError, sorted: [], draftActive: false });
++    assert.equal(Boolean(result), !loading && !loadError);
++  }
++  assert.ok(table.includes('{loading ? <LoadingIndicator label="دریافت کارها" />'));
++  assert.ok(table.includes('{!loading && !loadError && sorted.map'));
++  assert.ok(home.includes('loading={tasksLoading || searchLoading}'));
++});
++test('Indicator has accessible status, hidden label, decorative animation and reduced motion', async () => {
++  const source = await read('components/LoadingIndicator.jsx'), css = await read('app/globals.css');
++  for (const text of ['role="status"', 'aria-live="polite"', 'aria-label={label}', 'className="sr-only"', 'aria-hidden="true"']) assert.ok(source.includes(text));
++  assert.ok(css.includes('@media (prefers-reduced-motion: reduce)')); assert.ok(css.includes('animation:none'));
++  assert.ok(!source.includes('fetch(')); assert.ok(!css.includes('transition: all'));
++});
++test('Initial forms have loading/error boundary instead of editable empty/default values', async () => {
++  for (const name of ['TaskForm', 'TimeDateModal', 'SupplierModal', 'ApplicantFunctorModal', 'FolderModal', 'SettingsModal']) {
++    const source = await read(`components/${name}.jsx`); assert.ok(source.includes('<ReadLoadingModal'), name);
++  }
++  const modal = await read('components/ReadLoadingModal.jsx'); assert.ok(modal.includes('onClick={onClose}')); assert.ok(modal.includes('role="alert"'));
++});
++test('Persons, devices, fixed schedule and follows guard their empty messages during reads/errors', async () => {
++  const requirements = [
++    ['PersonsModal', '!reading && !readError && list.length === 0'],
++    ['AssetsModal', '!readingAssets && !assetReadError && filtered.length === 0'],
++    ['FollowModal', '!readingRows && !readError && rows.length === 0'],
++    ['TimeDateModal', '!fixedLoading && !fixedError && fixedRows.length === 0'],
++  ];
++  for (const [file, condition] of requirements) assert.ok((await read(`components/${file}.jsx`)).includes(condition), file);
++});
++test('File and folder browsers start pending; errors and read indicators remain distinct', async () => {
++  for (const file of ['FileBrowser', 'FolderBrowser']) {
++    const source = await read(`components/${file}.jsx`); assert.ok(source.includes('const [loading, setLoading] = useState(true)'));
++    assert.ok(source.includes('{loading && <LoadingIndicator')); assert.ok(source.includes('token !== loadSequenceRef.current'));
++  }
++  const dwg = await read('components/DwgBrowser.jsx'); assert.ok(dwg.includes('!busy && !msg && dirs.length === 0'));
++});
++test('Inspection sorting/page changes become pending before clearing old rows', async () => {
++  const source = await read('components/TaskInspectionTable.jsx'); assert.ok(source.includes('setLoading(nextStarted)'));
++  assert.ok(source.includes('const turnPage = (next) => { invalidate(); onResultsChange(); setLoading(true)'));
++  assert.ok(source.includes('{loading ? <LoadingIndicator label="جستجوی کارها" />'));
++});
++test('Filter option errors are not presented as empty matches', () => {
++  assert.ok(table.includes('setMenuError("دریافت گزینه‌های فیلتر ناموفق بود.")'));
++  assert.equal((table.match(/!menuLoading && !menuError && shownValues.length === 0/g) || []).length, 2);
++});
++
++test('Search handoff cancels an old main request and releases its obsolete spinner', () => {
++  assert.equal((home.match(/loadRequestRef\.current\+\+;\s*setTasksLoading\(false\); setLoadError\(""\);/g) || []).length, 2);
++});
+diff --git a/tests/task-follow-form.test.mjs b/tests/task-follow-form.test.mjs
+index bf1a7bb..4247fe8 100644
+--- a/tests/task-follow-form.test.mjs
++++ b/tests/task-follow-form.test.mjs
+@@ -22,7 +22,7 @@ test('Touched operations use toasts and styled delete confirmation; clocks/picke
+ async function loadHarness(){
+  const a=src.indexOf('  const load = useCallback(async () => {'),b=src.indexOf('  useEffect(() => { load(); }, [load]);',a);
+  const pending=[],rows=[],notices=[],owner={current:202},sequence={current:0};
+- const c=vm.createContext({taskId:202,currentTaskRef:owner,loadSequenceRef:sequence,useCallback:fn=>fn,encodeURIComponent,showToast:(...v)=>notices.push(v),setRows:r=>rows.push(r),fetch:()=>new Promise(resolve=>pending.push(result=>resolve({ok:true,json:async()=>result})))});
++ const c=vm.createContext({taskId:202,currentTaskRef:owner,loadSequenceRef:sequence,useCallback:fn=>fn,encodeURIComponent,showToast:(...v)=>notices.push(v),setRows:r=>rows.push(r),setReadingRows:()=>{},setReadError:()=>{},fetch:()=>new Promise(resolve=>pending.push(result=>resolve({ok:true,json:async()=>result})))});
+  vm.runInContext(src.slice(a,b)+'\nthis.run=load;',c);return{run:c.run,pending,rows,notices,owner};
+ }
+ test('Late earlier GET cannot overwrite a newer follow list',async()=>{const h=await loadHarness(),a=h.run(),b=h.run();h.pending[1]({success:true,rows:[{TaskID:202,FollowID:42}]});await b;h.pending[0]({success:true,rows:[{TaskID:202,FollowID:41}]});await a;assert.equal(h.rows.length,1);assert.equal(h.rows[0][0].FollowID,42);});

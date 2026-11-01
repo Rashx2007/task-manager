@@ -1,13 +1,16 @@
 // components/SearchPanel.jsx
 'use client';
-import { useState } from 'react';
+import LoadingIndicator from "./LoadingIndicator";
+import { useState, useRef, useEffect } from 'react';
 import { showToast } from '@/lib/toast';
 
-export default function SearchPanel({ onResult, onClose }) {
+export default function SearchPanel({ onResult, onClose, onLoadingChange }) {
   const [taskID, setTaskID] = useState('');
   const [requestNumber, setRequestNumber] = useState('');
   const [propertyCode, setPropertyCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const sequenceRef = useRef(0);
+  useEffect(() => () => { sequenceRef.current++; onLoadingChange?.(false); }, [onLoadingChange]);
 
   // ✅ انحصار متقابل: وجود مقدار در هر فیلد → دو فیلد دیگر غیرفعال
   const hasTask = taskID.trim() !== '';
@@ -15,7 +18,8 @@ export default function SearchPanel({ onResult, onClose }) {
   const hasProp = propertyCode.trim() !== '';
 
   const doSearch = async () => {
-    setBusy(true);
+    const token = ++sequenceRef.current;
+    setBusy(true); onLoadingChange?.(true);
     try {
       const res = await fetch('/api/search', {
         method: 'POST',
@@ -23,12 +27,13 @@ export default function SearchPanel({ onResult, onClose }) {
         body: JSON.stringify({ taskID, requestNumber, propertyCode }),
       });
       const d = await res.json();
+      if (token !== sequenceRef.current) return;
       if (d.success) onResult(d.data || []);
       else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
     } catch {
       showToast('خطا در ارتباط با سرور.', 'error');
     }
-    setBusy(false);
+    if (token === sequenceRef.current) { setBusy(false); onLoadingChange?.(false); }
   };
 
   // ✅ پاک‌کردن = خالی‌کردن هر سه → هر سه دوباره فعال
@@ -91,7 +96,7 @@ export default function SearchPanel({ onResult, onClose }) {
           disabled={busy || (!hasTask && !hasReq && !hasProp)}
           title="Enter"
         >
-          {busy ? '...' : 'جستجو'}
+          {busy ? <LoadingIndicator inline label="جستجوی کار" /> : 'جستجو'}
         </button>
         <button type="button" className="btn-primary whitespace-nowrap" onClick={clearAll}>
           پاک‌کردن

@@ -1,4 +1,6 @@
 "use client";
+import ReadLoadingModal from "./ReadLoadingModal";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef } from "react";
 import DatePicker, { DateObject } from "react-multi-date-picker";
 import persian from "react-date-object/calendars/persian";
@@ -79,6 +81,10 @@ export default function TaskForm({
   const isEdit = Boolean(currentTaskId);
   const loadedStatusRef = useRef(Number(initial?.Complited) === 1 ? 1 : 0);
   const [assets, setAssets] = useState([]);
+  const [readingTask, setReadingTask] = useState(Boolean(initial));
+  const [readingAssets, setReadingAssets] = useState(true);
+  const [readingPersons, setReadingPersons] = useState(true);
+  const [readError, setReadError] = useState("");
   const [persons, setPersons] = useState([]);
   const [saving, setSaving] = useState(false);
   const [showTimeDate, setShowTimeDate] = useState(false);
@@ -162,24 +168,30 @@ export default function TaskForm({
     fetch("/api/assets")
       .then((r) => r.json())
       .then((d) => {
-        if (d.success) setAssets(d.data || []);
+        if (!d.success) throw new Error();
+        setAssets(d.data || []);
       })
-      .catch(() => {});
+      .catch(() => setReadError("دریافت دستگاه‌ها ناموفق بود."))
+      .finally(() => setReadingAssets(false));
     fetch("/api/persons")
       .then((r) => r.json())
       .then((d) => {
-        if (d.success) setPersons(d.data || []);
+        if (!d.success) throw new Error();
+        setPersons(d.data || []);
       })
-      .catch(() => {});
+      .catch(() => setReadError("دریافت اشخاص ناموفق بود."))
+      .finally(() => setReadingPersons(false));
   }, []);
 
   useEffect(() => {
     if (!initial) return;
+    setReadingTask(true);
     (async () => {
       try {
         const res = await fetch(`/api/tasks/${initial.TaskID}`);
         const d = await res.json();
-        const src = d.success && d.data ? d.data : initial;
+        if (!res.ok || !d.success || !d.data) throw new Error();
+        const src = d.data;
         loadedStatusRef.current = Number(src.Complited) === 1 ? 1 : 0;
         setForm({
           TaskTtl: src.TaskTtl || "",
@@ -202,7 +214,7 @@ export default function TaskForm({
             src.RegisterNumber != null ? String(src.RegisterNumber) : "",
           RequestDate: src.RequestDate || "",
         });
-      } catch {}
+      } catch { setReadError("دریافت اطلاعات کار ناموفق بود."); }
       fetch(`/api/applicant-functor?taskId=${initial.TaskID}`)
         .then((r) => r.json())
         .then((d) => {
@@ -214,7 +226,8 @@ export default function TaskForm({
             }));
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => setReadingTask(false));
     })();
   }, [initial]);
 
@@ -411,6 +424,7 @@ export default function TaskForm({
   };
 
   const inp = "search-input w-full";
+  if (readingTask || readingAssets || readingPersons || readError) return <ReadLoadingModal title="دریافت اطلاعات فرم کار" taskId={currentTaskId} error={readError} onClose={onClose} />;
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
@@ -753,7 +767,7 @@ export default function TaskForm({
         </div>
         <div className="flex gap-3 mt-6">
           <button type="submit" disabled={saving} className="btn-success">
-            {saving ? "در حال ذخیره..." : isEdit ? "ویرایش" : "افزودن"}
+            {saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : isEdit ? "ویرایش" : "افزودن"}
           </button>
           <button type="button" onClick={onClose} className="btn-danger">
             بستن
@@ -842,7 +856,8 @@ export default function TaskForm({
             fetch("/api/assets")
               .then((r) => r.json())
               .then((d) => {
-                if (d.success) setAssets(d.data || []);
+                if (!d.success) throw new Error();
+        setAssets(d.data || []);
               })
               .catch(() => {});
           }}
@@ -854,7 +869,8 @@ export default function TaskForm({
             fetch("/api/assets")
               .then((r) => r.json())
               .then((d) => {
-                if (d.success) setAssets(d.data || []);
+                if (!d.success) throw new Error();
+        setAssets(d.data || []);
               })
               .catch(() => {});
           }}
@@ -871,7 +887,8 @@ export default function TaskForm({
               fetch("/api/assets")
                 .then((r) => r.json())
                 .then((d) => {
-                  if (d.success) setAssets(d.data || []);
+                  if (!d.success) throw new Error();
+        setAssets(d.data || []);
                       {showAssetPicker && (
         <AssetsModal
           contextTaskId={currentTaskId}
@@ -887,7 +904,8 @@ export default function TaskForm({
             fetch("/api/assets")
               .then((r) => r.json())
               .then((d) => {
-                if (d.success) setAssets(d.data || []);
+                if (!d.success) throw new Error();
+        setAssets(d.data || []);
               })
               .catch(() => {});
           }}

@@ -1,4 +1,5 @@
 "use client";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { trackColumnMenu } from "@/lib/column-menu-position.mjs";
 import { createPortal } from "react-dom";
@@ -146,6 +147,8 @@ export default function TaskTable({
   onDraftFinish,
   onDraftCancel,
   onFiltersChange,
+  loading = false,
+  loadError = "",
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("asc");
@@ -153,6 +156,7 @@ export default function TaskTable({
   const [menu, setMenu] = useState(null);
   const [menuValues, setMenuValues] = useState(null);
   const [menuLoading, setMenuLoading] = useState(false);
+  const [menuError, setMenuError] = useState("");
   const [menuQuery, setMenuQuery] = useState("");
   const [staged, setStaged] = useState(null);
   const menuRequestRef = useRef(0);
@@ -213,7 +217,7 @@ export default function TaskTable({
     const requestId = ++menuRequestRef.current;
     const cur = filters[col.key];
     setStaged(cur == null ? null : new Set(cur));
-    setMenuLoading(true);
+    setMenuLoading(true); setMenuError("");
     setMenuValues(null);
     if (col.key === "status") {
       setMenuValues(["جاری", "اتمام"]);
@@ -260,10 +264,11 @@ export default function TaskTable({
       });
       const d = await res.json();
       if (requestId !== menuRequestRef.current) return;
-      setMenuValues(d.success && Array.isArray(d.values) ? d.values : []);
+      if (!res.ok || !d.success || !Array.isArray(d.values)) throw new Error();
+      setMenuValues(d.values);
     } catch {
       if (requestId !== menuRequestRef.current) return;
-      setMenuValues([]);
+      setMenuValues([]); setMenuError("دریافت گزینه‌های فیلتر ناموفق بود.");
     }
     if (requestId === menuRequestRef.current) setMenuLoading(false);
   };
@@ -421,7 +426,7 @@ export default function TaskTable({
   
 
   return (
-    <div className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
+    <div aria-busy={loading} className="h-full overflow-auto overscroll-contain rounded-lg shadow-lg bg-[#b4a9b0]">
       <table className="task-table w-full min-w-[1650px]">
         <thead>
           <tr>
@@ -529,7 +534,7 @@ export default function TaskTable({
               </td>
             </tr>
           )}
-          {sorted.length === 0 && !draftActive && (
+          {!loading && !loadError && sorted.length === 0 && !draftActive && (
             <tr>
               <td
                 colSpan={COLUMNS.length}
@@ -558,7 +563,10 @@ export default function TaskTable({
               </td>
             </tr>
           )}
-          {sorted.map((t, i) => (
+          {!draftActive && (loading || loadError) && <tr><td colSpan={COLUMNS.length}>
+            {loading ? <LoadingIndicator label="دریافت کارها" /> : <p role="alert" className="p-4 text-center text-red-800">{loadError}</p>}
+          </td></tr>}
+          {!loading && !loadError && sorted.map((t, i) => (
             <tr
               key={`${t.TaskID}-${t.AssetID ?? 0}-${i}`}
               onClick={() => onRowClick(t)}
@@ -697,15 +705,16 @@ export default function TaskTable({
                 {menuCol.assignable ? (
                   <>
                                      <input ref={menuSearchRef} className="col-menu-search" placeholder="تایپ = تیک‌زدن منطبق‌ها…" value={menuQuery} onChange={(e) => onSearchChange(e.target.value)} />
+                    {menuError && <p role="alert" className="p-2 text-red-800">{menuError}</p>}
                     {menuLoading && (
                       <div className="col-menu-empty">
-                        در حال خواندن گزینه‌ها…
+                        <LoadingIndicator label="دریافت گزینه‌های فیلتر" />
                       </div>
                     )}
-                    {!menuLoading && shownValues.length === 0 && (
+                    {!menuLoading && !menuError && shownValues.length === 0 && (
                       <div className="col-menu-empty">گزینه‌ای یافت نشد</div>
                     )}
-                    {!menuLoading && (
+                    {!menuLoading && !menuError && (
                       <div className="col-menu-list">
                         {shownValues.map((v) => (
                           <button
@@ -805,15 +814,16 @@ export default function TaskTable({
                       />
                       <span>{menuQuery ? "(انتخاب همهٔ نتایج جستجو)" : "(انتخاب همه)"}</span>
                     </label>
+                    {menuError && <p role="alert" className="p-2 text-red-800">{menuError}</p>}
                     {menuLoading && (
                       <div className="col-menu-empty">
-                        در حال خواندن گزینه‌ها…
+                        <LoadingIndicator label="دریافت گزینه‌های فیلتر" />
                       </div>
                     )}
-                    {!menuLoading && shownValues.length === 0 && (
+                    {!menuLoading && !menuError && shownValues.length === 0 && (
                       <div className="col-menu-empty">گزینه‌ای مطابق متن پیدا نشد.</div>
                     )}
-                    {!menuLoading && (
+                    {!menuLoading && !menuError && (
                       <div className="col-menu-list">
                         {shownValues.map((v) => (
                           <label key={v} className="col-menu-item" style={{ alignItems: "flex-start", minWidth: 0 }}>
@@ -835,7 +845,7 @@ export default function TaskTable({
             <div className="col-menu-footer">
               {menuCol.filterable ? (
                 <>
-                  <button type="button" className="col-menu-ok" disabled={menuLoading} onClick={() => applyStaged(menuCol.key)}>
+                  <button type="button" className="col-menu-ok" disabled={menuLoading || !!menuError} onClick={() => applyStaged(menuCol.key)}>
                     اعمال فیلتر
                   </button>
                   <button type="button" className="col-menu-cancel" onClick={cancelMenu}>

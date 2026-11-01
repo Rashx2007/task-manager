@@ -1,4 +1,6 @@
 'use client';
+import ReadLoadingModal from "./ReadLoadingModal";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef } from 'react';
 import { normalizeFa } from '@/lib/assetRules';
 import { showToast } from '@/lib/toast';
@@ -19,6 +21,9 @@ import TaskContextHeader from "./TaskContextHeader";
 
 export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
   const [persons, setPersons] = useState([]);
+  const [readingPersons, setReadingPersons] = useState(true);
+  const [readingAssignment, setReadingAssignment] = useState(true);
+  const [readError, setReadError] = useState('');
   const [applicant, setApplicant] = useState('');
   const [functor, setFunctor] = useState('');
   const [saving, setSaving] = useState(false);
@@ -27,14 +32,16 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
   const detailsCloseRef = useRef(null);
 
   useEffect(() => {
-    fetch('/api/persons').then((r) => r.json()).then((d) => { if (d.success) setPersons(d.data || []); }).catch(() => {});
+    setReadingPersons(true); setReadingAssignment(true); setReadError('');
+    fetch('/api/persons').then((r) => r.json()).then((d) => { if (!d.success) throw new Error(); setPersons(d.data || []); }).catch(() => setReadError('دریافت اشخاص ناموفق بود.')).finally(() => setReadingPersons(false));
     fetch(`/api/applicant-functor?taskId=${taskId}`).then((r) => r.json()).then((d) => {
+      if (!d.success) throw new Error();
       if (d.success && d.exists && d.data) {
         setApplicant(d.data.ApplicantName || '');
         setFunctor(d.data.FunctorName || '');
         setPersonIds({ applicant: d.data.ApplicantID ?? null, functor: d.data.FunctorID ?? null });
       }
-    }).catch(() => {});
+    }).catch(() => setReadError('دریافت درخواست‌کننده و انجام‌دهنده ناموفق بود.')).finally(() => setReadingAssignment(false));
   }, [taskId]);
 
   useEffect(() => {
@@ -111,6 +118,7 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
     setSaving(false);
   };
 
+  if (readingPersons || readingAssignment || readError) return <ReadLoadingModal title="دریافت اطلاعات اشخاص کار" taskId={taskId} error={readError} onClose={onClose} />;
     return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000]"
       onClick={(e) => e.stopPropagation()}
@@ -124,7 +132,7 @@ export default function ApplicantFunctorModal({ taskId, onClose, onSaved }) {
         {personField('انجام‌دهنده', 'functor', functor, setFunctor)}
         <datalist id="af-persons">{persons.map((p) => <option key={p.PersonID} value={p.PersonName} />)}</datalist>
         <div className="flex gap-3">
-          <button type="submit" disabled={saving} className="btn-success">{saving ? '...' : 'ذخیره'}</button>
+          <button type="submit" disabled={saving} className="btn-success">{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}</button>
           <button type="button" onClick={onClose} className="btn-danger">بستن</button>
         </div>
       </form>

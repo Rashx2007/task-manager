@@ -1,5 +1,7 @@
 // components/FolderModal.jsx
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
+import ReadLoadingModal from "./ReadLoadingModal";
 import { useState, useEffect } from 'react';
 import FileBrowser from './FileBrowser';
 import { showToast, showConfirm } from '@/lib/toast';
@@ -16,6 +18,8 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
   const [fileName, setFileName] = useState('');
   const [folderPath, setFolderPath] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reading, setReading] = useState(true);
+  const [readError, setReadError] = useState('');
   const [allowCopy, setAllowCopy] = useState(true);
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
@@ -30,6 +34,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
   }, []);
 
   useEffect(() => {
+    setReading(true); setReadError('');
     (async () => {
       try {
         const r = await fetch(`/api/folder?taskId=${taskId}`);
@@ -41,7 +46,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
         }
         const res = await fetch(`/api/task-folder?taskId=${taskId}`);
         const t = await res.json();
-        if (!t.success) return;
+        if (!t.success) throw new Error();
         setAssetId(t.assetId);
         if (t.assetFolder) { setFolderPath(t.subPath); return; }
         showConfirm('پوشه‌ای برای این دستگاه تعیین نشده است.\nابتدا پوشهٔ دستگاه را تعیین می‌کنید؟', {
@@ -54,7 +59,8 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
             setShowFolderBrowser(true);
           },
         });
-      } catch {}
+      } catch { setReadError('دریافت مسیر ضمائم ناموفق بود.'); }
+      finally { setReading(false); }
     })();
   }, [taskId]);
 
@@ -211,6 +217,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
   };
 
   const inp = 'search-input w-full';
+  if (reading || readError) return <ReadLoadingModal title="دریافت پوشهٔ ضمائم" taskId={taskId} error={readError} onClose={onClose} />;
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
@@ -251,7 +258,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
         </div>
 
         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-teal-800/20">
-          <button onClick={save} disabled={saving} className="btn-success flex-1">{saving ? '...' : 'ذخیره'}</button>
+          <button onClick={save} disabled={saving} className="btn-success flex-1">{saving ? <LoadingIndicator inline label="ذخیره اطلاعات" /> : "ذخیره"}</button>
           <button onClick={onClose} className="btn-danger flex-1">بستن</button>
         </div>
       </div>

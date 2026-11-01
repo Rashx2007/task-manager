@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { INSPECTION_COLUMNS, inspectionSearchText, nextInspectionSort, readInspectionSearch } from '@/lib/task-inspector-filters';
 import { formatWallTime, parseTaskId } from '@/lib/task-inspection';
@@ -43,7 +44,7 @@ function ColumnFilter({ column, filters, onApply, onClose }) {
           const next = event.target.value; setText(next);
           setPicked(new Set(values.filter((value) => inspectionSearchText(value).includes(inspectionSearchText(next)))));
         }} placeholder="بنویسید و Enter یا اعمال فیلتر را بزنید" />
-      {loading ? <p role="status" className="p-2">دریافت گزینه‌ها…</p> : error ? <p role="alert" className="p-2 text-red-800">{error}</p> : <>
+      {loading ? <LoadingIndicator label="دریافت گزینه‌های فیلتر" /> : error ? <p role="alert" className="p-2 text-red-800">{error}</p> : <>
         <label className="flex gap-2 p-2"><input type="checkbox" aria-label="انتخاب همهٔ نتایج فیلتر"
           checked={visible.length > 0 && visible.every((value) => picked.has(value))}
           onChange={(event) => setPicked((previous) => {
@@ -93,13 +94,13 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, 
   }, [filters, sort, page, started]);
   const change = (next, nextStarted = true) => {
     invalidate(); onResultsChange(); closeMenu(); setFilters(next); setPage(1); setStarted(nextStarted);
-    setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
+    setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(nextStarted);
   };
   const changeSort = (key) => {
     invalidate(); onResultsChange(); closeMenu(); setSort((previous) => nextInspectionSort(previous, key));
-    setPage(1); setStarted(true); setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(false);
+    setPage(1); setStarted(true); setResult({ rows: [], total: 0, page: 1 }); setError(''); setLoading(true);
   };
-  const turnPage = (next) => { invalidate(); onResultsChange(); setPage(next); };
+  const turnPage = (next) => { invalidate(); onResultsChange(); setLoading(true); setResult({ rows: [], total: 0, page: next }); setPage(next); };
   const pages = Math.max(1, Math.ceil(result.total / 20));
   const cell = (row, key) => {
     if (key === 'status') return Number(row.Complited) === 1 ? 'اتمام' : 'جاری';
@@ -144,13 +145,13 @@ const TaskInspectionTable = forwardRef(function TaskInspectionTable({ onSelect, 
           </td>)}
         </tr>)}
         {!result.rows.length && <tr><td colSpan={INSPECTION_COLUMNS.length + 1} className="bg-white/80 p-4">
-          {loading ? 'در حال جستجو…' : error ? 'دریافت نتایج ناموفق بود.' : started ? 'کاری مطابق فیلترها پیدا نشد.' : 'برای پیدا کردن کار، از فیلتر سرستون‌ها استفاده کنید یا «نمایش همهٔ کارها» را بزنید.'}
+          {loading ? <LoadingIndicator label="جستجوی کارها" /> : error ? 'دریافت نتایج ناموفق بود.' : started ? 'کاری مطابق فیلترها پیدا نشد.' : 'برای پیدا کردن کار، از فیلتر سرستون‌ها استفاده کنید یا «نمایش همهٔ کارها» را بزنید.'}
         </td></tr>}
         </tbody>
       </table>
     </div>
     {error && <p role="alert" className="p-2 bg-red-100 text-red-900">{error}</p>}
-    {loading && <p role="status" className="text-sm mt-2">در حال دریافت نتایج…</p>}
+    {loading && result.rows.length > 0 && <LoadingIndicator label="دریافت نتایج" />}
     {started && !loading && !error && <div className="flex items-center flex-wrap gap-3 mt-2 text-sm">
       <span>{result.total} کار — صفحهٔ {result.page} از {pages}</span>
       <button type="button" className="btn-primary" disabled={result.page <= 1} onClick={() => turnPage(result.page - 1)}>صفحهٔ قبل</button>

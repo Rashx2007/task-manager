@@ -1,4 +1,5 @@
 "use client";
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useRef } from "react";
 
 import TaskContextHeader from "./TaskContextHeader";
@@ -9,14 +10,21 @@ export default function BackupModal({ onClose }) {
   const [selFile, setSelFile] = useState("");
   const [restorePath, setRestorePath] = useState("");
   const [busy, setBusy] = useState(false);
+  const [readingFiles, setReadingFiles] = useState(true);
+  const [readError, setReadError] = useState("");
+  const readSequenceRef = useRef(0);
   const fileRef = useRef(null);
 
   const load = async () => {
+    const token = ++readSequenceRef.current; setReadingFiles(true); setReadError("");
     try {
       const res = await fetch(`/api/backup?root=${encodeURIComponent(folder)}`);
       const d = await res.json();
-      if (d.success) setFiles(d.files || []);
-    } catch {}
+      if (token !== readSequenceRef.current) return;
+      if (!res.ok || !d.success) throw new Error();
+      setFiles(d.files || []);
+    } catch { if (token === readSequenceRef.current) setReadError("دریافت فایل‌های پشتیبان ناموفق بود."); }
+    finally { if (token === readSequenceRef.current) setReadingFiles(false); }
   };
   useEffect(() => {
     load();
@@ -143,6 +151,7 @@ export default function BackupModal({ onClose }) {
         <h3 className="text-lg font-bold mb-4">پشتیبان‌گیری / بازگردانی پایگاه داده</h3>
 
         <TaskContextHeader className="mb-4" />
+        {busy && <LoadingIndicator label="عملیات پشتیبان‌گیری یا بازگردانی" />}
         <label className="block text-sm font-bold mb-1">پوشهٔ پشتیبان‌ها</label>
         <div className="flex gap-2 mb-3">
           <input className={inp} dir="ltr" value={folder} onChange={(e) => setFolder(e.target.value)} />
@@ -164,9 +173,12 @@ export default function BackupModal({ onClose }) {
           </button>
         </div>
 
+        {readingFiles && <LoadingIndicator label="دریافت فایل‌های پشتیبان" />}
+        {readError && <p role="alert" className="text-red-800">{readError}</p>}
         <label className="block text-sm font-bold mb-1">فایل‌های موجود (برای بازگردانی)</label>
         <select
           className={inp}
+          disabled={readingFiles || !!readError}
           value={selFile}
           onChange={(e) => {
             setSelFile(e.target.value);

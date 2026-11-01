@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect, useCallback, useRef } from 'react';
 import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
@@ -200,6 +201,8 @@ import TaskContextHeader from "./TaskContextHeader";
 
 export default function FollowModal({ taskId, subject, onClose, onSaved }) {
   const [rows, setRows] = useState([]);
+  const [readingRows, setReadingRows] = useState(true);
+  const [readError, setReadError] = useState('');
   const [text, setTextState] = useState(shamsiStamp);
   const textRef = useRef(text);
   // ✅ شروع و پایان = لحظهٔ باز شدن مودال
@@ -276,16 +279,20 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
 
   const load = useCallback(async () => {
     const sequence = ++loadSequenceRef.current;
+    setReadingRows(true); setReadError('');
     try {
       const res = await fetch(`/api/follow?taskId=${encodeURIComponent(taskId)}`);
       const d = await res.json();
       if (sequence !== loadSequenceRef.current || currentTaskRef.current !== taskId) return;
       if (!res.ok || !d.success || !Array.isArray(d.rows) || d.rows.some(row => Number(row.TaskID) !== Number(taskId))) {
+        setReadError('دریافت پیگیری ناموفق بود: ' + (d.error || 'پاسخ با این کار تطابق ندارد.'));
         showToast('دریافت پیگیری ناموفق بود: ' + (d.error || 'پاسخ با این کار تطابق ندارد.'), 'error'); return;
       }
       setRows(d.rows);
     } catch {
-      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) showToast('دریافت فهرست پیگیری ناموفق بود.', 'error');
+      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) { setReadError('دریافت فهرست پیگیری ناموفق بود.'); showToast('دریافت فهرست پیگیری ناموفق بود.', 'error'); }
+    } finally {
+      if (sequence === loadSequenceRef.current && currentTaskRef.current === taskId) setReadingRows(false);
     }
   }, [taskId]);
   useEffect(() => { load(); }, [load]);
@@ -556,12 +563,13 @@ export default function FollowModal({ taskId, subject, onClose, onSaved }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 && (
+                {!readingRows && !readError && rows.length === 0 && (
                   <tr>
                     <td colSpan={6} className="text-center py-4">ردیفی وجود ندارد</td>
                   </tr>
                 )}
-                {rows.map((r) => (
+                {(readingRows || readError) && <tr><td colSpan={6}>{readingRows ? <LoadingIndicator label="دریافت سوابق پیگیری" /> : <p role="alert" className="p-3 text-red-800">{readError}</p>}</td></tr>}
+                {!readingRows && !readError && rows.map((r) => (
                   <tr
                     key={r.FollowID}
                     onClick={() => pickRow(r)}

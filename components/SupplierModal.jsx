@@ -1,4 +1,5 @@
 "use client";
+import ReadLoadingModal from "./ReadLoadingModal";
 import { useState, useEffect, useRef, useMemo } from "react";
 import DatePicker, { DateObject } from "react-multi-date-picker";
 import persian from "react-date-object/calendars/persian";
@@ -37,6 +38,8 @@ import TaskContextHeader from "./TaskContextHeader";
 
 export default function SupplierModal({ taskId, onClose, onSaved }) {
   const [form, setForm] = useState(null);
+  const [reading, setReading] = useState(true);
+  const [readError, setReadError] = useState("");
   const [buyers, setBuyers] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -51,22 +54,27 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
   const digitsOnly = (s, max) => toEnDigits(s).replace(/\D/g, "").slice(0, max);
 
   useEffect(() => {
+    setReading(true); setReadError("");
     (async () => {
       try {
         const res = await fetch(`/api/supplier?taskId=${taskId}`);
         const d = await res.json();
-        if (d.success) setForm(d.data || {});
-      } catch {}
+        if (!res.ok || !d.success) throw new Error();
+        setForm(d.data || {});
+      } catch { setReadError("دریافت اطلاعات خرید ناموفق بود."); }
       try {
         const r = await fetch("/api/buyers");
         const bd = await r.json();
-        if (bd.success) setBuyers(bd.buyers || []);
-      } catch {}
+        if (!bd.success) throw new Error();
+        setBuyers(bd.buyers || []);
+      } catch { setReadError("دریافت کارپردازها ناموفق بود."); }
       try {
         const s = await fetch("/api/purchase-statuses");
         const sd = await s.json();
-        if (sd.success) setStatuses(sd.data || []);
-      } catch {}
+        if (!sd.success) throw new Error();
+        setStatuses(sd.data || []);
+      } catch { setReadError("دریافت وضعیت‌های خرید ناموفق بود."); }
+      finally { setReading(false); }
     })();
   }, [taskId]);
 
@@ -140,7 +148,7 @@ export default function SupplierModal({ taskId, onClose, onSaved }) {
   };
 
   const inp = "search-input w-full";
-  if (!form) return null;
+  if (reading || readError || !form) return <ReadLoadingModal title="دریافت اطلاعات خرید" taskId={taskId} error={readError} onClose={onClose} />;
 
   const todayButton = (field) => (
     <button type="button" className="dp-today" onClick={() => setForm({ ...form, [field]: todayStr() })}>
