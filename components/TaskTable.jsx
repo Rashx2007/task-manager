@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { trackColumnMenu } from "@/lib/column-menu-position.mjs";
 import { createPortal } from "react-dom";
 import { isCentral, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import Tip from "./Tip";
@@ -156,6 +157,8 @@ export default function TaskTable({
   const [staged, setStaged] = useState(null);
   const menuRequestRef = useRef(0);
   const menuSearchRef = useRef(null);
+  const menuPanelRef = useRef(null);
+  const menuAnchorRef = useRef(null);
 
   // بعد از stateهای موجود، این‌ها رو اضافه کنید:
   const [pendingFilters, setPendingFilters] = useState(null); // null یعنی از filters اصلی استفاده کن
@@ -199,6 +202,11 @@ export default function TaskTable({
     if (!menu || menuLoading) return;
     menuSearchRef.current?.focus({ preventScroll: true });
   }, [menu?.key, menuLoading, draftActive]);
+  // اندازه‌گیری واقعی پس از رندر؛ بدون حدس ارتفاع یا محاسبهٔ right از لبهٔ صفحه.
+  useLayoutEffect(() => {
+    if (!menu) return;
+    return trackColumnMenu(menuPanelRef.current, menuAnchorRef.current, window);
+  }, [menu?.key, menuLoading, menuValues, menuQuery, draftActive, forceTaskIdDescending]);
   const centralDraft = isCentral(draft?.Building);
 
   const loadMenuValues = async (col) => {
@@ -262,8 +270,8 @@ export default function TaskTable({
 
   const openMenu = (e, col) => {
     e.stopPropagation();
-    const r = e.currentTarget.getBoundingClientRect();
-    const next = (menu && menu.key === col.key) ? null : { key: col.key, y: Math.min(r.bottom + 2, window.innerHeight - 480), right: window.innerWidth - r.right };
+    menuAnchorRef.current = e.currentTarget;
+    const next = (menu && menu.key === col.key) ? null : { key: col.key };
     setMenuQuery("");
     setMenu(next);
     if (!next) { menuRequestRef.current++; setStaged(null); }
@@ -674,8 +682,9 @@ export default function TaskTable({
         menuCol &&
         createPortal(
           <div
+            ref={menuPanelRef}
             className="col-menu"
-            style={{ top: menu.y, right: menu.right }}
+            style={{ top: 8, left: 8, right: "auto", minWidth: 0, maxWidth: "calc(100vw - 16px)", overflowY: "auto", overflowX: "hidden" }}
             onClick={(e) => e.stopPropagation()}
           >
             {draftActive ? (
