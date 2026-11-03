@@ -179,7 +179,7 @@ export default function FolderModal({ taskId, onClose, onSaved }) {
         showToast('ذخیره شد.', 'success', 2500);
         if (onSaved) onSaved();
         onClose();
-      } else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
+      } else showToast(d.error || 'ذخیرهٔ اطلاعات پوشه انجام نشد؛ دوباره تلاش کنید.', 'error');
     } catch { showToast('خطا در ارتباط با سرور.', 'error'); }
     setSaving(false);
   };
