@@ -12,6 +12,8 @@ function harness(type = 'daily') {
   const pending = [], state = { loading: false, error: '', rows: [], total: null };
   const c = vm.createContext({
     loadRequestRef: { current: 0 }, loadTypeRef: { current: type }, searchRowsRef: { current: [{ TaskID: 1 }] },
+    searchSourceRef: { current: null }, searchNeedsRefreshRef: { current: false },
+    setSelectedTask: () => {}, normalizeDigits: (value) => String(value ?? ''),
     PAGE_SIZE: 10, useCallback: (fn) => fn,
     setTasksLoading: (v) => { state.loading = v; }, setLoadError: (v) => { state.error = v; },
     setTasks: (v) => { state.rows = v; }, setTotalFiltered: (v) => { state.total = v; }, setNextSwitch: () => {},

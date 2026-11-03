@@ -355,6 +355,12 @@ export default function TaskForm({
         persistedStatus = Number(data.Complited) === 1 ? 1 : 0;
         loadedStatusRef.current = persistedStatus;
         setForm((previous) => ({ ...previous, Complited: persistedStatus }));
+        if (statusWasChanged && persistedStatus !== statusRequested) {
+          markSaved();
+          if (onSaved) onSaved();
+          showToast("تغییرات فرم ذخیره شد، اما وضعیت انتخاب‌شده تأیید نشد؛ وضعیت کار را بررسی کنید.", "error");
+          return;
+        }
       } else {
         const res = await fetch("/api/tasks", {
           method: "POST",
@@ -379,8 +385,13 @@ export default function TaskForm({
       } else {
         showToast(`تغییرات کار کد ${taskId} ذخیره شد.`, "success");
         if (onSaved) onSaved();
-        // An explicit status choice is final: do not immediately ask to undo it.
-        if (statusWasChanged || persistedStatus === 1) return;
+        // Completed as requested: finish after the saved state has been refreshed.
+        // A stale form that requested "in progress" must not silently close as completed.
+        if (persistedStatus === 1) {
+          if (statusRequested === 1 && onClose) onClose();
+          return;
+        }
+        // Reopening continues through the same post-save questions immediately.
         const done = await askComplete();
         if (done) {
           const completion = await fetch("/api/complete", {

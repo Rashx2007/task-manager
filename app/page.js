@@ -214,6 +214,9 @@ export default function Home() {
   const [reloadKey, setReloadKey] = useState(0);
   const loadTypeRef = useRef("daily");
   const searchRowsRef = useRef([]);
+  const searchSourceRef = useRef(null);
+  const searchNeedsRefreshRef = useRef(false);
+  const observedReloadKeyRef = useRef(reloadKey);
   const loadRequestRef = useRef(0);
   // ✅ نوسازی خودکار بدون رفرش صفحه
   const [nextSwitch, setNextSwitch] = useState(null);
@@ -264,6 +267,26 @@ export default function Home() {
     setLoadError("");
     try {
       if (type === "search") {
+        const source = searchSourceRef.current;
+        if (searchNeedsRefreshRef.current && source?.kind === "simple") {
+          const response = await fetch("/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(source.payload),
+          });
+          const result = await response.json();
+          if (requestId !== loadRequestRef.current || loadTypeRef.current !== "search" || searchSourceRef.current !== source) return;
+          if (!response.ok || !result.success || !Array.isArray(result.data)) {
+            setLoadError("بازخوانی نتایج جستجو انجام نشد؛ دوباره تلاش کنید.");
+            return;
+          }
+          const updatedRows = sortSearchRows(result.data);
+          searchRowsRef.current = updatedRows;
+          searchNeedsRefreshRef.current = false;
+          setSelectedTask((previous) => previous
+            ? updatedRows.find((row) => normalizeDigits(row.TaskID).trim() === normalizeDigits(previous.TaskID).trim()) || null
+            : null);
+        }
         const filteredRows = sortSearchRows(applyClientFilters(
           searchRowsRef.current || [],
           filtersObj,
@@ -312,6 +335,10 @@ export default function Home() {
     loadTasks({}, 1);
   }, [loadTasks]);
   useEffect(() => {
+    if (observedReloadKeyRef.current !== reloadKey) {
+      observedReloadKeyRef.current = reloadKey;
+      if (loadTypeRef.current === "search" && searchSourceRef.current?.kind === "simple") searchNeedsRefreshRef.current = true;
+    }
     loadTasks(activeFilters, page);
   }, [activeFilters, page, reloadKey, loadTasks]);
   useEffect(() => {
@@ -475,6 +502,8 @@ export default function Home() {
     setTasksLoading(true);
     loadTypeRef.current = "daily";
     searchRowsRef.current = [];
+    searchSourceRef.current = null;
+    searchNeedsRefreshRef.current = false;
     setIsSearchView(false);
     setActiveFilters({});
     setPage(1);
@@ -674,8 +703,10 @@ export default function Home() {
         <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
           {showSearch && (
             <SearchPanel onLoadingChange={setSimpleSearchLoading}
-              onResult={(rows) => {
+              onResult={(rows, source) => {
                 loadTypeRef.current = "search";
+                searchSourceRef.current = source;
+                searchNeedsRefreshRef.current = false;
                 loadRequestRef.current++;
                 setTasksLoading(false); setLoadError("");
                 const orderedRows = sortSearchRows(rows);
@@ -693,6 +724,8 @@ export default function Home() {
               sync={compSync}
               onResult={(rows) => {
                 loadTypeRef.current = "search";
+                searchSourceRef.current = null;
+                searchNeedsRefreshRef.current = false;
                 loadRequestRef.current++;
                 setTasksLoading(false); setLoadError("");
                 const orderedRows = sortSearchRows(rows);
@@ -714,9 +747,13 @@ export default function Home() {
        <button
          type="button"
          className="btn-primary px-2 py-1 text-xs"
-         onClick={() => setLoadError("")}
+         onClick={() => {
+           if (searchNeedsRefreshRef.current && searchSourceRef.current?.kind === "simple") {
+             loadTasks(activeFiltersRef.current, pageRef.current);
+           } else setLoadError("");
+         }}
        >
-         بستن
+         {searchNeedsRefreshRef.current && searchSourceRef.current?.kind === "simple" ? "تلاش دوباره" : "بستن"}
        </button>
      </div>
    )}
@@ -820,6 +857,10 @@ export default function Home() {
             finishingDraftRef.current = false;
           }}
           onSaved={() => {
+            if (loadTypeRef.current === "search" && searchSourceRef.current?.kind === "simple") {
+              searchNeedsRefreshRef.current = true;
+              setTasksLoading(true);
+            }
             setReloadKey((k) => k + 1);
             if (finishingDraftRef.current) {
               cancelDraft();

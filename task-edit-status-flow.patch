@@ -1,0 +1,87 @@
+diff --git a/components/TaskForm.jsx b/components/TaskForm.jsx
+index 7d8424a..d56b501 100644
+--- a/components/TaskForm.jsx
++++ b/components/TaskForm.jsx
+@@ -355,6 +355,12 @@ export default function TaskForm({
+         persistedStatus = Number(data.Complited) === 1 ? 1 : 0;
+         loadedStatusRef.current = persistedStatus;
+         setForm((previous) => ({ ...previous, Complited: persistedStatus }));
++        if (statusWasChanged && persistedStatus !== statusRequested) {
++          markSaved();
++          if (onSaved) onSaved();
++          showToast("تغییرات فرم ذخیره شد، اما وضعیت انتخاب‌شده تأیید نشد؛ وضعیت کار را بررسی کنید.", "error");
++          return;
++        }
+       } else {
+         const res = await fetch("/api/tasks", {
+           method: "POST",
+@@ -379,8 +385,13 @@ export default function TaskForm({
+       } else {
+         showToast(`تغییرات کار کد ${taskId} ذخیره شد.`, "success");
+         if (onSaved) onSaved();
+-        // An explicit status choice is final: do not immediately ask to undo it.
+-        if (statusWasChanged || persistedStatus === 1) return;
++        // Completed as requested: finish after the saved state has been refreshed.
++        // A stale form that requested "in progress" must not silently close as completed.
++        if (persistedStatus === 1) {
++          if (statusRequested === 1 && onClose) onClose();
++          return;
++        }
++        // Reopening continues through the same post-save questions immediately.
+         const done = await askComplete();
+         if (done) {
+           const completion = await fetch("/api/complete", {
+diff --git a/tests/task-edit-status-flow.test.mjs b/tests/task-edit-status-flow.test.mjs
+new file mode 100644
+index 0000000..18a9b9e
+--- /dev/null
++++ b/tests/task-edit-status-flow.test.mjs
+@@ -0,0 +1,35 @@
++// Execute the actual submit handler with UI/SQL calls mocked; no browser or SQL Server.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs/promises';
++import vm from 'node:vm';
++const source = (await fs.readFile(new URL('../components/TaskForm.jsx', import.meta.url), 'utf8')).replace(/\r\n?/g, '\n');
++const start = source.indexOf('  const handleSubmit = async'), end = source.indexOf('\n  const inp', start);
++assert.ok(start >= 0 && end > start, 'actual submit handler must be found');
++const handler = source.slice(start, end);
++async function submit({loaded=0,chosen=1,serverStatus=chosen,putOk=true,putSuccess=true,networkError=false,completionOk=true,done=false,clickedTimes=false,clickedPeople=false,noClose=false}={}) {
++  const calls=[], notices=[], events=[];
++  const state={saved:0,refreshed:0,closed:0,asks:0,times:0,people:0,saving:null,form:{TaskTtl:'test',Descriptions:'draft',Priorities:'زمان انجام ثابت',FixedDueTime:true,Complited:chosen,AssetID:'',RequestNumber:'',RegisterNumber:'',RequestDate:''}};
++  const loadedStatusRef={current:loaded}, timeDateClickedRef={current:clickedTimes}, autoTimeDateRef={current:false}, pendingCloseAskRef={current:false};
++  const context=vm.createContext({form:state.form,currentTaskId:202,loadedStatusRef,
++    showToast:(...args)=>{notices.push(args);events.push('toast');},alert:()=>events.push('alert'),setSaving:v=>{state.saving=v;},setForm:fn=>{state.form=fn(state.form);},setCurrentTaskId:()=>{},markSaved:()=>{state.saved++;events.push('saved');},
++    onSaved:()=>{state.refreshed++;events.push('refresh');},onClose:noClose?null:()=>{state.closed++;events.push('close');},askComplete:async()=>{state.asks++;events.push('ask');return done;},
++    applicantClickedRef:{current:clickedPeople},timeDateClickedRef,autoTimeDateRef,pendingCloseAskRef,setShowTimeDate:()=>{state.times++;events.push('time');},setShowAFModal:()=>{state.people++;events.push('people');},confirm:()=>false,
++    fetch:async(url,options)=>{calls.push({url,options});if(networkError)throw Error('network');if(url==='/api/complete')return{ok:completionOk,json:async()=>({success:completionOk,error:'safe error'})};return{ok:putOk,json:async()=>({success:putSuccess,Complited:serverStatus,error:'safe error'})};}});
++  vm.runInContext(handler+'\nthis.submit=handleSubmit;',context); await context.submit({preventDefault(){}});
++  return {state,calls,notices,events,loadedStatusRef,timeDateClickedRef,autoTimeDateRef,pendingCloseAskRef};
++}
++test('explicit completion closes on first successful edit, without a second request or question',async()=>{
++  const h=await submit();const b=JSON.parse(h.calls[0].options.body);assert.equal(h.calls.length,1);assert.equal(h.calls[0].url,'/api/tasks/202');assert.equal(b.statusIntent,'change');assert.equal(b.expectedStatus,0);assert.equal(b.Complited,1);assert.equal(h.loadedStatusRef.current,1);assert.equal(h.state.closed,1);assert.equal(h.state.refreshed,1);assert.equal(h.state.asks,0);assert.ok(h.events.indexOf('refresh')<h.events.indexOf('close'));assert.equal(h.state.saving,false);
++});
++test('editing an already completed task also closes once on success',async()=>{const h=await submit({loaded:1,chosen:1,serverStatus:1});assert.equal(h.state.closed,1);assert.equal(h.state.asks,0);assert.equal(JSON.parse(h.calls[0].options.body).statusIntent,'preserve');});
++test('reopening asks immediately; a no answer proceeds to time and priority without a second PUT',async()=>{
++  const h=await submit({loaded:1,chosen:0,serverStatus:0,done:false});const b=JSON.parse(h.calls[0].options.body);assert.equal(b.statusIntent,'change');assert.equal(b.expectedStatus,1);assert.equal(b.Complited,0);assert.equal(h.calls.length,1);assert.equal(h.state.asks,1);assert.equal(h.state.times,1);assert.equal(h.state.closed,0);assert.equal(h.loadedStatusRef.current,0);assert.equal(h.timeDateClickedRef.current,true);assert.equal(h.autoTimeDateRef.current,true);
++});
++test('when time was already addressed a no answer proceeds to performer',async()=>{const h=await submit({loaded:1,chosen:0,serverStatus:0,done:false,clickedTimes:true});assert.equal(h.state.asks,1);assert.equal(h.state.times,0);assert.equal(h.state.people,1);assert.equal(h.pendingCloseAskRef.current,true);assert.equal(h.calls.length,1);});
++test('reopening then explicitly answering yes completes through audited API and opens performer step',async()=>{const h=await submit({loaded:1,chosen:0,serverStatus:0,done:true});assert.equal(h.state.asks,1);assert.equal(h.calls.length,2);assert.equal(h.calls[1].url,'/api/complete');assert.deepEqual(JSON.parse(h.calls[1].options.body),{taskId:202});assert.equal(h.loadedStatusRef.current,1);assert.equal(h.state.people,1);assert.equal(h.pendingCloseAskRef.current,true);});
++test('failed follow-up completion preserves the reopened state and keeps the form open',async()=>{const h=await submit({loaded:1,chosen:0,serverStatus:0,done:true,completionOk:false});assert.equal(h.state.closed,0);assert.equal(h.loadedStatusRef.current,0);assert.ok(h.notices.some(n=>n[1]==='error'));assert.equal(h.state.saving,false);});
++test('failed edit and network failure neither close nor start the next steps',async()=>{for(const x of [{putOk:false},{putSuccess:false},{networkError:true}]){const h=await submit(x);assert.equal(h.state.saved,0);assert.equal(h.state.refreshed,0);assert.equal(h.state.closed,0);assert.equal(h.state.asks,0);assert.ok(h.notices.some(n=>n[1]==='error'));assert.equal(h.state.saving,false);}});
++test('stale in-progress form receiving completed state neither closes nor prompts',async()=>{const h=await submit({loaded:0,chosen:0,serverStatus:1});assert.equal(h.state.closed,0);assert.equal(h.state.asks,0);assert.equal(h.loadedStatusRef.current,1);assert.equal(JSON.parse(h.calls[0].options.body).statusIntent,'preserve');});
++test('a mismatched saved status shows an error without closing or starting another status request',async()=>{for(const x of [{loaded:0,chosen:1,serverStatus:0},{loaded:1,chosen:0,serverStatus:1}]){const h=await submit(x);assert.equal(h.state.closed,0);assert.equal(h.state.asks,0);assert.equal(h.calls.length,1);assert.equal(h.state.saved,1);assert.equal(h.state.refreshed,1);assert.ok(h.notices.some(n=>n[1]==='error'));}});
++test('a missing close callback does not turn a successful edit into an error',async()=>{const h=await submit({noClose:true});assert.equal(h.state.saved,1);assert.equal(h.state.refreshed,1);assert.ok(!h.notices.some(n=>n[1]==='error'));});
+diff --git a/tests/task-status-form.test.mjs b/tests/task-status-form.test.mjs
+index c99b7e5..a993406 100644
+--- a/tests/task-status-form.test.mjs
++++ b/tests/task-status-form.test.mjs
+@@ -7,7 +7,7 @@ async function submit({loaded=1,chosen=1,serverStatus=chosen,done=false,error=fa
+  vm.runInContext(handler+'\nthis.submit=handleSubmit;',context);await context.submit({preventDefault(){}});return{calls,notices,state,ref};
+ }
+ test('Saving a completed task preserves status without implicit reopening or completion wizard',async()=>{const h=await submit();const body=JSON.parse(h.calls[0].options.body);assert.equal(body.Complited,1);assert.equal(body.statusIntent,'preserve');assert.equal(body.expectedStatus,1);assert.equal(h.calls.length,1);assert.equal(h.state.asks,0);assert.equal(h.state.saving,false);});
+-test('Explicit reopening sends expected prior status and does not immediately ask to complete again',async()=>{const h=await submit({loaded:1,chosen:0,serverStatus:0});const body=JSON.parse(h.calls[0].options.body);assert.equal(body.statusIntent,'change');assert.equal(body.expectedStatus,1);assert.equal(body.Complited,0);assert.equal(h.state.asks,0);assert.equal(h.state.showTimes,0);assert.equal(h.ref.current,0);});
++test('Explicit reopening sends expected prior status and immediately continues to the completion question',async()=>{const h=await submit({loaded:1,chosen:0,serverStatus:0});const body=JSON.parse(h.calls[0].options.body);assert.equal(body.statusIntent,'change');assert.equal(body.expectedStatus,1);assert.equal(body.Complited,0);assert.equal(h.state.asks,1);assert.equal(h.state.showTimes,0);assert.equal(h.ref.current,0);});
+ test('Explicit completion choice uses one audited PUT with change intent',async()=>{const h=await submit({loaded:0,chosen:1,serverStatus:1});assert.equal(h.calls.length,1);assert.equal(JSON.parse(h.calls[0].options.body).statusIntent,'change');assert.equal(h.state.asks,0);});
+ test('Stale unchanged form respects current server status and skips inappropriate completion prompt',async()=>{const h=await submit({loaded:0,chosen:0,serverStatus:1});assert.equal(JSON.parse(h.calls[0].options.body).statusIntent,'preserve');assert.equal(h.state.form.Complited,1);assert.equal(h.state.asks,0);});
+ test('Traditional completion prompt uses complete API, never a second full PUT',async()=>{const h=await submit({loaded:0,chosen:0,serverStatus:0,done:true});assert.equal(h.calls.length,2);assert.equal(h.calls[1].url,'/api/complete');assert.deepEqual(JSON.parse(h.calls[1].options.body),{taskId:202});assert.equal(h.ref.current,1);assert.equal(h.state.form.Complited,1);});

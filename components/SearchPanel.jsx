@@ -19,16 +19,17 @@ export default function SearchPanel({ onResult, onClose, onLoadingChange }) {
 
   const doSearch = async () => {
     const token = ++sequenceRef.current;
+    const payload = { taskID, requestNumber, propertyCode };
     setBusy(true); onLoadingChange?.(true);
     try {
       const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskID, requestNumber, propertyCode }),
+        body: JSON.stringify(payload),
       });
       const d = await res.json();
       if (token !== sequenceRef.current) return;
-      if (d.success) onResult(d.data || []);
+      if (d.success) onResult(d.data || [], { kind: 'simple', payload });
       else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
     } catch {
       showToast('خطا در ارتباط با سرور.', 'error');
