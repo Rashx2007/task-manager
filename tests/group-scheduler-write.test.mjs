@@ -16,7 +16,7 @@ function fixture(grouped = true) {
     members: grouped ? [1, 2].map(TaskID => ({ TaskID, GroupID: 1, LeftAt: null, SyncEnabled: 1, MemberID: String(TaskID), MemberVersion: version })) : [],
     tasks: [1, 2, 3].map(TaskID => ({ TaskID, Complited: 0, Priorities: '3.متوسط', FixedDueTime: 0, Submit_Date: '2026-10-25 08:00:00', LastFollow: null })),
     times: [1, 2, 3].map(TaskID => ({ TaskID, TimeDateID: TaskID, Priorities: '3.متوسط', FixedDueTime: 0, Durationtime: '01:00:00', DueDateTime: `2026-10-26 ${TaskID === 3 ? '09' : '08'}:00:00`, EndDateTime: `2026-10-26 ${TaskID === 3 ? '10' : '09'}:00:00` })),
-    follows: [], batches: [], links: [], ready: true,
+    follows: [], batches: [], links: [], operations: [], ready: true,
   };
 }
 async function harness(initial = fixture(), options = {}) {
@@ -35,7 +35,7 @@ async function harness(initial = fixture(), options = {}) {
   async function tx(raw, params = []) {
     const sql = raw.replace(/\s+/g, ' ').trim(), compact = sql.replace(/\s/g, '');
     calls.push({ sql, params });
-    if (/^(UPDATE|INSERT|DELETE)/.test(sql) || sql.includes('scheduler:touch')) {
+    if (/^(UPDATE|INSERT|DELETE)/.test(sql) || sql.includes('scheduler:touch') || /group-split-write:(leave|touch|dissolve|remember)/.test(sql)) {
       writes.push({ sql, params });
       if (options.failWrite === writes.length) throw new Error('injected SQL failure');
     }
@@ -43,10 +43,16 @@ async function harness(initial = fixture(), options = {}) {
     if (sql.includes('AS Ready')) return [{ Ready: data.ready ? 1 : 0 }];
     if (sql.startsWith('SELECT MigrationKey')) return [{ MigrationKey: '20261025_001_task_groups' }];
     if (sql.includes('AS IndexCount')) return [{ IndexCount: 2, ForeignKeyCount: 7 }];
-    if (sql.includes('scheduler:groups')) return data.groups.map(r => ({ ...r }));
-    if (sql.includes('scheduler:members') || sql.includes('group-split:member-versions')) return data.members.map(r => ({ ...r }));
+    if (sql.includes('scheduler:groups')) return data.groups.filter(g=>data.members.some(m=>m.GroupID===g.GroupID&&m.LeftAt===null)).map(r => ({ ...r }));
+    if (sql.includes('scheduler:members') || sql.includes('group-split:member-versions')) return data.members.filter(m=>m.LeftAt===null).map(r => ({ ...r }));
+    if (sql.includes('group-split:settings-lock')) return [{SetID:1001}];
+    if (sql.includes('group-split-write:operation')) return data.operations.filter(o=>o.RequestID===params[0]).map(o=>({...o}));
+    if (sql.includes('group-split-write:members')) return data.members.filter(m=>m.LeftAt===null&&m.GroupID===params[0]).map(m=>({...m}));
+    if (sql.includes('group-split-write:leave')) { const [gid,tid,mid,ver]=params;const m=data.members.find(m=>m.GroupID===gid&&m.TaskID===tid&&m.MemberID===mid&&m.MemberVersion===ver&&m.LeftAt===null);if(!m || options.staleLeave)return [];m.LeftAt='2026-10-26 08:00:00';return [{MemberID:mid,GroupID:gid,TaskID:tid}];}
+    if (sql.includes('group-split-write:touch') || sql.includes('group-split-write:dissolve')) {const g=data.groups.find(g=>g.GroupID===params[0]&&g.Version===params[1]&&g.IsActive===1);if(!g||options.staleTouch)return [];if(sql.includes('dissolve')){g.IsActive=0;g.ClosedAt='2026-10-26 08:00:00';}g.Version=(BigInt('0x'+g.Version)+1n).toString(16).padStart(16,'0').toUpperCase();return [{Version:g.Version}];}
+    if (sql.includes('group-split-write:remember')) {const [RequestID,GroupID,OperationKind,PayloadHash,ResultJSON]=params;data.operations.push({RequestID,GroupID,OperationKind,PayloadHash,ResultJSON});return [{RequestID,GroupID}];}
     if (sql.includes('scheduler:owner')) return data.tasks.filter(r => r.TaskID === params[0]).map(r => ({ ...r }));
-    if (sql.includes('scheduler:tasks')) return data.tasks.filter(r => r.Complited === 0 || data.members.some(m => m.TaskID === r.TaskID)).flatMap(r => {
+    if (sql.includes('scheduler:tasks')) return data.tasks.filter(r => r.Complited === 0 || data.members.some(m => m.TaskID === r.TaskID && m.LeftAt === null)).flatMap(r => {
       const rows = data.times.filter(t => t.TaskID === r.TaskID);
       return (rows.length ? rows : [{}]).map(t => ({ ...r, TaskPriority: r.Priorities, TaskFixed: r.FixedDueTime, ...t }));
     });
@@ -280,4 +286,76 @@ test('blocked result has no fingerprint and cannot match a previously valid prev
 test('comparison remains read-only and returns safe failure for stale group',async()=>{
   const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);h.data().groups[0].Version='0000000000000002';
   await assert.rejects(h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint}),code('GROUP_CHANGED'));assert.equal(h.writes.length,0);
+});
+const requestId='0d6c0c50-686b-43fa-adab-60821611a91f';
+function noScheduleFixture(){
+  const f=fixture(); f.tasks[2].Complited=1; f.members.push({TaskID:3,GroupID:1,LeftAt:null,SyncEnabled:1,MemberID:'9007199254740993',MemberVersion:version});
+  for(const t of f.times.slice(0,2))Object.assign(t,{DueDateTime:'2026-10-26 08:10:00',EndDateTime:'2026-10-26 09:10:00'});
+  return f;
+}
+async function unchangedRequest(h,overrides={}) {
+  const body={groupId:1,originTaskId:1,expectedGroupVersion:version,action:'leave',taskIds:[3],...overrides};
+  const p=await h.api.previewGroupSplitSchedule(body);return {...body,requestId,confirmMembership:true,expectedFingerprint:p.previewFingerprint};
+}
+test('internal no-schedule exit rechecks under the same transaction then records leave and receipt',async()=>{
+  const f=noScheduleFixture(),h=await harness(f),b=await unchangedRequest(h),r=await h.api.splitGroupWithoutScheduleChanges(b);
+  assert.equal(r.scheduleWrites,false);assert.equal(r.groupVersion,'0000000000000002');assert.equal(r.replayed,false);assert.equal(r.dissolved,false);
+  assert.notEqual(h.data().members[2].LeftAt,null);assert.equal(h.data().members[0].LeftAt,null);assert.deepEqual(h.data().times,f.times);assert.deepEqual(h.data().follows,f.follows);assert.equal(h.data().operations.length,1);
+  const names=h.calls.map(c=>c.sql);const pos=x=>names.findIndex(q=>q.includes(x));assert.ok(pos('group-split:settings-lock')<pos('group-split:member-versions'));assert.ok(pos('group-split:member-versions')<pos('group-split-write:leave'));assert.ok(pos('group-split-write:leave')<pos('group-split-write:remember'));
+  for(const c of h.calls)assert.equal((c.sql.match(/\?/g)||[]).length,c.params.length);assert.equal(h.stats().commits,2);
+});
+test('same operation request replays after member departure, without any second write',async()=>{
+  const h=await harness(noScheduleFixture()),b=await unchangedRequest(h),a=await h.api.splitGroupWithoutScheduleChanges(b);const n=h.writes.length;
+  const replay=await h.api.splitGroupWithoutScheduleChanges(b);assert.equal(replay.replayed,true);assert.equal(replay.groupVersion,a.groupVersion);assert.equal(h.writes.length,n);assert.equal(h.data().operations.length,1);
+});
+test('request id reuse with different payload is rejected before any write',async()=>{
+  const h=await harness(noScheduleFixture()),b=await unchangedRequest(h);await h.api.splitGroupWithoutScheduleChanges(b);const n=h.writes.length;
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges({...b,originTaskId:2}),code('REQUEST_ID_REUSED'));assert.equal(h.writes.length,n);
+});
+test('changed unrelated schedule invalidates preview before departure',async()=>{
+  const h=await harness(noScheduleFixture()),b=await unchangedRequest(h);h.data().times[0].DueDateTime='2026-10-26 08:20:00';
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),code('GROUP_PREVIEW_CHANGED'));assert.equal(h.writes.length,0);assert.equal(h.data().members[2].LeftAt,null);
+});
+test('revalidated split needing schedule writes is rejected without changes',async()=>{
+  const f=noScheduleFixture();f.tasks[2].Complited=0;const h=await harness(f),b=await unchangedRequest(h);
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),code('SPLIT_SCHEDULE_WRITE_NOT_SUPPORTED'));assert.equal(h.writes.length,0);assert.deepEqual(h.data(),f);
+});
+test('explicit confirmation and operation id are required before opening a transaction',async()=>{
+  const h=await harness(noScheduleFixture()),b=await unchangedRequest(h),n=h.calls.length;
+  for(const change of [{confirmMembership:false},{requestId:'invalid'},{expectedFingerprint:'bad'},{fixedOverrides:[{taskId:3}]},{taskIds:[3,3]}]) await assert.rejects(h.api.splitGroupWithoutScheduleChanges({...b,...change}));
+  assert.equal(h.calls.length,n);assert.equal(h.writes.length,0);
+});
+test('a fixed conflict stops the split and creates no receipt',async()=>{
+  const f=noScheduleFixture();f.tasks[2].Complited=0;for(const i of [0,1,2]){Object.assign(f.tasks[i],{Priorities:FIXED,FixedDueTime:1});Object.assign(f.times[i],{Priorities:FIXED,FixedDueTime:1,DueDateTime:'2026-10-26 10:00:00',EndDateTime:'2026-10-26 11:00:00'});}
+  const h=await harness(f),b={...splitBody(),action:'leave',taskIds:[3],confirmMembership:true,expectedFingerprint:'a'.repeat(64),requestId};
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),code('GROUP_SPLIT_BLOCKED'));assert.equal(h.writes.length,0);assert.deepEqual(h.data(),f);
+});
+test('every injected membership, group-version or receipt failure rolls back mock transaction',async()=>{
+  for(const failWrite of [1,2,3]){const f=noScheduleFixture(),h=await harness(f,{failWrite}),b=await unchangedRequest(h);await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),/injected/);assert.deepEqual(h.data(),f);assert.equal(h.stats().rollbacks,1);}
+});
+test('stale member or group version rolls back prior mock writes',async()=>{
+  for(const options of [{staleLeave:true},{staleTouch:true}]){const f=noScheduleFixture(),h=await harness(f,options),b=await unchangedRequest(h);await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b));assert.deepEqual(h.data(),f);}
+});
+test('leaving too few members stays blocked and cannot dissolve implicitly',async()=>{
+  const f=fixture(),h=await harness(f),b={...splitBody(),action:'leave',taskIds:[2],confirmMembership:true,expectedFingerprint:'a'.repeat(64),requestId};
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),code('GROUP_SPLIT_BLOCKED'));assert.equal(h.writes.length,0);assert.deepEqual(h.data(),f);
+});
+test('internal dissolve requires all members and separate confirmation',async()=>{
+  const f=noScheduleFixture();f.tasks[0].Complited=1;f.tasks[1].Complited=1;const h=await harness(f),body={...splitBody(),taskIds:[1,2,3]};const b=await unchangedRequest(h,body);
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges({...b,confirmDissolve:false}),code('CONFIRMATION_REQUIRED'));
+  const r=await h.api.splitGroupWithoutScheduleChanges({...b,confirmDissolve:true});assert.equal(r.dissolved,true);assert.equal(h.data().groups[0].IsActive,0);assert.ok(h.data().members.every(m=>m.LeftAt!==null));assert.deepEqual(h.data().times,f.times);
+  const n=h.writes.length,again=await h.api.splitGroupWithoutScheduleChanges({...b,confirmDissolve:true});assert.equal(again.replayed,true);assert.equal(h.writes.length,n);
+});
+test('corrupt receipt is not replayed and does not cause extra writes',async()=>{
+  const h=await harness(noScheduleFixture()),b=await unchangedRequest(h);await h.api.splitGroupWithoutScheduleChanges(b);h.data().operations[0].ResultJSON='{}';const n=h.writes.length;
+  await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),code('OPERATION_RESULT_INVALID'));assert.equal(h.writes.length,n);
+});
+test('failure on second departing member rolls back first departure',async()=>{
+  const f=noScheduleFixture();f.tasks.push({...f.tasks[2],TaskID:4});f.times.push({...f.times[2],TaskID:4,TimeDateID:4});f.members.push({TaskID:4,GroupID:1,LeftAt:null,SyncEnabled:1,MemberID:'4',MemberVersion:version});
+  const h=await harness(f,{failWrite:2}),b=await unchangedRequest(h,{taskIds:[3,4]});await assert.rejects(h.api.splitGroupWithoutScheduleChanges(b),/injected/);assert.deepEqual(h.data(),f);assert.equal(h.stats().rollbacks,1);
+});
+test('internal transaction checks schedule and group locks in order before all split writes',async()=>{
+  const h=await harness(noScheduleFixture()),b=await unchangedRequest(h),n=h.calls.length;await h.api.splitGroupWithoutScheduleChanges(b);
+  const calls=h.calls.slice(n),locks=calls.filter(c=>c.sql.includes('AS LockResult'));assert.deepEqual(locks.map(c=>c.params[0]),['task-manager:schedule','task-manager:task-group:1']);
+  const idx=calls.findIndex(c=>c.sql.includes('group-split-write:leave'));assert.ok(idx>0);assert.ok(calls.slice(0,idx).some(c=>c.sql.includes('group-split:settings-lock')));
 });
