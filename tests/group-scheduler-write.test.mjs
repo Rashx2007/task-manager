@@ -1,5 +1,6 @@
 // Integration with a stateful SQL double: NOT a real SQL Server/ODBC test.
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs/promises';
@@ -12,7 +13,7 @@ const code = wanted => e => e.code === wanted;
 function fixture(grouped = true) {
   return {
     groups: grouped ? [{ GroupID: 1, IsActive: 1, Version: version }] : [],
-    members: grouped ? [1, 2].map(TaskID => ({ TaskID, GroupID: 1, LeftAt: null, SyncEnabled: 1 })) : [],
+    members: grouped ? [1, 2].map(TaskID => ({ TaskID, GroupID: 1, LeftAt: null, SyncEnabled: 1, MemberID: String(TaskID), MemberVersion: version })) : [],
     tasks: [1, 2, 3].map(TaskID => ({ TaskID, Complited: 0, Priorities: '3.متوسط', FixedDueTime: 0, Submit_Date: '2026-10-25 08:00:00', LastFollow: null })),
     times: [1, 2, 3].map(TaskID => ({ TaskID, TimeDateID: TaskID, Priorities: '3.متوسط', FixedDueTime: 0, Durationtime: '01:00:00', DueDateTime: `2026-10-26 ${TaskID === 3 ? '09' : '08'}:00:00`, EndDateTime: `2026-10-26 ${TaskID === 3 ? '10' : '09'}:00:00` })),
     follows: [], batches: [], links: [], ready: true,
@@ -23,7 +24,7 @@ async function harness(initial = fixture(), options = {}) {
   const calls = [], writes = [];
   const NativeDate = Date;
   class Clock extends NativeDate {
-    constructor(...args) { super(...(args.length ? args : [2026, 9, 26, 8, 0, 0])); }
+    constructor(...args) { super(...(args.length ? args : (options.clock || [2026, 9, 26, 8, 0, 0]))); }
     static [Symbol.hasInstance](v) { return v instanceof NativeDate; }
   }
   const ctx = vm.createContext({ Date: Clock, console });
@@ -43,7 +44,7 @@ async function harness(initial = fixture(), options = {}) {
     if (sql.startsWith('SELECT MigrationKey')) return [{ MigrationKey: '20261025_001_task_groups' }];
     if (sql.includes('AS IndexCount')) return [{ IndexCount: 2, ForeignKeyCount: 7 }];
     if (sql.includes('scheduler:groups')) return data.groups.map(r => ({ ...r }));
-    if (sql.includes('scheduler:members')) return data.members.map(r => ({ ...r }));
+    if (sql.includes('scheduler:members') || sql.includes('group-split:member-versions')) return data.members.map(r => ({ ...r }));
     if (sql.includes('scheduler:owner')) return data.tasks.filter(r => r.TaskID === params[0]).map(r => ({ ...r }));
     if (sql.includes('scheduler:tasks')) return data.tasks.filter(r => r.Complited === 0 || data.members.some(m => m.TaskID === r.TaskID)).flatMap(r => {
       const rows = data.times.filter(t => t.TaskID === r.TaskID);
@@ -56,7 +57,7 @@ async function harness(initial = fixture(), options = {}) {
       if (!g || options.staleTouch) return [];
       g.Version = (BigInt('0x' + g.Version) + 1n).toString(16).padStart(16, '0').toUpperCase(); return [{ Version: g.Version }];
     }
-    if (sql.includes('SELECT StartWorkTime')) return [{ StartWorkTime: '07:30', restTimeStart: '12:00', restTimeEnd: '13:00', EndWorkTime: '16:00' }];
+    if (sql.includes('SELECT StartWorkTime')) return [{ StartWorkTime: options.startWork || '07:30', restTimeStart: '12:00', restTimeEnd: '13:00', EndWorkTime: '16:00' }];
     if (sql.startsWith('SELECT TimeDateID')) return time(params[0]) ? [{ TimeDateID: time(params[0]).TimeDateID }] : [];
     if (compact.startsWith('UPDATETimeDate_tblSETPriorities=?,FixedDueTime=?')) {
       Object.assign(time(params[5]), { Priorities: params[0], FixedDueTime: params[1], Durationtime: params[2], DueDateTime: params[3], EndDateTime: params[4] }); return [];
@@ -95,7 +96,7 @@ async function harness(initial = fixture(), options = {}) {
     let mod;
     if (name === 'server-only') mod = new vm.SyntheticModule([], function () {}, { context: ctx });
     else if (name === 'assetRules') mod = new vm.SyntheticModule(['normalizeDigits'], function () { this.setExport('normalizeDigits', v => String(v ?? '').replace(/[۰-۹]/g, c => '۰۱۲۳۴۵۶۷۸۹'.indexOf(c)).replace(/[٠-٩]/g, c => '٠١٢٣٤٥٦٧٨٩'.indexOf(c))); }, { context: ctx });
-    else if (name === 'node:crypto') mod = new vm.SyntheticModule(['randomUUID'], function () { this.setExport('randomUUID', () => '00000000-0000-4000-8000-000000000001'); }, { context: ctx });
+    else if (name === 'node:crypto') mod = new vm.SyntheticModule(['randomUUID','createHash'], function () { this.setExport('randomUUID', () => '00000000-0000-4000-8000-000000000001'); this.setExport('createHash', createHash); }, { context: ctx });
     else mod = new vm.SourceTextModule(await fs.readFile(path.join(root, 'lib', name.endsWith('.mjs') ? name : name + '.js'), 'utf8'), { context: ctx, identifier: name });
     cache.set(name, mod); return mod;
   }
@@ -233,4 +234,50 @@ test('member sync exception remains a scheduling member in diagnostic',async()=>
 test('diagnostic does not enable leave/dissolve mutations or expose a route',async()=>{
   const source=await fs.readFile(path.join(root,'lib','task-group-membership-service.js'),'utf8'); assert.ok(source.includes('EXIT_SCHEDULE_CHECK_REQUIRED'));
   const h=await harness(); await assert.rejects(h.api.previewGroupSplitSchedule(null),code('INVALID_BODY')); assert.equal(h.calls.length,0);
+});
+test('diagnostic ready result has stable fingerprint and matching comparison is not write authorization',async()=>{
+  const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);
+  assert.match(a.previewFingerprint,/^[0-9a-f]{64}$/); const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});
+  assert.equal(b.matches,true);assert.equal(b.authorizesWrite,false);assert.equal(b.current.authorizesWrite,false);assert.equal(h.writes.length,0);
+  assert.equal(h.calls.filter(c=>c.sql.includes('group-split:member-versions')).length,2);assert.equal(h.stats().commits,2);
+});
+test('changed unselected task schedule invalidates the previous fingerprint',async()=>{
+  const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);h.data().times[2].DueDateTime='2026-10-26 09:15:00';
+  const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false);assert.equal(h.writes.length,0);
+});
+test('changes to task schedule identity and mirrored task fields invalidate fingerprint',async()=>{
+  for(const alter of [h=>h.data().times[2].TimeDateID=44,h=>h.data().tasks[2].Priorities='2.بالا',h=>h.data().tasks[2].FixedDueTime=1]){
+    const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);alter(h);const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false);assert.equal(h.writes.length,0);
+  }
+});
+test('member identity, version and follow-exclusion changes invalidate fingerprint even if schedule is unchanged',async()=>{
+  for(const alter of [m=>m.MemberID='9007199254740993',m=>m.MemberVersion='00000000000000FF',m=>m.SyncEnabled=0]){
+    const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);alter(h.data().members[1]);const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false);assert.equal(h.writes.length,0);
+  }
+});
+test('work-hour changes or a different current start minute invalidate fingerprint',async()=>{
+  for(const alter of [o=>o.startWork='08:00',o=>o.clock=[2026,9,26,8,10,0]]){
+    const options={},h=await harness(fixture(),options),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);alter(options);
+    const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false);assert.equal(h.writes.length,0);
+  }
+});
+test('selection changes and non-normalized fingerprint are not accepted as prior approval',async()=>{
+  const f=fixture();f.members.push({TaskID:3,GroupID:1,LeftAt:null,SyncEnabled:1,MemberID:'3',MemberVersion:version});
+  f.times[2].DueDateTime=f.times[0].DueDateTime;f.times[2].EndDateTime=f.times[0].EndDateTime;
+  const h=await harness(f),body={...splitBody(),action:'leave',taskIds:[2]},a=await h.api.previewGroupSplitSchedule(body);
+  const b=await h.api.revalidateGroupSplitPreview({...body,taskIds:[3],expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false);assert.equal(h.writes.length,0);
+  await assert.rejects(h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:'invalid'}),code('INVALID_PREVIEW'));
+});
+test('missing or malformed member version, duplicate identity and bigint rounding fail closed',async()=>{
+  for(const alter of [m=>delete m.MemberVersion,m=>m.MemberID='9007199254740993.0',m=>m.MemberID='1']){
+    const f=fixture();alter(f.members[1]);const h=await harness(f);await assert.rejects(h.api.previewGroupSplitSchedule(splitBody()));assert.equal(h.writes.length,0);
+  }
+});
+test('blocked result has no fingerprint and cannot match a previously valid preview',async()=>{
+  const f=fixture();for(const i of [0,1]) {Object.assign(f.tasks[i],{Priorities:FIXED,FixedDueTime:1});Object.assign(f.times[i],{Priorities:FIXED,FixedDueTime:1});}
+  const h=await harness(f),r=await h.api.revalidateGroupSplitPreview({...splitBody(),expectedFingerprint:'a'.repeat(64)});assert.equal(r.matches,false);assert.equal(r.current.previewFingerprint,null);assert.equal(r.authorizesWrite,false);assert.equal(h.writes.length,0);
+});
+test('comparison remains read-only and returns safe failure for stale group',async()=>{
+  const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);h.data().groups[0].Version='0000000000000002';
+  await assert.rejects(h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint}),code('GROUP_CHANGED'));assert.equal(h.writes.length,0);
 });
