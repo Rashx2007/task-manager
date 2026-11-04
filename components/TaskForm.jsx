@@ -67,6 +67,28 @@ const fromPicker = (d) => {
 const assetSpec = (a) =>
   `${a.AssetName}، قسمت: ${a.Location || "-"} (ساختمان ${a.Building || "-"}، بلوک: ${a.Block || "-"}، طبقه: ${a.Floor ?? "-"}، ورودی: ${a.Entrance || "-"}) شماره: ${a.AssetNumber ?? "-"} [کد:${a.AssetID}]`;
 
+const formFromTask = (src) => ({
+  TaskTtl: src.TaskTtl || "",
+  Descriptions: src.Descriptions || "",
+  Priorities: src.TDP || src.Priorities || "نامشخص",
+  tskType: src.tskType || "",
+  IsConsiderableAction: src.IsConsiderableAction || "",
+  Complited: Number(src.Complited) === 1 ? 1 : 0,
+  AssetID:
+    src.ResolvedAssetID || src.AssetID
+      ? String(src.ResolvedAssetID || src.AssetID)
+      : "",
+  ApplicantName: src.ApplicantName || "",
+  DueDateTime: src.TDDue || src.DueDateTime || "",
+  EndDateTime: src.TDEnd || src.EndDateTime || "",
+  FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
+  RequestNumber:
+    src.RequestNumber != null ? String(src.RequestNumber) : "",
+  RegisterNumber:
+    src.RegisterNumber != null ? String(src.RegisterNumber) : "",
+  RequestDate: src.RequestDate || "",
+});
+
 import TaskContextHeader from "./TaskContextHeader";
 
 export default function TaskForm({
@@ -81,7 +103,7 @@ export default function TaskForm({
   const isEdit = Boolean(currentTaskId);
   const loadedStatusRef = useRef(Number(initial?.Complited) === 1 ? 1 : 0);
   const [assets, setAssets] = useState([]);
-  const [readingTask, setReadingTask] = useState(Boolean(initial));
+  const [readingTask, setReadingTask] = useState(Boolean(initial?.TaskID));
   const [readingAssets, setReadingAssets] = useState(true);
   const [readingPersons, setReadingPersons] = useState(true);
   const [readError, setReadError] = useState("");
@@ -185,6 +207,11 @@ export default function TaskForm({
 
   useEffect(() => {
     if (!initial) return;
+    // A copy has initial field values, but no TaskID: it is a new task.
+    if (!initial.TaskID) {
+      setForm(formFromTask(initial));
+      return;
+    }
     setReadingTask(true);
     (async () => {
       try {
@@ -193,27 +220,7 @@ export default function TaskForm({
         if (!res.ok || !d.success || !d.data) throw new Error();
         const src = d.data;
         loadedStatusRef.current = Number(src.Complited) === 1 ? 1 : 0;
-        setForm({
-          TaskTtl: src.TaskTtl || "",
-          Descriptions: src.Descriptions || "",
-          Priorities: src.TDP || src.Priorities || "نامشخص",
-          tskType: src.tskType || "",
-          IsConsiderableAction: src.IsConsiderableAction || "",
-          Complited: Number(src.Complited) === 1 ? 1 : 0,
-          AssetID:
-            src.ResolvedAssetID || src.AssetID
-              ? String(src.ResolvedAssetID || src.AssetID)
-              : "",
-          ApplicantName: src.ApplicantName || "",
-          DueDateTime: src.TDDue || src.DueDateTime || "",
-          EndDateTime: src.TDEnd || src.EndDateTime || "",
-          FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
-          RequestNumber:
-            src.RequestNumber != null ? String(src.RequestNumber) : "",
-          RegisterNumber:
-            src.RegisterNumber != null ? String(src.RegisterNumber) : "",
-          RequestDate: src.RequestDate || "",
-        });
+        setForm(formFromTask(src));
       } catch { setReadError("دریافت اطلاعات کار ناموفق بود."); }
       fetch(`/api/applicant-functor?taskId=${initial.TaskID}`)
         .then((r) => r.json())
