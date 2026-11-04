@@ -6,6 +6,7 @@ import StatusBar from "@/components/StatusBar";
 import TaskTable from "@/components/TaskTable";
 import SearchPanel from "@/components/SearchPanel";
 import TaskForm from "@/components/TaskForm";
+import DraftAssetMatches from "@/components/DraftAssetMatches";
 import TaskInspector from "@/components/TaskInspector";
 import ComprehensiveSearch from "@/components/ComprehensiveSearch";
 import ReportsModal from "@/components/ReportsModal";
@@ -76,136 +77,146 @@ export default function Home() {
   // ✅ آیا جدول فعلاً نتیجهٔ جستجو را نشان می‌دهد؟
   const [isSearchView, setIsSearchView] = useState(false);
 
-  // ✅ پیش‌نویس (ایجاد از فیلتر)
+  // The ref and revision protect the draft from late device-check responses.
   const [draft, setDraft] = useState(null);
+  const draftRef = useRef(null);
+  const draftVersionRef = useRef(0);
+  const draftCheckPendingRef = useRef(false);
+  const draftDecisionRef = useRef(false);
+  const draftDeviceFormVersionRef = useRef(null);
   const finishingDraftRef = useRef(false);
+  const [draftMatches, setDraftMatches] = useState(null);
+  const [assetPreset, setAssetPreset] = useState(null);
+  const updateDraft = (value) => {
+    draftRef.current = value;
+    draftVersionRef.current += 1;
+    setDraft(value);
+  };
   useEffect(() => {
     try {
       const raw = localStorage.getItem("task_draft");
-      if (raw) setDraft(JSON.parse(raw));
+      if (raw) updateDraft(JSON.parse(raw));
     } catch {}
   }, []);
 
-  const startDraft = () => setDraft((d) => d || {});
+  const startDraft = () => { if (!draftRef.current) updateDraft({}); };
   const applyPlace = (d) => {
     if (!d || !d.Building) return d;
     const r = placeRules(d.Building, d.Block, d.Floor, d.Entrance);
     if (!r.central) return { ...d, Block: "-", Entrance: "-", Floor: d.Floor };
     return d;
   };
-  const changeDraft = (k, v) => setDraft((d) => applyPlace({ ...d, [k]: v }));
-  const assignDraft = (colKey, value) =>
-    setDraft((d) => (d ? applyPlace({ ...d, [colKey]: value }) : d));
-
-  const [assetPreset, setAssetPreset] = useState(null);
-  const [draftAssetPreset, setDraftAssetPreset] = useState(null);
-  const handleDraftDeviceMissing = (draftData) => {
-    const spec = `${draftData.AssetName || ""} (شماره: ${draftData.AssetNumber || "-"})\nساختمان: ${draftData.Building || ""}، طبقه: ${draftData.Floor ?? "-"}، قسمت: ${draftData.Location || "-"}`;
-    if (
-      !confirm(
-        `دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`,
-      )
-    )
-      return;
-    setAssetPreset({
-      AssetName: draftData.AssetName || "",
-      AssetNumber: draftData.AssetNumber || "",
-      Building: draftData.Building || "",
-      Block: draftData.Block || "-",
-      Floor: draftData.Floor != null ? String(draftData.Floor) : "",
-      Entrance: draftData.Entrance || "",
-      Location: draftData.Location || "",
-      MechSystem: draftData.MechSystem || "",
-    });
-    setShowAssets(true);
+  const assetFields = ["AssetName", "AssetNumber", "Building", "Block", "Floor", "Entrance", "Location", "MechSystem"];
+  const changeDraft = (key, value) => {
+    const previous = draftRef.current;
+    if (!previous) return;
+    const changed = String(previous[key] ?? "") !== String(value ?? "");
+    const next = applyPlace({ ...previous, [key]: value });
+    if (changed && assetFields.includes(key)) next.AssetID = null;
+    updateDraft(next);
+    setDraftMatches(null);
   };
-  const handleAssetSavedFromDraft = (newId, form) => {
-    setDraft((d) =>
-      d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d,
-    );
+  const assignDraft = changeDraft;
+  const saveDraftLocal = (value) => {
+    try { localStorage.setItem("task_draft", JSON.stringify(value)); return true; }
+    catch { showToast("ذخیرهٔ موقت پیش‌نویس انجام نشد. فضای ذخیره‌سازی مرورگر را بررسی کنید.", "error"); return false; }
   };
-
-  const saveDraft = async () => {
-    if (!draft) return;
-    const d = applyPlace(draft);
-    setDraft(d);
-    if (d.AssetName && d.Building) {
-      try {
-        const res = await fetch("/api/asset-check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(d),
-        });
-        const cd = await res.json();
-        if (cd.found) {
-          let assetId = cd.AssetID;
-          // ✅ اگر چند دستگاه منطبق بود و شماره انتخاب نشده، از کاربر بپرس
-          if (
-            cd.matches &&
-            cd.matches.length > 1 &&
-            (d.AssetNumber == null || String(d.AssetNumber).trim() === "")
-          ) {
-            const list = cd.matches
-              .map(
-                (m, i) =>
-                  `${i + 1}) شماره ${m.AssetNumber}، بلوک ${m.Block || "-"}، طبقه ${m.Floor}، ورودی ${m.Entrance || "-"}، قسمت ${m.Location || "-"}`,
-              )
-              .join("\n");
-            const pick = prompt(
-              `چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف مورد نظر را وارد کنید:\n${list}`,
-              "1",
-            );
-            if (pick === null) return;
-            const m = cd.matches[Number(pick) - 1];
-            if (!m) {
-              alert("انتخاب نامعتبر بود.");
-              return;
-            }
-            assetId = m.AssetID;
-          }
-          localStorage.setItem(
-            "task_draft",
-            JSON.stringify({ ...d, AssetID: assetId }),
-          );
-          alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-        } else {
-          handleDraftDeviceMissing(d);
-        }
-      } catch (e) {
-        alert("خطا در بررسی دستگاه: " + e.message);
-      }
-    } else {
-      try {
-        localStorage.setItem("task_draft", JSON.stringify(d));
-        alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
-      } catch {}
-    }
-  };
-
-  const finishDraft = () => {
+  const present = (value) => String(value ?? "").trim() !== "";
+  const hasAssetDetails = (d) => assetFields.some((key) => present(d[key]) && !(["Block", "Entrance"].includes(key) && String(d[key]).trim() === "-"));
+  const makeAssetPreset = (d) => ({
+    AssetName: d.AssetName || "", AssetNumber: d.AssetNumber ?? "", Building: d.Building || "",
+    Block: d.Block || "-", Floor: d.Floor != null ? String(d.Floor) : "", Entrance: d.Entrance || "",
+    Location: d.Location || "", MechSystem: d.MechSystem || "",
+  });
+  const openDraftForm = (d) => {
     finishingDraftRef.current = true;
-    setEditTask({ ...draft });
-    setDraftAssetPreset(
-      draft && !draft.AssetID
-        ? {
-            AssetName: draft.AssetName || "",
-            AssetNumber: draft.AssetNumber || "",
-            Building: draft.Building || "",
-            Block: draft.Block || "-",
-            Floor: draft.Floor != null ? String(draft.Floor) : "",
-            Entrance: draft.Entrance || "",
-            Location: draft.Location || "",
-            MechSystem: draft.MechSystem || "",
-          }
-        : null,
-    );
+    setEditTask({ ...d, TaskID: undefined });
     setShowTaskForm(true);
   };
-  const cancelDraft = () => {
-    setDraft(null);
+  const acceptDraftAsset = (item, version, mode) => {
+    if (version !== draftVersionRef.current || !draftRef.current) {
+      showToast("پیش‌نویس تغییر کرده است؛ دستگاه را دوباره بررسی کنید.", "warn"); return;
+    }
+    if (!item || !present(item.AssetID)) {
+      showToast("کد دستگاه دریافت نشد؛ دوباره بررسی کنید.", "error"); return;
+    }
+    const next = { ...draftRef.current, AssetID: item.AssetID };
+    if (!saveDraftLocal(next)) return;
+    updateDraft(next);
+    setDraftMatches(null);
+    if (mode === "finish") openDraftForm(next);
+    else showToast("پیش‌نویس و دستگاه انتخاب‌شده به‌صورت موقت ذخیره شدند.", "success");
+  };
+  const handleDraftDeviceMissing = (d, version) => {
+    if (draftDecisionRef.current) return;
+    draftDecisionRef.current = true;
+    const spec = `${d.AssetName || ""} (شماره: ${d.AssetNumber ?? "-"})\nساختمان: ${d.Building || ""}، طبقه: ${d.Floor ?? "-"}، قسمت: ${d.Location || "-"}`;
+    showConfirm(`دستگاهی با این مشخصات پیدا نشد:\n\n${spec}\n\nآیا می‌خواهید دستگاه جدید ثبت کنید؟`, {
+      type: "warn", confirmText: "ثبت دستگاه", cancelText: "انصراف",
+      onConfirm: () => {
+        draftDecisionRef.current = false;
+        if (version !== draftVersionRef.current || !draftRef.current) {
+          showToast("پیش‌نویس تغییر کرده است؛ دوباره بررسی کنید.", "warn"); return;
+        }
+        draftDeviceFormVersionRef.current = version;
+        setAssetPreset(makeAssetPreset(d));
+        setShowAssets(true);
+      },
+      onCancel: () => { draftDecisionRef.current = false; },
+    });
+  };
+  const handleAssetSavedFromDraft = (newId, form) => {
+    if (draftDeviceFormVersionRef.current !== draftVersionRef.current || !draftRef.current) {
+      showToast("دستگاه ثبت شد، اما پیش‌نویس تغییر کرده است؛ دستگاه را دوباره انتخاب کنید.", "warn"); return;
+    }
+    if (!present(newId)) {
+      showToast("دستگاه ثبت شد، اما کد آن دریافت نشد؛ پیش‌نویس را دوباره بررسی کنید.", "warn"); return;
+    }
+    const next = { ...draftRef.current, ...Object.fromEntries(assetFields.map((key) => [key, form[key] ?? ""])), AssetID: newId };
+    updateDraft(next);
+    if (saveDraftLocal(next)) showToast("دستگاه ثبت شد و به پیش‌نویس اضافه شد؛ برای ادامه «تکمیل» را بزنید.", "success");
+  };
+  const resolveDraft = async (mode) => {
+    if (draftCheckPendingRef.current) { showToast("بررسی دستگاه در حال انجام است.", "info"); return; }
+    if (draftDecisionRef.current || draftMatches) return;
+    const current = draftRef.current;
+    if (!current) return;
+    const d = applyPlace(current);
+    if (!saveDraftLocal(d)) return;
+    if (!hasAssetDetails(d)) {
+      if (mode === "finish") openDraftForm(d);
+      else showToast("پیش‌نویس به‌صورت موقت ذخیره شد.", "success");
+      return;
+    }
+    if (!present(d.AssetName) || !present(d.Building)) {
+      showToast(mode === "save" ? "پیش‌نویس ذخیره شد؛ برای بررسی دستگاه، نام و ساختمان را کامل کنید." : "برای تکمیل، نام دستگاه و ساختمان را کامل کنید یا مشخصات دستگاه را پاک کنید.", "warn");
+      return;
+    }
+    const version = draftVersionRef.current;
+    draftCheckPendingRef.current = true;
     try {
-      localStorage.removeItem("task_draft");
-    } catch {}
+      const res = await fetch("/api/asset-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) });
+      const data = await res.json();
+      if (version !== draftVersionRef.current || !draftRef.current) {
+        if (draftRef.current) showToast("پیش‌نویس تغییر کرده است؛ دوباره دستگاه را بررسی کنید.", "warn");
+        return;
+      }
+      if (!res.ok || data.success === false || typeof data.found !== "boolean" || !Array.isArray(data.matches)) throw new Error("asset check failed");
+      if (!data.found && data.matches.length === 0) { handleDraftDeviceMissing(d, version); return; }
+      if (!data.found || !data.matches.length || data.matches.some((item) => !present(item.AssetID))) throw new Error("invalid matches");
+      const known = present(d.AssetID) ? data.matches.find((item) => String(item.AssetID) === String(d.AssetID)) : null;
+      if (known || data.matches.length === 1) acceptDraftAsset(known || data.matches[0], version, mode);
+      else setDraftMatches({ matches: data.matches, version, mode });
+    } catch {
+      if (version === draftVersionRef.current && draftRef.current) showToast("بررسی دستگاه انجام نشد؛ اتصال را بررسی کنید و دوباره تلاش کنید.", "error");
+    } finally { draftCheckPendingRef.current = false; }
+  };
+  const saveDraft = () => resolveDraft("save");
+  const finishDraft = () => resolveDraft("finish");
+  const cancelDraft = () => {
+    updateDraft(null);
+    setDraftMatches(null);
+    try { localStorage.removeItem("task_draft"); } catch {}
   };
 
   // ✅ صفحه‌بندی + فیلتر سمت سرور
@@ -845,15 +856,17 @@ export default function Home() {
         />
       </div>
 
+      {draftMatches && (
+        <DraftAssetMatches matches={draftMatches.matches} onClose={() => setDraftMatches(null)} onChoose={(item) => acceptDraftAsset(item, draftMatches.version, draftMatches.mode)} />
+      )}
+
       {showTaskForm && (
         <TaskForm
           initial={editTask}
           defaultAssetId={newTaskAssetId}
-          initialAssetPreset={draftAssetPreset}
           onClose={() => {
             setShowTaskForm(false);
             setNewTaskAssetId(null);
-            setDraftAssetPreset(null);
             finishingDraftRef.current = false;
           }}
           onSaved={() => {

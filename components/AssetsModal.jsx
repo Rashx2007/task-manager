@@ -404,7 +404,7 @@ const optionsFor = (field) => {
   const toEnDigits = (s) =>
     String(s ?? "")
       .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
-      .replace(/[٠-٩]/g, (d) => "٠١٣٤٥٧٨٩".indexOf(d));
+      .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
   const numOrNull = (s) => {
     const t = toEnDigits(s).trim();
     if (!t) return null;

@@ -1,7 +1,7 @@
 //app/api/asset-check/route.js
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { normFa } from '@/lib/assetRules';
+import { normFa, normalizeDigits } from '@/lib/assetRules';
 
 const normCol = (col) =>
   `LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, NCHAR(0x200C), N''), NCHAR(0x200F), N''), NCHAR(0x200E), N''), N'ي', N'ی'), N'ى', N'ی'), N'ك', N'ک')))`;
@@ -22,7 +22,14 @@ export async function POST(request) {
     const block = normFa(b.Block);
     if (block && block !== '-') { conds.push(`(${normCol('Block')} = ?)`); params.push(block); }
 
-    const floor = (b.Floor === '' || b.Floor == null || String(b.Floor).trim() === '' || isNaN(Number(b.Floor))) ? null : Number(b.Floor);
+    const parseNumber = (value) => {
+      const text = normalizeDigits(value).trim();
+      if (!text) return null;
+      const result = Number(text);
+      if (!Number.isFinite(result)) throw new Error('invalid numeric field');
+      return result;
+    };
+    const floor = parseNumber(b.Floor);
     if (floor != null) { conds.push(`(Floor = ?)`); params.push(floor); }
 
     const entrance = normFa(b.Entrance);
@@ -31,8 +38,11 @@ export async function POST(request) {
     const location = normFa(b.Location);
     if (location) { conds.push(`(${normCol('Location')} = ?)`); params.push(location); }
 
-    const num = (b.AssetNumber === '' || b.AssetNumber == null || String(b.AssetNumber).trim() === '' || isNaN(Number(b.AssetNumber))) ? null : Number(b.AssetNumber);
+    const num = parseNumber(b.AssetNumber);
     if (num != null) { conds.push(`(AssetNumber = ?)`); params.push(num); }
+
+    const system = normFa(b.MechSystem);
+    if (system) { conds.push(`(${normCol('MechSystem')} = ?)`); params.push(system); }
 
     // دست‌کم نام دستگاه یا ساختمان لازم است
     if (!name && !building) return NextResponse.json({ found: false, matches: [] });
@@ -48,6 +58,6 @@ export async function POST(request) {
     if (rows.length === 0) return NextResponse.json({ found: false, matches: [] });
     return NextResponse.json({ found: true, AssetID: rows[0].AssetID, matches: rows });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'بررسی مشخصات دستگاه انجام نشد.' }, { status: 500 });
   }
 }
