@@ -35,7 +35,7 @@ async function harness(initial = fixture(), options = {}) {
   async function tx(raw, params = []) {
     const sql = raw.replace(/\s+/g, ' ').trim(), compact = sql.replace(/\s/g, '');
     calls.push({ sql, params });
-    if (/^(UPDATE|INSERT|DELETE)/.test(sql) || sql.includes('scheduler:touch') || /group-split-write:(leave|touch|dissolve|remember)/.test(sql)) {
+    if (/^(UPDATE|INSERT|DELETE)/.test(sql) || sql.includes('scheduler:touch') || /group-split-write:(leave|touch|dissolve|remember)/.test(sql) || /group-split-reschedule:(task|time|touch-other)/.test(sql)) {
       writes.push({ sql, params });
       if (options.failWrite === writes.length) throw new Error('injected SQL failure');
     }
@@ -46,11 +46,28 @@ async function harness(initial = fixture(), options = {}) {
     if (sql.includes('scheduler:groups')) return data.groups.filter(g=>data.members.some(m=>m.GroupID===g.GroupID&&m.LeftAt===null)).map(r => ({ ...r }));
     if (sql.includes('scheduler:members') || sql.includes('group-split:member-versions')) return data.members.filter(m=>m.LeftAt===null).map(r => ({ ...r }));
     if (sql.includes('group-split:settings-lock')) return [{SetID:1001}];
+    if (sql.includes('group-split:mirror-check')) {const [tid,beforeStart,beforeEnd]=params;const t=task(tid),td=time(tid);if(!t||!td||options.failMirrorPreview)return [];
+      const current={...t};for(const key of ['Durationtime','DueDateTime','EndDateTime'])if(!Object.hasOwn(current,key))current[key]=td[key];
+      for(const [k,v] of [['Due_Date',current.DueDateTime],['End_Date',current.EndDateTime],['Due_Time',current.DueDateTime?.slice(11,19)],['End_Time',current.EndDateTime?.slice(11,19)]]) if(!Object.hasOwn(current,k))current[k]=v;
+      if(current.Complited!==0||current.Priorities!==td.Priorities||current.FixedDueTime!==td.FixedDueTime||current.Durationtime!==td.Durationtime||current.DueDateTime!==td.DueDateTime||current.EndDateTime!==td.EndDateTime||
+        td.DueDateTime!==beforeStart||td.EndDateTime!==beforeEnd||current.Due_Date?.slice(0,10)!==current.DueDateTime?.slice(0,10)||current.End_Date?.slice(0,10)!==current.EndDateTime?.slice(0,10)||current.Due_Time!==current.DueDateTime?.slice(11,19)||current.End_Time!==current.EndDateTime?.slice(11,19))return [];
+      return [{TaskID:tid}];}
+
     if (sql.includes('group-split-write:operation')) return data.operations.filter(o=>o.RequestID===params[0]).map(o=>({...o}));
     if (sql.includes('group-split-write:members')) return data.members.filter(m=>m.LeftAt===null&&m.GroupID===params[0]).map(m=>({...m}));
     if (sql.includes('group-split-write:leave')) { const [gid,tid,mid,ver]=params;const m=data.members.find(m=>m.GroupID===gid&&m.TaskID===tid&&m.MemberID===mid&&m.MemberVersion===ver&&m.LeftAt===null);if(!m || options.staleLeave)return [];m.LeftAt='2026-10-26 08:00:00';return [{MemberID:mid,GroupID:gid,TaskID:tid}];}
     if (sql.includes('group-split-write:touch') || sql.includes('group-split-write:dissolve')) {const g=data.groups.find(g=>g.GroupID===params[0]&&g.Version===params[1]&&g.IsActive===1);if(!g||options.staleTouch)return [];if(sql.includes('dissolve')){g.IsActive=0;g.ClosedAt='2026-10-26 08:00:00';}g.Version=(BigInt('0x'+g.Version)+1n).toString(16).padStart(16,'0').toUpperCase();return [{Version:g.Version}];}
     if (sql.includes('group-split-write:remember')) {const [RequestID,GroupID,OperationKind,PayloadHash,ResultJSON]=params;data.operations.push({RequestID,GroupID,OperationKind,PayloadHash,ResultJSON});return [{RequestID,GroupID}];}
+    if (sql.includes('group-split-reschedule:task')) {
+      const [due,end,dueDate,dueTime,endDate,endTime,tid,beforeStart,beforeEnd]=params; const t=task(tid),td=time(tid);
+      if(options.failMirror || !t || !td || t.Complited!==0 || t.Priorities!==td.Priorities || t.FixedDueTime!==td.FixedDueTime || t.Durationtime!==td.Durationtime ||
+        t.DueDateTime!==td.DueDateTime || t.EndDateTime!==td.EndDateTime || td.DueDateTime!==beforeStart || td.EndDateTime!==beforeEnd ||
+        t.Due_Date?.slice(0,10)!==t.DueDateTime?.slice(0,10) || t.End_Date?.slice(0,10)!==t.EndDateTime?.slice(0,10) ||
+        t.Due_Time!==t.DueDateTime?.slice(11,19) || t.End_Time!==t.EndDateTime?.slice(11,19))return [];
+      Object.assign(t,{DueDateTime:due,EndDateTime:end,Due_Date:dueDate,Due_Time:dueTime,End_Date:endDate,End_Time:endTime});return [{TaskID:tid}];
+    }
+    if (sql.includes('group-split-reschedule:time')) {const [due,end,tid,beforeStart,beforeEnd]=params;const t=time(tid);if(options.failTime || !t || t.DueDateTime!==beforeStart || t.EndDateTime!==beforeEnd)return [];Object.assign(t,{DueDateTime:due,EndDateTime:end});return [{TaskID:tid}];}
+    if (sql.includes('group-split-reschedule:touch-other')) {const g=data.groups.find(g=>g.GroupID===params[0]&&g.Version===params[1]&&g.IsActive===1);if(!g || options.staleOther)return [];g.Version=(BigInt('0x'+g.Version)+1n).toString(16).padStart(16,'0').toUpperCase();return [{Version:g.Version}];}
     if (sql.includes('scheduler:owner')) return data.tasks.filter(r => r.TaskID === params[0]).map(r => ({ ...r }));
     if (sql.includes('scheduler:tasks')) return data.tasks.filter(r => r.Complited === 0 || data.members.some(m => m.TaskID === r.TaskID && m.LeftAt === null)).flatMap(r => {
       const rows = data.times.filter(t => t.TaskID === r.TaskID);
@@ -253,7 +270,7 @@ test('changed unselected task schedule invalidates the previous fingerprint',asy
 });
 test('changes to task schedule identity and mirrored task fields invalidate fingerprint',async()=>{
   for(const alter of [h=>h.data().times[2].TimeDateID=44,h=>h.data().tasks[2].Priorities='2.بالا',h=>h.data().tasks[2].FixedDueTime=1]){
-    const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);alter(h);const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false);assert.equal(h.writes.length,0);
+    const h=await harness(),body=splitBody(),a=await h.api.previewGroupSplitSchedule(body);alter(h);try { const b=await h.api.revalidateGroupSplitPreview({...body,expectedFingerprint:a.previewFingerprint});assert.equal(b.matches,false); } catch (e) { assert.equal(e.code,'SCHEDULE_MIRROR_INVALID'); } assert.equal(h.writes.length,0);
   }
 });
 test('member identity, version and follow-exclusion changes invalidate fingerprint even if schedule is unchanged',async()=>{
@@ -358,4 +375,77 @@ test('internal transaction checks schedule and group locks in order before all s
   const h=await harness(noScheduleFixture()),b=await unchangedRequest(h),n=h.calls.length;await h.api.splitGroupWithoutScheduleChanges(b);
   const calls=h.calls.slice(n),locks=calls.filter(c=>c.sql.includes('AS LockResult'));assert.deepEqual(locks.map(c=>c.params[0]),['task-manager:schedule','task-manager:task-group:1']);
   const idx=calls.findIndex(c=>c.sql.includes('group-split-write:leave'));assert.ok(idx>0);assert.ok(calls.slice(0,idx).some(c=>c.sql.includes('group-split:settings-lock')));
+});
+function scheduledSplitFixture(otherGroup=false){
+  const f=fixture();f.members.push({TaskID:3,GroupID:1,LeftAt:null,SyncEnabled:1,MemberID:'3',MemberVersion:version});
+  for(const td of f.times)Object.assign(td,{DueDateTime:'2026-10-26 08:10:00',EndDateTime:'2026-10-26 09:10:00'});
+  f.tasks.push({...f.tasks[0],TaskID:4});f.times.push({...f.times[0],TaskID:4,TimeDateID:4,DueDateTime:'2026-10-26 09:10:00',EndDateTime:'2026-10-26 10:10:00'});
+  if(otherGroup){f.tasks.push({...f.tasks[0],TaskID:5});f.times.push({...f.times[3],TaskID:5,TimeDateID:5});f.groups.push({GroupID:2,IsActive:1,Version:version});for(const id of [4,5])f.members.push({TaskID:id,GroupID:2,LeftAt:null,SyncEnabled:1,MemberID:String(id),MemberVersion:version});}
+  for(const t of f.tasks){const td=f.times.find(x=>x.TaskID===t.TaskID);Object.assign(t,{Priorities:td.Priorities,FixedDueTime:td.FixedDueTime,Durationtime:td.Durationtime,DueDateTime:td.DueDateTime,EndDateTime:td.EndDateTime,Due_Date:td.DueDateTime,Due_Time:td.DueDateTime.slice(11,19),End_Date:td.EndDateTime,End_Time:td.EndDateTime.slice(11,19)});}
+  return f;
+}
+async function scheduledRequest(h,overrides={}){
+ const body={groupId:1,originTaskId:1,expectedGroupVersion:version,action:'leave',taskIds:[3],...overrides};const preview=await h.api.previewGroupSplitSchedule(body);
+ return {body:{...body,requestId,confirmMembership:true,confirmSchedule:true,expectedFingerprint:preview.previewFingerprint},preview};
+}
+test('internal scheduled split applies exactly previewed changes and preserves follow/status/finish',async()=>{
+  const f=scheduledSplitFixture(),h=await harness(f),{body,preview}=await scheduledRequest(h);assert.equal(preview.ready,true);assert.equal(preview.changes.length,2);
+  const r=await h.api.splitGroupWithScheduleChanges(body);assert.equal(r.scheduleWrites,true);assert.deepEqual(Array.from(r.scheduleChangedTaskIds),[3,4]);
+  for(const c of preview.changes){const td=h.data().times.find(t=>t.TaskID===c.taskId),t=h.data().tasks.find(t=>t.TaskID===c.taskId);assert.equal(td.DueDateTime,c.after.start);assert.equal(td.EndDateTime,c.after.end);assert.equal(t.DueDateTime,c.after.start);assert.equal(t.EndDateTime,c.after.end);}
+  assert.equal(h.data().members.find(m=>m.TaskID===3).LeftAt!==null,true);assert.deepEqual(h.data().follows,f.follows);assert.equal(h.data().operations.length,1);
+  for(const c of h.writes){assert.equal((c.sql.match(/\?/g)||[]).length,c.params.length);assert.ok(!/\b(Finish_DateTime|Complited)\s*=/.test(c.sql.replace('t.Complited = 0','')));}
+});
+test('rearrangement updates each affected group version and preserves membership of others',async()=>{
+  const f=scheduledSplitFixture(true),h=await harness(f),{body}=await scheduledRequest(h),r=await h.api.splitGroupWithScheduleChanges(body);
+  assert.equal(r.groupVersions['1'],'0000000000000002');assert.equal(r.groupVersions['2'],'0000000000000002');assert.deepEqual(Array.from(r.scheduleChangedTaskIds),[3,4,5]);
+  assert.equal(h.data().members.find(m=>m.TaskID===4).LeftAt,null);assert.equal(h.data().members.find(m=>m.TaskID===5).LeftAt,null);
+});
+test('replay of scheduled split is idempotent; changed override or request payload is rejected',async()=>{
+  const h=await harness(scheduledSplitFixture()),{body}=await scheduledRequest(h);await h.api.splitGroupWithScheduleChanges(body);const n=h.writes.length;
+  const r=await h.api.splitGroupWithScheduleChanges(body);assert.equal(r.replayed,true);assert.equal(h.writes.length,n);
+  await assert.rejects(h.api.splitGroupWithScheduleChanges({...body,originTaskId:2}),code('REQUEST_ID_REUSED'));assert.equal(h.writes.length,n);
+});
+test('mismatched task/TimeDate mirror aborts and rolls back membership before any schedule change',async()=>{
+  for(const alter of [t=>t.DueDateTime='2026-10-26 08:00:00',t=>t.Due_Time='08:00:00',t=>t.Durationtime='02:00:00',t=>t.FixedDueTime=1]){
+    const f=scheduledSplitFixture(),h=await harness(f),{body}=await scheduledRequest(h);alter(h.data().tasks[2]);const before=structuredClone(h.data());await assert.rejects(h.api.splitGroupWithScheduleChanges(body),code('SCHEDULE_MIRROR_INVALID'));assert.deepEqual(h.data(),before);assert.equal(h.writes.length,0);
+  }
+});
+test('all scheduled split write stages roll back on injected SQL failure',async()=>{
+  for(let failWrite=1;failWrite<=10;failWrite++){const f=scheduledSplitFixture(true),h=await harness(f,{failWrite}),{body}=await scheduledRequest(h);await assert.rejects(h.api.splitGroupWithScheduleChanges(body),/injected/);assert.deepEqual(h.data(),f);}
+});
+test('stale TimeDate or other affected group version rolls back changes',async()=>{
+  for(const options of [{failTime:true},{staleOther:true}]){const f=scheduledSplitFixture(true),h=await harness(f,options),{body}=await scheduledRequest(h);await assert.rejects(h.api.splitGroupWithScheduleChanges(body));assert.deepEqual(h.data(),f);}
+});
+test('both membership and schedule confirmation are required before SQL',async()=>{
+  const h=await harness(scheduledSplitFixture()),{body}=await scheduledRequest(h),n=h.calls.length;
+  for(const edit of [{confirmMembership:false},{confirmSchedule:false},{fixedOverrides:'invalid'}])await assert.rejects(h.api.splitGroupWithScheduleChanges({...body,...edit}));assert.equal(h.calls.length,n);
+});
+test('changed unrelated scheduled task invalidates preview before any write',async()=>{
+  const h=await harness(scheduledSplitFixture()),{body}=await scheduledRequest(h);h.data().times[3].EndDateTime='2026-10-26 10:30:00';
+  await assert.rejects(h.api.splitGroupWithScheduleChanges(body),code('SCHEDULE_MIRROR_INVALID'));assert.equal(h.writes.length,0);
+});
+test('fixed departure requires explicit replacement and saves it only with confirmation',async()=>{
+  const f=scheduledSplitFixture();for(const i of [0,1,2]){Object.assign(f.times[i],{Priorities:FIXED,FixedDueTime:1,DueDateTime:'2026-10-26 11:00:00',EndDateTime:'2026-10-26 12:00:00'});Object.assign(f.tasks[i],{Priorities:FIXED,FixedDueTime:1,DueDateTime:'2026-10-26 11:00:00',EndDateTime:'2026-10-26 12:00:00',Due_Date:'2026-10-26 11:00:00',End_Date:'2026-10-26 12:00:00',Due_Time:'11:00:00',End_Time:'12:00:00'});}
+  const h=await harness(f),{body,preview}=await scheduledRequest(h,{fixedOverrides:[{taskId:3,startLocal:'2026-10-26 14:00:00',endLocal:'2026-10-26 15:00:00'}]});assert.equal(preview.ready,true);
+  await h.api.splitGroupWithScheduleChanges(body);assert.equal(h.data().times[2].DueDateTime,'2026-10-26 14:00:00');assert.equal(h.data().times[2].EndDateTime,'2026-10-26 15:00:00');
+});
+test('preview rejects mismatched schedule mirrors before generating a fingerprint',async()=>{
+  const f=scheduledSplitFixture();f.tasks[2].Due_Time='07:00:00';const h=await harness(f);await assert.rejects(h.api.previewGroupSplitSchedule({groupId:1,originTaskId:1,expectedGroupVersion:version,action:'leave',taskIds:[3]}),code('SCHEDULE_MIRROR_INVALID'));assert.equal(h.writes.length,0);
+});
+test('explicit fixed replacement overlapping another unit is blocked without writes',async()=>{
+  const f=scheduledSplitFixture();for(const i of [0,1,2,3]){const d=i===3?'2026-10-26 14:00:00':'2026-10-26 11:00:00',e=i===3?'2026-10-26 15:00:00':'2026-10-26 12:00:00';Object.assign(f.times[i],{Priorities:FIXED,FixedDueTime:1,DueDateTime:d,EndDateTime:e});Object.assign(f.tasks[i],{Priorities:FIXED,FixedDueTime:1,DueDateTime:d,EndDateTime:e,Due_Date:d,End_Date:e,Due_Time:d.slice(11,19),End_Time:e.slice(11,19)});}
+  const h=await harness(f),body={groupId:1,originTaskId:1,expectedGroupVersion:version,action:'leave',taskIds:[3],fixedOverrides:[{taskId:3,startLocal:'2026-10-26 14:00:00',endLocal:'2026-10-26 15:00:00'}],requestId,confirmMembership:true,confirmSchedule:true,expectedFingerprint:'a'.repeat(64)};
+  await assert.rejects(h.api.splitGroupWithScheduleChanges(body),code('GROUP_SPLIT_BLOCKED'));assert.equal(h.writes.length,0);assert.deepEqual(h.data(),f);
+});
+test('scheduled path refuses a split without schedule changes',async()=>{
+  const h=await harness(noScheduleFixture()),body=await unchangedRequest(h);await assert.rejects(h.api.splitGroupWithScheduleChanges({...body,confirmSchedule:true}),code('SPLIT_SCHEDULE_NOT_NEEDED'));assert.equal(h.writes.length,0);
+});
+test('confirmed dissolve reschedules all active independent tasks and replays once',async()=>{
+  const f=scheduledSplitFixture(),h=await harness(f),{body,preview}=await scheduledRequest(h,{action:'dissolve',taskIds:[1,2,3]});assert.ok(preview.changes.length>0);
+  const params={...body,confirmDissolve:true},r=await h.api.splitGroupWithScheduleChanges(params);assert.equal(r.dissolved,true);assert.equal(h.data().groups[0].IsActive,0);assert.ok(h.data().members.every(m=>m.LeftAt!==null));
+  const n=h.writes.length;assert.equal((await h.api.splitGroupWithScheduleChanges(params)).replayed,true);assert.equal(h.writes.length,n);
+});
+test('corrupt scheduled-operation receipt fails closed on replay',async()=>{
+  const h=await harness(scheduledSplitFixture()),{body}=await scheduledRequest(h);await h.api.splitGroupWithScheduleChanges(body);h.data().operations[0].ResultJSON='{}';const n=h.writes.length;
+  await assert.rejects(h.api.splitGroupWithScheduleChanges(body),code('OPERATION_RESULT_INVALID'));assert.equal(h.writes.length,n);
 });
