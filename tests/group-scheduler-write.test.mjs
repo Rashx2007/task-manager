@@ -201,3 +201,36 @@ test('No-group manual non-fixed save and fixed shifting retain transactional leg
 test('Every SQL placeholder remains paired with a parameter',async()=>{
   const h=await harness(); await h.api.saveTaskSchedule({taskId:1,priority:'2.بالا',hours:1,expectedGroupVersion:version}); for(const call of h.calls)assert.equal((call.sql.match(/\?/g)||[]).length,call.params.length,call.sql);
 });
+
+const splitBody = () => ({ groupId: 1, originTaskId: 1, expectedGroupVersion: version, action: 'dissolve', taskIds: [1,2] });
+test('split diagnostic uses server snapshot in a locked transaction and never writes', async () => {
+  const f=fixture(), h=await harness(f); const r=await h.api.previewGroupSplitSchedule({...splitBody(), tasks: [], groups: [], startAt:'1900-01-01 00:00:00'});
+  assert.equal(r.ready,true); assert.equal(r.illustrativeOnly,true); assert.equal(r.authorizesWrite,false);
+  assert.ok(r.changes.some(x=>x.taskId===3)); assert.equal(h.writes.length,0); assert.deepEqual(h.data(),f);
+  assert.equal(h.calls[0].params[0],'task-manager:schedule'); assert.equal(h.stats().commits,1);
+  for(const name of ['scheduler:groups','scheduler:members','scheduler:tasks','SELECT StartWorkTime']) assert.ok(h.calls.some(c=>c.sql.includes(name)), name);
+});
+test('fixed split conflict is returned without modifying records',async()=>{
+  const f=fixture(); for(const i of [0,1]) {Object.assign(f.tasks[i],{Priorities:FIXED,FixedDueTime:1});Object.assign(f.times[i],{Priorities:FIXED,FixedDueTime:1});}
+  const h=await harness(f),r=await h.api.previewGroupSplitSchedule(splitBody()); assert.equal(r.ready,false); assert.equal(r.blockers[0].code,'SPLIT_FIXED_CONFLICT'); assert.equal(h.writes.length,0); assert.deepEqual(h.data(),f);
+});
+test('explicit fixed replacement is diagnostic, not persisted',async()=>{
+  const f=fixture(); for(const i of [0,1]) {Object.assign(f.tasks[i],{Priorities:FIXED,FixedDueTime:1});Object.assign(f.times[i],{Priorities:FIXED,FixedDueTime:1});}
+  const h=await harness(f),r=await h.api.previewGroupSplitSchedule({...splitBody(),fixedOverrides:[{taskId:2,startLocal:'2026-10-26 10:00:00',endLocal:'2026-10-26 11:00:00'}]}); assert.equal(r.ready,true); assert.equal(r.authorizesWrite,false); assert.ok(r.changes.some(c=>c.taskId===2)); assert.deepEqual(h.data(),f); assert.equal(h.writes.length,0);
+});
+test('stale group, incomplete dissolution and missing member fail without writes',async()=>{
+  for(const body of [{...splitBody(),expectedGroupVersion:'0000000000000002'},{...splitBody(),taskIds:[1]},{...splitBody(),originTaskId:99}]) {const h=await harness(); await assert.rejects(h.api.previewGroupSplitSchedule(body)); assert.equal(h.writes.length,0); assert.equal(h.stats().rollbacks,1);}
+});
+test('lock contention, missing schema, duplicate schedule and missing member fail closed in diagnostic',async()=>{
+  for(const variant of ['busy','schema','duplicate','missing']) {const f=fixture(); if(variant==='schema') f.ready=false; if(variant==='duplicate') f.times.push({...f.times[0],TimeDateID:50}); if(variant==='missing') f.tasks=f.tasks.filter(t=>t.TaskID!==2); const h=await harness(f,{busy:variant==='busy'}); await assert.rejects(h.api.previewGroupSplitSchedule(splitBody())); assert.equal(h.writes.length,0);}
+});
+test('stored nonfixed seconds or milliseconds stop diagnostic instead of hiding changes',async()=>{
+  for(const value of ['2026-10-26 08:00:11', '2026-10-26 08:00:00.500', new Date('2026-10-26T08:00:00.250Z')]) {const f=fixture(); f.times[0].DueDateTime=value; const h=await harness(f); await assert.rejects(h.api.previewGroupSplitSchedule(splitBody()),code('PREVIEW_SUBMINUTE_TIME')); assert.equal(h.writes.length,0);}
+});
+test('member sync exception remains a scheduling member in diagnostic',async()=>{
+  const f=fixture(); f.members[1].SyncEnabled=0; const h=await harness(f),r=await h.api.previewGroupSplitSchedule(splitBody()); assert.equal(r.ready,true); assert.deepEqual(Array.from(r.selectedTaskIds),[1,2]); assert.equal(r.workUnitCount,3); assert.equal(h.writes.length,0);
+});
+test('diagnostic does not enable leave/dissolve mutations or expose a route',async()=>{
+  const source=await fs.readFile(path.join(root,'lib','task-group-membership-service.js'),'utf8'); assert.ok(source.includes('EXIT_SCHEDULE_CHECK_REQUIRED'));
+  const h=await harness(); await assert.rejects(h.api.previewGroupSplitSchedule(null),code('INVALID_BODY')); assert.equal(h.calls.length,0);
+});
