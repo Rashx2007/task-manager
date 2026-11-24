@@ -130,10 +130,10 @@ async function harness(initial = fixture(), options = {}) {
 
 test('A group reserves one interval, including SyncEnabled=0; independent task follows once', async () => {
   const f = fixture(); f.members[1].SyncEnabled = 0;
-  const h = await harness(f); assert.equal(await h.api.rescheduleTasks(), 3);
-  assert.equal(h.data().times[0].DueDateTime, '2026-10-26 08:10:00');
-  assert.equal(h.data().times[1].EndDateTime, '2026-10-26 09:10:00');
-  assert.equal(h.data().times[2].DueDateTime, '2026-10-26 09:10:00');
+  const h = await harness(f, { clock: [2026, 9, 26, 8, 2, 0] }); assert.equal(await h.api.rescheduleTasks(), 3);
+  assert.equal(h.data().times[0].DueDateTime, '2026-10-26 08:05:00');
+  assert.equal(h.data().times[1].EndDateTime, '2026-10-26 09:05:00');
+  assert.equal(h.data().times[2].DueDateTime, '2026-10-26 09:05:00');
   assert.equal(h.data().groups[0].Version, '0000000000000002');
   assert.equal(h.calls[0].params[0], 'task-manager:schedule');
 });
@@ -190,10 +190,10 @@ test('Legacy priority labels normalize together before validating group coherenc
   const h = await harness(f); assert.equal(await h.api.correctTaskPriorities(), 2); assert.equal(h.data().times[1].Priorities, '3.متوسط');
 });
 test('Injected write failure rolls back the SQL double, including prior member writes', async () => {
-  const f = fixture(), h = await harness(f, { failWrite: 3 }); await assert.rejects(h.api.rescheduleTasks(), /injected/); assert.deepEqual(h.data(), f); assert.equal(h.stats().rollbacks, 1);
+  const f = fixture(), h = await harness(f, { failWrite: 3, clock: [2026, 9, 26, 8, 2, 0] }); await assert.rejects(h.api.rescheduleTasks(), /injected/); assert.deepEqual(h.data(), f); assert.equal(h.stats().rollbacks, 1);
 });
 test('Version touch failure rolls back the SQL double after schedule writes', async () => {
-  const f = fixture(), h = await harness(f, { staleTouch: true }); await assert.rejects(h.api.rescheduleTasks(), code('GROUP_CHANGED')); assert.deepEqual(h.data(), f);
+  const f = fixture(), h = await harness(f, { staleTouch: true, clock: [2026, 9, 26, 8, 2, 0] }); await assert.rejects(h.api.rescheduleTasks(), code('GROUP_CHANGED')); assert.deepEqual(h.data(), f);
 });
 test('Lock contention or missing schema fail closed before writes', async () => {
   for (const [options, ready, wanted] of [[{busy:true},true,'GROUP_BUSY'],[{},false,'TASK_GROUPS_NOT_READY']]) { const f = fixture(); f.ready=ready; const h = await harness(f,options); await assert.rejects(h.api.rescheduleTasks(),code(wanted)); assert.equal(h.writes.length,0); }
@@ -202,7 +202,7 @@ test('Duplicate timedate rows or incomplete current membership reject planning b
   for (const variant of ['duplicate','missing']) { const f=fixture(); if(variant==='duplicate') f.times.push({...f.times[0],TimeDateID:50}); else f.tasks=f.tasks.filter(r=>r.TaskID!==2); const h=await harness(f); await assert.rejects(h.api.rescheduleTasks(),code(variant==='duplicate'?'MULTIPLE_SCHEDULE_ROWS':'INCOMPLETE_GROUP')); assert.equal(h.writes.length,0); }
 });
 test('No-group scheduler uses legacy serial scheduling on the transaction executor', async () => {
-  const h = await harness(fixture(false)); assert.equal(await h.api.rescheduleTasks(),3); assert.equal(h.data().times[0].DueDateTime,'2026-10-26 08:10:00'); assert.equal(h.data().times[1].DueDateTime,'2026-10-26 09:10:00'); assert.equal(h.data().times[2].DueDateTime,'2026-10-26 10:10:00');
+  const h = await harness(fixture(false)); assert.equal(await h.api.rescheduleTasks(),3); assert.equal(h.data().times[0].DueDateTime,'2026-10-26 08:00:00'); assert.equal(h.data().times[1].DueDateTime,'2026-10-26 09:00:00'); assert.equal(h.data().times[2].DueDateTime,'2026-10-26 10:00:00');
 });
 test('No-group manual fixed save preserves legacy result and transaction', async () => {
   const h=await harness(fixture(false)); const r=await h.api.saveTaskSchedule({taskId:1,priority:FIXED,startLocal:'2026-10-26 10:00:00',endLocal:'2026-10-26 11:00:00'}); assert.equal(r.success,true); assert.equal(r.due,'2026-10-26 10:00:00'); assert.equal(h.stats().commits,1);
@@ -448,4 +448,16 @@ test('confirmed dissolve reschedules all active independent tasks and replays on
 test('corrupt scheduled-operation receipt fails closed on replay',async()=>{
   const h=await harness(scheduledSplitFixture()),{body}=await scheduledRequest(h);await h.api.splitGroupWithScheduleChanges(body);h.data().operations[0].ResultJSON='{}';const n=h.writes.length;
   await assert.rejects(h.api.splitGroupWithScheduleChanges(body),code('OPERATION_RESULT_INVALID'));assert.equal(h.writes.length,n);
+});
+
+test('Reschedule accepts user start: 5-minute ceil, work hours, rest and weekend', async () => {
+  const cases = [['2026-10-26 08:01','2026-10-26 08:05:00'],['2026-10-26 12:10','2026-10-26 13:00:00'],['2026-10-26 06:00','2026-10-26 07:30:00'],['2026-10-29 16:00','2026-10-31 07:30:00']];
+  for (const [input, want] of cases) { const h = await harness(fixture(false)); await h.api.rescheduleTasks(input); assert.equal(h.data().times[0].DueDateTime, want, input); }
+});
+test('Reschedule default start ceils to 5 minutes; invalid user start rejects before SQL', async () => {
+  const h = await harness(fixture(false), { clock: [2026, 9, 26, 8, 2, 0] }); await h.api.rescheduleTasks(); assert.equal(h.data().times[0].DueDateTime, '2026-10-26 08:05:00');
+  for (const bad of ['bad', '2026-02-30 08:00', '2026-10-26 25:00', 5]) { const g = await harness(fixture(false)); await assert.rejects(g.api.rescheduleTasks(bad), code('INVALID_START')); assert.equal(g.calls.length, 0); }
+});
+test('Grouped reschedule honours user start', async () => {
+  const h = await harness(); await h.api.rescheduleTasks('2026-10-26 09:02'); assert.equal(h.data().times[0].DueDateTime, '2026-10-26 09:05:00');
 });

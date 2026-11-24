@@ -37,6 +37,26 @@ export default function SearchPanel({ onResult, onClose, onLoadingChange }) {
     if (token === sequenceRef.current) { setBusy(false); onLoadingChange?.(false); }
   };
 
+  const showUnfinished = async () => {
+    const token = ++sequenceRef.current;
+    const payload = { unfinished: true };
+    setBusy(true); onLoadingChange?.(true);
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (token !== sequenceRef.current) return;
+      if (d.success) onResult(d.data || [], { kind: 'unfinished', payload });
+      else showToast('خطا: ' + (d.error || 'نامشخص'), 'error');
+    } catch {
+      showToast('خطا در ارتباط با سرور.', 'error');
+    }
+    if (token === sequenceRef.current) { setBusy(false); onLoadingChange?.(false); }
+  };
+
   // ✅ پاک‌کردن = خالی‌کردن هر سه → هر سه دوباره فعال
   const clearAll = () => {
     setTaskID('');
@@ -98,6 +118,10 @@ export default function SearchPanel({ onResult, onClose, onLoadingChange }) {
           title="Enter"
         >
           {busy ? <LoadingIndicator inline label="جستجوی کار" /> : 'جستجو'}
+        </button>
+        <button type="button" className="btn-primary whitespace-nowrap" onClick={showUnfinished} disabled={busy}
+          title="همهٔ کارهای ناتمام به ترتیب زمان شروع برنامه‌ریزی‌شده">
+          همهٔ کارهای ناتمام (بر اساس زمان شروع)
         </button>
         <button type="button" className="btn-primary whitespace-nowrap" onClick={clearAll}>
           پاک‌کردن

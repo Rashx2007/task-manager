@@ -15,6 +15,7 @@ import AssetsModal from "@/components/AssetsModal";
 import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
+import RescheduleStartModal from "@/components/RescheduleStartModal";
 import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import { showToast, showConfirm } from "@/lib/toast";
 
@@ -74,6 +75,7 @@ export default function Home() {
   const [showPersons, setShowPersons] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
+  const [showRescheduleStart, setShowRescheduleStart] = useState(false);
   // ✅ آیا جدول فعلاً نتیجهٔ جستجو را نشان می‌دهد؟
   const [isSearchView, setIsSearchView] = useState(false);
 
@@ -467,12 +469,12 @@ export default function Home() {
     });
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedTask) {
-      alert("ابتدا یک کار را انتخاب کنید.");
+      showToast("ابتدا یک کار را انتخاب کنید.", "warn");
       return;
     }
-    if (!confirm(`آیا از حذف کار ${selectedTask.TaskID} مطمئن هستید؟`)) return;
+    showConfirm(`آیا از حذف کار ${selectedTask.TaskID} مطمئن هستید؟`, { type: "warn", confirmText: "حذف", cancelText: "انصراف", onConfirm: async () => {
     try {
       const res = await fetch(`/api/tasks/${selectedTask.TaskID}`, {
         method: "DELETE",
@@ -481,15 +483,16 @@ export default function Home() {
       if (d.success) {
         setSelectedTask(null);
         setReloadKey((k) => k + 1);
-      } else alert("خطا: " + d.error);
+      } else showToast("خطا: " + d.error, "error");
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
+    } });
   };
 
   const handleEdit = () => {
     if (selectedTask) openEdit(selectedTask);
-    else alert("ابتدا یک کار را انتخاب کنید.");
+    else showToast("ابتدا یک کار را انتخاب کنید.", "warn");
   };
   // ✅ معادل «بروزرسانی» دسکتاپ: بازچینش زمان کارهای جاری + بارگذاری مجدد جدول
   const handleRefresh = async () => {
@@ -521,13 +524,21 @@ export default function Home() {
     setReloadKey((k) => k + 1);
   };
 
-  const handleReschedule = async () => {
-    if (!confirm("مرتب‌سازی «بدون کارهای زمان ثابت» انجام شود؟")) return;
+  const handleReschedule = () => setShowRescheduleStart(true);
+
+  const doReschedule = async (startLocal) => {
+    setShowRescheduleStart(false);
     try {
-      await fetch("/api/reschedule", { method: "POST" });
+      const res = await fetch("/api/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startLocal }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.success === false) { showToast(d.error || "مرتب‌سازی انجام نشد.", "error"); return; }
       setReloadKey((k) => k + 1);
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
   };
 
@@ -542,56 +553,57 @@ export default function Home() {
       });
       const d = await res.json();
       if (d.success) {
-        alert("انجام شد.");
+        showToast("انجام شد.", "success");
         setReloadKey((k) => k + 1);
-      } else alert("خطا: " + d.error);
+      } else showToast("خطا: " + d.error, "error");
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
   };
 
-  const handleCorrectPrio = async () => {
-    if (!confirm("اصلاح عبارت الویت‌ها انجام شود؟")) return;
+  const handleCorrectPrio = () => {
+    showConfirm("اصلاح عبارت الویت‌ها انجام شود؟", { type: "warn", confirmText: "اصلاح", cancelText: "انصراف", onConfirm: async () => {
     try {
       const res = await fetch("/api/correct-priorities", { method: "POST" });
       const d = await res.json();
       if (d.success) {
-        alert(d.corrected + " مورد اصلاح شد.");
+        showToast(d.corrected + " مورد اصلاح شد.", "success");
         setReloadKey((k) => k + 1);
-      } else alert("خطا: " + d.error);
+      } else showToast("خطا: " + d.error, "error");
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
+    } });
   };
 
-  const handlePriorityIncrease = async () => {
-    if (!confirm("ویرایش الویت (افزایش خودکار الویت کارهای متأخر) انجام شود؟"))
-      return;
+  const handlePriorityIncrease = () => {
+    showConfirm("ویرایش الویت (افزایش خودکار الویت کارهای متأخر) انجام شود؟", { type: "warn", confirmText: "ویرایش", cancelText: "انصراف", onConfirm: async () => {
     try {
       const res = await fetch("/api/priority-increase", { method: "POST" });
       const d = await res.json();
       if (d.success) {
-        alert(d.changed + " کار افزایش الویت یافت.");
+        showToast(d.changed + " کار افزایش الویت یافت.", "success");
         setReloadKey((k) => k + 1);
-      } else alert("خطا: " + d.error);
+      } else showToast("خطا: " + d.error, "error");
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
+    } });
   };
 
-  const handleUpdateFolders = async () => {
-    if (!confirm("پوشهٔ پیش‌فرض دستگاه‌ها از «اطلاعات پایه» به‌روزرسانی شود؟"))
-      return;
+  const handleUpdateFolders = () => {
+    showConfirm("پوشهٔ پیش‌فرض دستگاه‌ها از «اطلاعات پایه» به‌روزرسانی شود؟", { type: "warn", confirmText: "به‌روزرسانی", cancelText: "انصراف", onConfirm: async () => {
     try {
       const res = await fetch("/api/update-default-folders", {
         method: "POST",
       });
       const d = await res.json();
-      if (d.success) alert(d.updated + " دستگاه به‌روزرسانی شد.");
-      else alert("خطا: " + d.error);
+      if (d.success) showToast(d.updated + " دستگاه به‌روزرسانی شد.", "success");
+      else showToast("خطا: " + d.error, "error");
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
+    } });
   };
 
   // ✅ دکمهٔ پوشه ضمائم: بازکردن مستقیم پوشه در ویندوز (بدون مودال)
@@ -610,13 +622,10 @@ export default function Home() {
       }
 
       if (!p) {
-        if (
-          confirm(
-            "برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟",
-          )
-        ) {
-          setFolderTask(t);
-        }
+        showConfirm("برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟", {
+          type: "warn", confirmText: "ثبت پوشه", cancelText: "انصراف",
+          onConfirm: () => setFolderTask(t),
+        });
         return;
       }
 
@@ -676,7 +685,7 @@ export default function Home() {
       });
       setShowTaskForm(true);
     } catch {
-      alert("خطا در ارتباط با سرور");
+      showToast("خطا در ارتباط با سرور", "error");
     }
   };
 
@@ -720,7 +729,7 @@ export default function Home() {
                 searchNeedsRefreshRef.current = false;
                 loadRequestRef.current++;
                 setTasksLoading(false); setLoadError("");
-                const orderedRows = sortSearchRows(rows);
+                const orderedRows = source?.kind === "unfinished" ? [...(rows || [])] : sortSearchRows(rows);
                 searchRowsRef.current = orderedRows;
                 setTasks(orderedRows.slice(0, PAGE_SIZE));
                 setTotalFiltered(orderedRows.length);
@@ -901,6 +910,9 @@ export default function Home() {
           onClose={() => setShowSettings(false)}
           onSaved={() => setReloadKey((k) => k + 1)}
         />
+      )}
+      {showRescheduleStart && (
+        <RescheduleStartModal onCancel={() => setShowRescheduleStart(false)} onConfirm={doReschedule} />
       )}
       {folderTask && (
         <FolderModal

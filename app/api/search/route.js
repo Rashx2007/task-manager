@@ -59,6 +59,8 @@ export async function POST(request) {
     if (has(b.mechSystem)) { c.push(`asset.MechSystem LIKE N'%' + ? + '%'`); params.push(String(b.mechSystem)); }
     if (has(b.specifications)) { c.push(`asset.Specifications LIKE N'%' + ? + '%'`); params.push(String(b.specifications)); }
 
+    if (b.unfinished === true && !byId) c.push(`tsk.Complited = 0`);
+
     if (!byId) {
       if (b.status === "current") c.push(`tsk.Complited = 0`);
       else if (b.status === "completed") c.push(`tsk.Complited = 1`);
@@ -79,7 +81,7 @@ export async function POST(request) {
        LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
        LEFT JOIN Purchase_Request_tbl pur ON pur.TaskID = tsk.TaskID
        ${where}
-       ORDER BY tsk.TaskID DESC`,
+       ${b.unfinished === true && !byId ? "ORDER BY CASE WHEN TD.DueDateTime IS NULL THEN 1 ELSE 0 END, TD.DueDateTime ASC, tsk.TaskID ASC" : "ORDER BY tsk.TaskID DESC"}`,
       params,
     );
     return NextResponse.json({ success: true, data: rows });
