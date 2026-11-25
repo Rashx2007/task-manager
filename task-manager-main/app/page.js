@@ -1,0 +1,846 @@
+//app/page.js
+"use client";
+import { useState, useEffect, useCallback, useRef } from "react";
+import Toolbar from "@/components/Toolbar";
+import StatusBar from "@/components/StatusBar";
+import TaskTable from "@/components/TaskTable";
+import SearchPanel from "@/components/SearchPanel";
+import TaskForm from "@/components/TaskForm";
+import TaskInspector from "@/components/TaskInspector";
+import ComprehensiveSearch from "@/components/ComprehensiveSearch";
+import ReportsModal from "@/components/ReportsModal";
+import BackupModal from "@/components/BackupModal";
+import AssetsModal from "@/components/AssetsModal";
+import PersonsModal from "@/components/PersonsModal";
+import SettingsModal from "@/components/SettingsModal";
+import FolderModal from "@/components/FolderModal";
+import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
+import { showToast, showConfirm } from "@/lib/toast";
+
+// کل نتایج جستجو باید پیش از slice مرتب شوند، نه فقط ردیف‌های هر صفحه.
+const sortSearchRows = (rows) => [...(rows || [])].sort(
+  (a, b) => Number(normalizeDigits(b.TaskID)) - Number(normalizeDigits(a.TaskID)),
+);
+
+const PAGE_SIZE = 10;
+
+function FullHeight({ children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    const apply = () => {
+      if (!el) return;
+      const H = el.clientHeight || 0;
+      const row = Math.max(40, H / 10.5);
+      el.style.setProperty("--row-h", row + "px");
+      el.style.setProperty("--head-h", row * 0.5 + "px");
+    };
+    apply();
+    const mo = new MutationObserver(apply);
+    mo.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", apply);
+    return () => {
+      mo.disconnect();
+      window.removeEventListener("resize", apply);
+    };
+  }, []);
+  return (
+    <div ref={ref} className="table-host">
+      {children}
+    </div>
+  );
+}
+
+export default function Home() {
+  const [tasks, setTasks] = useState([]);
+  const completionPendingRef = useRef(false);
+  const [totalFiltered, setTotalFiltered] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editTask, setEditTask] = useState(null);
+  const [newTaskAssetId, setNewTaskAssetId] = useState(null);
+  const [showComprehensive, setShowComprehensive] = useState(false);
+  const [showReports, setShowReports] = useState(false);
+  const [showBackup, setShowBackup] = useState(false);
+  const [showAssets, setShowAssets] = useState(false);
+  const [showPersons, setShowPersons] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [folderTask, setFolderTask] = useState(null);
+  // ✅ آیا جدول فعلاً نتیجهٔ جستجو را نشان می‌دهد؟
+  const [isSearchView, setIsSearchView] = useState(false);
+
+  // ✅ پیش‌نویس (ایجاد از فیلتر)
+  const [draft, setDraft] = useState(null);
+  const finishingDraftRef = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("task_draft");
+      if (raw) setDraft(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const startDraft = () => setDraft((d) => d || {});
+  const applyPlace = (d) => {
+    if (!d || !d.Building) return d;
+    const r = placeRules(d.Building, d.Block, d.Floor, d.Entrance);
+    if (!r.central) return { ...d, Block: "-", Entrance: "-", Floor: d.Floor };
+    return d;
+  };
+  const changeDraft = (k, v) => setDraft((d) => applyPlace({ ...d, [k]: v }));
+  const assignDraft = (colKey, value) =>
+    setDraft((d) => (d ? applyPlace({ ...d, [colKey]: value }) : d));
+
+  const [assetPreset, setAssetPreset] = useState(null);
+  const [draftAssetPreset, setDraftAssetPreset] = useState(null);
+  const handleDraftDeviceMissing = (draftData) => {
+    const spec = `${draftData.AssetName || ""} (شماره: ${draftData.AssetNumber || "-"})\nساختمان: ${draftData.Building || ""}، طبقه: ${draftData.Floor ?? "-"}، قسمت: ${draftData.Location || "-"}`;
+    if (
+      !confirm(
+        `دستگاه با این مشخصات در دیتابیس یافت نشد:\n\n${spec}\n\nآیا مایل به ثبت دستگاه جدید هستید؟`,
+      )
+    )
+      return;
+    setAssetPreset({
+      AssetName: draftData.AssetName || "",
+      AssetNumber: draftData.AssetNumber || "",
+      Building: draftData.Building || "",
+      Block: draftData.Block || "-",
+      Floor: draftData.Floor != null ? String(draftData.Floor) : "",
+      Entrance: draftData.Entrance || "",
+      Location: draftData.Location || "",
+      MechSystem: draftData.MechSystem || "",
+    });
+    setShowAssets(true);
+  };
+  const handleAssetSavedFromDraft = (newId, form) => {
+    setDraft((d) =>
+      d ? { ...d, AssetName: form.AssetName, AssetID: newId || null } : d,
+    );
+  };
+
+  const saveDraft = async () => {
+    if (!draft) return;
+    const d = applyPlace(draft);
+    setDraft(d);
+    if (d.AssetName && d.Building) {
+      try {
+        const res = await fetch("/api/asset-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(d),
+        });
+        const cd = await res.json();
+        if (cd.found) {
+          let assetId = cd.AssetID;
+          // ✅ اگر چند دستگاه منطبق بود و شماره انتخاب نشده، از کاربر بپرس
+          if (
+            cd.matches &&
+            cd.matches.length > 1 &&
+            (d.AssetNumber == null || String(d.AssetNumber).trim() === "")
+          ) {
+            const list = cd.matches
+              .map(
+                (m, i) =>
+                  `${i + 1}) شماره ${m.AssetNumber}، بلوک ${m.Block || "-"}، طبقه ${m.Floor}، ورودی ${m.Entrance || "-"}، قسمت ${m.Location || "-"}`,
+              )
+              .join("\n");
+            const pick = prompt(
+              `چند دستگاه با این مشخصات وجود دارد؛ شمارهٔ ردیف مورد نظر را وارد کنید:\n${list}`,
+              "1",
+            );
+            if (pick === null) return;
+            const m = cd.matches[Number(pick) - 1];
+            if (!m) {
+              alert("انتخاب نامعتبر بود.");
+              return;
+            }
+            assetId = m.AssetID;
+          }
+          localStorage.setItem(
+            "task_draft",
+            JSON.stringify({ ...d, AssetID: assetId }),
+          );
+          alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
+        } else {
+          handleDraftDeviceMissing(d);
+        }
+      } catch (e) {
+        alert("خطا در بررسی دستگاه: " + e.message);
+      }
+    } else {
+      try {
+        localStorage.setItem("task_draft", JSON.stringify(d));
+        alert("پیش‌نویس به‌صورت موقت ذخیره شد.");
+      } catch {}
+    }
+  };
+
+  const finishDraft = () => {
+    finishingDraftRef.current = true;
+    setEditTask({ ...draft });
+    setDraftAssetPreset(
+      draft && !draft.AssetID
+        ? {
+            AssetName: draft.AssetName || "",
+            AssetNumber: draft.AssetNumber || "",
+            Building: draft.Building || "",
+            Block: draft.Block || "-",
+            Floor: draft.Floor != null ? String(draft.Floor) : "",
+            Entrance: draft.Entrance || "",
+            Location: draft.Location || "",
+            MechSystem: draft.MechSystem || "",
+          }
+        : null,
+    );
+    setShowTaskForm(true);
+  };
+  const cancelDraft = () => {
+    setDraft(null);
+    try {
+      localStorage.removeItem("task_draft");
+    } catch {}
+  };
+
+  // ✅ صفحه‌بندی + فیلتر سمت سرور
+  const [page, setPage] = useState(1);
+  const [activeFilters, setActiveFilters] = useState({});
+  const [reloadKey, setReloadKey] = useState(0);
+  const loadTypeRef = useRef("daily");
+  const searchRowsRef = useRef([]);
+  const loadRequestRef = useRef(0);
+  // ✅ نوسازی خودکار بدون رفرش صفحه
+  const [nextSwitch, setNextSwitch] = useState(null);
+  const switchTimerRef = useRef(null);
+  const activeFiltersRef = useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  // ✅ تفسیر «زمان دیواری» سرور (ISO با برچسب UTC) به ساعت محلی مرورگر
+  const wallDate = (s) => {
+    const m = String(s || "").match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+  };
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+
+  const applyClientFilters = (rows, fObj) =>
+    rows.filter((t) => {
+      for (const [k, vals] of Object.entries(fObj)) {
+        if (!Array.isArray(vals)) continue;
+        if (vals.length === 0) return false;
+        const v =
+          k === "status"
+            ? Number(t.Complited) === 1
+              ? "اتمام"
+              : "جاری"
+            : String(t[k] ?? "");
+        const numeric = ["TaskID", "AssetNumber", "Floor"].includes(k);
+        if (numeric) {
+          const raw = normalizeDigits(v).trim();
+          if (raw === "" || !Number.isFinite(Number(raw)) || !vals.some((value) => {
+            const candidate = normalizeDigits(value).trim();
+            return candidate !== "" && Number.isFinite(Number(candidate)) && Number(candidate) === Number(raw);
+          })) return false;
+        } else if (["Priorities", "status"].includes(k)) {
+          if (!vals.some((value) => String(value) === v)) return false;
+        } else {
+          const normalized = (value) => normalizeFa(value).replace(/\s+/g, "");
+          if (!vals.some((value) => normalized(v).includes(normalized(value)))) return false;
+        }
+      }
+      return true;
+    });
+
+  const loadTasks = useCallback(async (filtersObj, pageNum) => {
+    const requestId = ++loadRequestRef.current;
+    const type = loadTypeRef.current;
+    setLoadError("");
+    try {
+      if (type === "search") {
+        const filteredRows = sortSearchRows(applyClientFilters(
+          searchRowsRef.current || [],
+          filtersObj,
+        ));
+        setTotalFiltered(filteredRows.length);
+        setTasks(
+          filteredRows.slice((pageNum - 1) * PAGE_SIZE, pageNum * PAGE_SIZE),
+        );
+        return;
+      }
+      const offset = (pageNum - 1) * PAGE_SIZE;
+      // ✅ POST با بدنهٔ JSON: جلوگیری از بزرگ‌شدن URL و خطای 431
+      const res = await fetch(`/api/load-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          offset,
+          limit: PAGE_SIZE,
+          filters: filtersObj || {},
+        }),
+      });
+      if (requestId !== loadRequestRef.current) return;
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`سرور کد ${res.status} برگرداند: ${t.slice(0, 200)}`);
+      }
+      const d = await res.json();
+      if (requestId !== loadRequestRef.current) return;
+      if (d.success) {
+        setTasks(d.data || []);
+        setTotalFiltered(d.total || 0);
+        setNextSwitch(d.nextSwitch ?? null);
+      } else {
+        setLoadError(d.error || "خطای نامشخص از سرور");
+      }
+    } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
+      setLoadError("خطا در ارتباط با سرور: " + e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTasks({}, 1);
+  }, [loadTasks]);
+  useEffect(() => {
+    loadTasks(activeFilters, page);
+  }, [activeFilters, page, reloadKey, loadTasks]);
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  // ✅ تایمر یک‌باره: دقیقاً در لحظهٔ سررسید کار زمان‌ثابت (+۵ ثانیه بافر)، جدول خودکار بازخوانی می‌شود
+  useEffect(() => {
+    if (switchTimerRef.current) clearTimeout(switchTimerRef.current);
+    if (!nextSwitch) return;
+    const target = wallDate(nextSwitch);
+    if (!target) return;
+    const delay = target.getTime() - Date.now() + 5000;
+    if (delay <= 0) {
+      loadTasks(activeFiltersRef.current, pageRef.current);
+      return;
+    }
+    switchTimerRef.current = setTimeout(() => {
+      loadTasks(activeFiltersRef.current, pageRef.current);
+    }, delay);
+    return () => {
+      if (switchTimerRef.current) clearTimeout(switchTimerRef.current);
+    };
+  }, [nextSwitch, loadTasks]);
+
+  // ✅ تور امنیتی: نوسازی هر ۵ دقیقه + هنگام دیده‌شدن دوبارهٔ تب
+  useEffect(() => {
+    const iv = setInterval(() => {
+      loadTasks(activeFiltersRef.current, pageRef.current);
+    }, 5 * 60 * 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible")
+        loadTasks(activeFiltersRef.current, pageRef.current);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [loadTasks]);
+
+  // ✅ تغییر فیلتر = برگشت به صفحهٔ ۱ + کوئری جدید
+  const [compSync, setCompSync] = useState(null);
+  const handleFiltersChange = useCallback((filters) => {
+    const serializable = {};
+    for (const [k, v] of Object.entries(filters)) {
+      if (v == null) continue;
+      serializable[k] = Array.from(v);
+    }
+    setActiveFilters(serializable);
+    setPage(1);
+    // ✅ بازتاب هم‌زمان فیلترهای ستونی در فرم فیلترها و بخش «وضعیت و بازهٔ تاریخ»
+    const one = (k) =>
+      serializable[k] && serializable[k].length === 1 ? serializable[k][0] : "";
+    const st = serializable.status;
+    setCompSync({
+      nonce: Date.now(),
+      f: {
+        building: one("Building"),
+        location: one("Location"),
+        assetName: one("AssetName"),
+        assetNumber: one("AssetNumber"),
+        subject: one("TaskTtl"),
+        description: one("Descriptions"),
+        block: one("Block"),
+        floor: one("Floor"),
+        entrance: one("Entrance"),
+      },
+      status: st
+        ? st.includes("جاری") && !st.includes("اتمام")
+          ? "current"
+          : st.includes("اتمام") && !st.includes("جاری")
+            ? "completed"
+            : "all"
+        : null,
+    });
+  }, []);
+
+  const handleComplete = (taskId) => {
+    if (completionPendingRef.current) return;
+    const text = normalizeDigits(taskId).trim();
+    const id = Number(text);
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
+      showToast("کد کار معتبر نیست.", "warn"); return;
+    }
+    completionPendingRef.current = true;
+    let answered = false;
+    showConfirm(`آیا کار ${id} اتمام یافته است؟`, {
+      type: "warn", confirmText: "ثبت اتمام کار", cancelText: "انصراف",
+      onCancel: () => {
+        if (answered) return;
+        answered = true; completionPendingRef.current = false;
+      },
+      onConfirm: async () => {
+        if (answered) return;
+        answered = true;
+        try {
+          const res = await fetch("/api/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskId: id }),
+          });
+          const d = await res.json();
+          if (res.ok && d.success) {
+            setReloadKey((key) => key + 1);
+            showToast(d.alreadyCompleted ? `کار ${id} قبلاً اتمام یافته است.` : `اتمام کار ${id} ثبت شد.`, d.alreadyCompleted ? "info" : "success");
+          } else showToast(d.error || "ثبت اتمام کار ناموفق بود.", "error");
+        } catch {
+          showToast("خطا در ارتباط با سرور؛ وضعیت کار را تازه‌سازی و بررسی کنید.", "error");
+        } finally {
+          completionPendingRef.current = false;
+        }
+      },
+    });
+  };
+
+  const handleDelete = async () => {
+    if (!selectedTask) {
+      alert("ابتدا یک کار را انتخاب کنید.");
+      return;
+    }
+    if (!confirm(`آیا از حذف کار ${selectedTask.TaskID} مطمئن هستید؟`)) return;
+    try {
+      const res = await fetch(`/api/tasks/${selectedTask.TaskID}`, {
+        method: "DELETE",
+      });
+      const d = await res.json();
+      if (d.success) {
+        setSelectedTask(null);
+        setReloadKey((k) => k + 1);
+      } else alert("خطا: " + d.error);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  const handleEdit = () => {
+    if (selectedTask) openEdit(selectedTask);
+    else alert("ابتدا یک کار را انتخاب کنید.");
+  };
+  // ✅ معادل «بروزرسانی» دسکتاپ: بازچینش زمان کارهای جاری + بارگذاری مجدد جدول
+  const handleRefresh = async () => {
+    try {
+      const res = await fetch("/api/update-schedule", { method: "POST" });
+      const d = await res.json();
+      if (d.success) {
+        showToast(
+          `بروزرسانی انجام شد؛ ${d.updated} کار بازچینی شد.`,
+          "success",
+        );
+        setReloadKey((k) => k + 1);
+      } else showToast("خطا: " + (d.error || "نامشخص"), "error");
+    } catch {
+      showToast("خطا در ارتباط با سرور.", "error");
+    }
+  };
+
+  // ✅ معادل دکمهٔ «پاک‌کردن» دسکتاپ: بازگشت به نمای اولیه (کارهای روز) پس از جستجو
+  const handleResetView = () => {
+    loadTypeRef.current = "daily";
+    searchRowsRef.current = [];
+    setIsSearchView(false);
+    setActiveFilters({});
+    setPage(1);
+    setReloadKey((k) => k + 1);
+  };
+
+  const handleReschedule = async () => {
+    if (!confirm("مرتب‌سازی «بدون کارهای زمان ثابت» انجام شود؟")) return;
+    try {
+      await fetch("/api/reschedule", { method: "POST" });
+      setReloadKey((k) => k + 1);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  const handleMoveFixed = async () => {
+    const m = prompt("چند دقیقه جلو برده شود؟", "60");
+    if (m === null) return;
+    try {
+      const res = await fetch("/api/move-fixed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutes: Number(m) }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        alert("انجام شد.");
+        setReloadKey((k) => k + 1);
+      } else alert("خطا: " + d.error);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  const handleCorrectPrio = async () => {
+    if (!confirm("اصلاح عبارت الویت‌ها انجام شود؟")) return;
+    try {
+      const res = await fetch("/api/correct-priorities", { method: "POST" });
+      const d = await res.json();
+      if (d.success) {
+        alert(d.corrected + " مورد اصلاح شد.");
+        setReloadKey((k) => k + 1);
+      } else alert("خطا: " + d.error);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  const handlePriorityIncrease = async () => {
+    if (!confirm("ویرایش الویت (افزایش خودکار الویت کارهای متأخر) انجام شود؟"))
+      return;
+    try {
+      const res = await fetch("/api/priority-increase", { method: "POST" });
+      const d = await res.json();
+      if (d.success) {
+        alert(d.changed + " کار افزایش الویت یافت.");
+        setReloadKey((k) => k + 1);
+      } else alert("خطا: " + d.error);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  const handleUpdateFolders = async () => {
+    if (!confirm("پوشهٔ پیش‌فرض دستگاه‌ها از «اطلاعات پایه» به‌روزرسانی شود؟"))
+      return;
+    try {
+      const res = await fetch("/api/update-default-folders", {
+        method: "POST",
+      });
+      const d = await res.json();
+      if (d.success) alert(d.updated + " دستگاه به‌روزرسانی شد.");
+      else alert("خطا: " + d.error);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  // ✅ دکمهٔ پوشه ضمائم: بازکردن مستقیم پوشه در ویندوز (بدون مودال)
+  const openFolderDirect = async (t) => {
+    try {
+      const res = await fetch(`/api/folder?taskId=${t.TaskID}`);
+      const d = await res.json();
+      const folder = String(d?.data?.FolderPath || "").trim();
+      const file = String(d?.data?.FileName || "").trim();
+
+      // ✅ اولویت فقط با خودِ پوشه است؛ اگر پوشه نبود، پوشهٔ حاوی فایل (نه خود فایل)
+      let p = folder;
+      if (!p && file) {
+        const abs = /^([A-Za-z]:[\/\\])/.test(file) ? file : "";
+        p = abs ? abs.replace(/[^\/\\]+$/, "") : "";
+      }
+
+      if (!p) {
+        if (
+          confirm(
+            "برای این کار پوشهٔ ضمائمی ثبت نشده است.\nآیا می‌خواهید آن را ثبت کنید؟",
+          )
+        ) {
+          setFolderTask(t);
+        }
+        return;
+      }
+
+      const r2 = await fetch("/api/open-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: p }),
+      });
+      const d2 = await r2.json();
+      if (!d2.success) showToast(d2.error || "بازکردن مسیر ممکن نشد.", "error");
+      else if (d2.adjusted)
+        showToast(
+          "مسیر دقیق یافت نشد؛ نزدیک‌ترین پوشهٔ موجود باز شد:\n" + d2.opened,
+          "warn",
+        );
+      else showToast("پوشهٔ ضمائم باز شد.", "success", 2500);
+    } catch {
+      showToast("خطا در ارتباط با سرور.", "error");
+    }
+  };
+
+  const openNew = () => {
+    setEditTask(null);
+    setNewTaskAssetId(null);
+    setShowTaskForm(true);
+  };
+  const openNewWithAsset = (assetId) => {
+    setEditTask(null);
+    setNewTaskAssetId(assetId);
+    setShowAssets(false);
+    setShowTaskForm(true);
+  };
+  const openEdit = (t) => {
+    setEditTask(t);
+    setShowTaskForm(true);
+  };
+
+  // ✅ کپی: ایجاد کار جدید برابر با سطر جاری (بدون کد کار، بدون زمان‌ها و بدون شماره‌های درخواست/ثبت)
+  const handleCopyTask = async (t) => {
+    try {
+      const res = await fetch(`/api/tasks/${t.TaskID}`);
+      const d = await res.json();
+      const src = d.success && d.data ? d.data : t;
+      setEditTask({
+        ...src,
+        TaskID: undefined,
+        Complited: 0,
+        DueDateTime: undefined,
+        EndDateTime: undefined,
+        TDDue: undefined,
+        TDEnd: undefined,
+        TDF: undefined,
+        FixedDueTime: 0,
+        RequestNumber: undefined,
+        RegisterNumber: undefined,
+        RequestDate: undefined,
+      });
+      setShowTaskForm(true);
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
+
+  return (
+    <main className="h-screen bg-[#D8C9B4] flex flex-col overflow-hidden">
+      <TaskInspector />
+      <div className="shrink-0">
+        <Toolbar
+          onNewTask={openNew}
+          onQuickCreate={startDraft}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onComplete={() =>
+            selectedTask
+              ? handleComplete(selectedTask.TaskID)
+              : showToast("ابتدا یک کار را انتخاب کنید.", "warn")
+          }
+          onSearch={() => setShowSearch((s) => !s)}
+          onComprehensiveSearch={() => setShowComprehensive((s) => !s)}
+          onRefresh={handleRefresh}
+          onReport={() => setShowReports(true)}
+          onBackup={() => setShowBackup(true)}
+          onAssets={() => setShowAssets(true)}
+          onPersons={() => setShowPersons(true)}
+          onSettings={() => setShowSettings(true)}
+          onReschedule={handleReschedule}
+          onMoveFixed={handleMoveFixed}
+          onUpdateFolders={handleUpdateFolders}
+          onCorrectPrio={handleCorrectPrio}
+          onPriorityIncrease={handlePriorityIncrease}
+        />
+      </div>
+
+      {(showSearch || showComprehensive) && (
+        <div className="shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain">
+          {showSearch && (
+            <SearchPanel
+              onResult={(rows) => {
+                loadTypeRef.current = "search";
+                loadRequestRef.current++;
+                const orderedRows = sortSearchRows(rows);
+                searchRowsRef.current = orderedRows;
+                setTasks(orderedRows.slice(0, PAGE_SIZE));
+                setTotalFiltered(orderedRows.length);
+                setPage(1);
+                setIsSearchView(true);
+              }}
+              onClose={() => setShowSearch(false)}
+            />
+          )}
+          {showComprehensive && (
+            <ComprehensiveSearch
+              sync={compSync}
+              onResult={(rows) => {
+                loadTypeRef.current = "search";
+                loadRequestRef.current++;
+                const orderedRows = sortSearchRows(rows);
+                searchRowsRef.current = orderedRows;
+                setTasks(orderedRows.slice(0, PAGE_SIZE));
+                setTotalFiltered(orderedRows.length);
+                setPage(1);
+                setIsSearchView(true);
+              }}
+              onClose={() => setShowComprehensive(false)}
+            />
+          )}
+        </div>
+      )}
+
+        {loadError && (
+     <div className="mx-3 mt-2 bg-red-100 border border-red-400 text-red-800 rounded p-2 text-sm font-bold flex items-center gap-2">
+       <span>⚠️ خطا در بارگذاری: {loadError}</span>
+       <button
+         type="button"
+         className="btn-primary px-2 py-1 text-xs"
+         onClick={() => setLoadError("")}
+       >
+         بستن
+       </button>
+     </div>
+   )}
+   {isSearchView && (
+     <div className="mx-3 mt-2 flex items-center gap-2">
+       <span className="text-xs font-bold bg-amber-100 border border-amber-400 text-amber-800 rounded px-2 py-1">
+         📌 نمایش فعلی: نتیجهٔ جستجو
+       </span>
+       <button
+         type="button"
+         className="btn-primary px-3 py-1 text-xs"
+         onClick={handleResetView}
+       >
+         ↩ بازگشت به نمای اولیه (کارهای روز)
+       </button>
+     </div>
+   )}
+
+      {/* فاصلهٔ بالا و پایین نوار صفحه‌بندی متقارن است و
+ یک خط جداکنندهٔ ظریف از جدول دارد. این باعث می‌شود 
+ که نوار صفحه‌بندی به وضوح از جدول جدا شود و
+  در عین حال فضای کافی برای تعامل کاربر فراهم کند. */}
+      <div className="p-3 pb-6 flex-1 min-h-0 flex flex-col">
+        <FullHeight>
+          <TaskTable
+            tasks={tasks}
+            forceTaskIdDescending={!draft && (isSearchView || Object.values(activeFilters).some(Array.isArray))}
+            startNumber={(page - 1) * PAGE_SIZE}
+            onRowClick={setSelectedTask}
+            onComplete={handleComplete}
+            onEdit={openEdit}
+            onCopy={handleCopyTask}
+            onFolder={openFolderDirect}
+            selectedTask={selectedTask}
+            draft={draft}
+            onDraftChange={changeDraft}
+            onDraftAssign={assignDraft}
+            onDraftSave={saveDraft}
+            onDraftFinish={finishDraft}
+            onDraftCancel={cancelDraft}
+            onFiltersChange={handleFiltersChange}
+          />
+        </FullHeight>
+        <div className="pager-bar shrink-0 flex items-center justify-center gap-2 py-2">
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+          >
+            اولین
+          </button>
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            قبلی
+          </button>
+          <span className="text-sm font-bold bg-white/80 rounded px-3 py-1">
+            صفحهٔ {page} از {totalPages} — {totalFiltered} کار
+          </span>
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            بعدی
+          </button>
+          <button
+            type="button"
+            className="btn-primary px-3 py-1 text-xs"
+            disabled={page >= totalPages}
+            onClick={() => setPage(totalPages)}
+          >
+            آخرین
+          </button>
+        </div>
+      </div>
+
+      <div className="shrink-0">
+        <StatusBar
+          count={totalFiltered}
+          today={new Date().toLocaleDateString("fa-IR")}
+        />
+      </div>
+
+      {showTaskForm && (
+        <TaskForm
+          initial={editTask}
+          defaultAssetId={newTaskAssetId}
+          initialAssetPreset={draftAssetPreset}
+          onClose={() => {
+            setShowTaskForm(false);
+            setNewTaskAssetId(null);
+            setDraftAssetPreset(null);
+            finishingDraftRef.current = false;
+          }}
+          onSaved={() => {
+            setReloadKey((k) => k + 1);
+            if (finishingDraftRef.current) {
+              cancelDraft();
+              finishingDraftRef.current = false;
+            }
+          }}
+        />
+      )}
+      {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
+      {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
+      {showAssets && (
+        <AssetsModal
+          preset={assetPreset}
+          onAssetSaved={assetPreset ? handleAssetSavedFromDraft : null}
+          onClose={() => {
+            setShowAssets(false);
+            setAssetPreset(null);
+          }}
+          onNewTaskWithAsset={openNewWithAsset}
+        />
+      )}
+      {showPersons && <PersonsModal onClose={() => setShowPersons(false)} />}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onSaved={() => setReloadKey((k) => k + 1)}
+        />
+      )}
+      {folderTask && (
+        <FolderModal
+          taskId={folderTask.TaskID}
+          onClose={() => setFolderTask(null)}
+          onSaved={() => setReloadKey((k) => k + 1)}
+        />
+      )}
+    </main>
+  );
+}

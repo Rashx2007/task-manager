@@ -81,9 +81,14 @@ export async function POST(request) {
        LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
        LEFT JOIN Purchase_Request_tbl pur ON pur.TaskID = tsk.TaskID
        ${where}
-       ${b.unfinished === true && !byId ? "ORDER BY CASE WHEN TD.DueDateTime IS NULL THEN 1 ELSE 0 END, TD.DueDateTime ASC, tsk.TaskID ASC" : "ORDER BY tsk.TaskID DESC"}`,
+       ORDER BY tsk.TaskID DESC`,
       params,
     );
+    if (b.unfinished === true && !byId) {
+      // مرتب‌سازی بر اساس زمان شروع؛ بدون زمان در انتها (DISTINCT اجازهٔ CASE در ORDER BY نمی‌دهد)
+      const t = (r) => (r.DueDateTime ? new Date(r.DueDateTime).getTime() : Infinity);
+      rows.sort((x, y) => (t(x) === t(y) ? Number(x.TaskID) - Number(y.TaskID) : t(x) < t(y) ? -1 : 1));
+    }
     return NextResponse.json({ success: true, data: rows });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });

@@ -1,0 +1,934 @@
+"use client";
+import { useState, useEffect, useRef } from "react";
+import DatePicker, { DateObject } from "react-multi-date-picker";
+import persian from "react-date-object/calendars/persian";
+import persian_fa from "react-date-object/locales/persian_fa";
+import TimeDateModal from "./TimeDateModal";
+import ApplicantFunctorModal from "./ApplicantFunctorModal";
+import FollowModal from "./FollowModal";
+import SupplierModal from "./SupplierModal";
+import TaskPurchaseTip from "./TaskPurchaseTip";
+import FolderModal from "./FolderModal";
+import AssetsModal from "./AssetsModal";
+import MapModal from "./MapModal";
+import useDraftGuard from "./useDraftGuard";
+
+const PRIORITIES = [
+  "0.آنی",
+  "1.خیلی بالا",
+  "2.بالا",
+  "3.متوسط",
+  "4.کم",
+  "5.خیلی کم",
+];
+const TASK_TYPES = [
+  "خرید",
+  "اداری",
+  "BM تعمیراتی",
+  "CM اصلاحی",
+  "موتورخانه",
+  "PM نگهداری پیشگیرانه",
+  "پیشگیرانه",
+  "EM اضطراری",
+  "HSE",
+  "چک‌کردن فاکتورها",
+  "بهسازی سیستم‌ها",
+  "اقدامات",
+  "پروژه",
+  "بازسازی",
+  "اصلاح نقشه",
+  "آموزشی",
+  "رفاهی",
+  "پرسنلی (ورود و خروج)",
+  "پرسنلی (تشویق و تنبیه)",
+];
+const CONSIDERABLE = ["", "اقدام", "پروژه"];
+
+const toPicker = (wallStr) => {
+  if (!wallStr) return null;
+  const m = String(wallStr).match(
+    /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  if (isNaN(d.getTime())) return null;
+  return new DateObject({ date: d, calendar: persian, locale: persian_fa });
+};
+const fromPicker = (d) => {
+  if (!d) return "";
+  const dt = d.toDate();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+};
+const assetSpec = (a) =>
+  `${a.AssetName}، قسمت: ${a.Location || "-"} (ساختمان ${a.Building || "-"}، بلوک: ${a.Block || "-"}، طبقه: ${a.Floor ?? "-"}، ورودی: ${a.Entrance || "-"}) شماره: ${a.AssetNumber ?? "-"} [کد:${a.AssetID}]`;
+
+import TaskContextHeader from "./TaskContextHeader";
+
+export default function TaskForm({
+  initial = null,
+  defaultAssetId = null,
+  onClose,
+  onSaved,
+}) {
+  const [currentTaskId, setCurrentTaskId] = useState(
+    initial ? initial.TaskID : null,
+  );
+  const isEdit = Boolean(currentTaskId);
+  const [assets, setAssets] = useState([]);
+  const [persons, setPersons] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [showTimeDate, setShowTimeDate] = useState(false);
+  const [showAFModal, setShowAFModal] = useState(false);
+  const [showFollow, setShowFollow] = useState(false);
+  const [showSupplier, setShowSupplier] = useState(false);
+  const [showFolder, setShowFolder] = useState(false);
+  const [showAssetPicker, setShowAssetPicker] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [assetPreset, setAssetPreset] = useState(null);
+  const [completeAsk, setCompleteAsk] = useState(null);
+  const askComplete = () =>
+    new Promise((resolve) => setCompleteAsk({ resolve }));
+  const [functorName, setFunctorName] = useState("");
+  const [assetQuery, setAssetQuery] = useState("");
+  const [subjectSugs, setSubjectSugs] = useState([]);
+  const [form, setForm] = useState({
+    TaskTtl: "",
+    Descriptions: "",
+    Priorities: "نامشخص",
+    tskType: "",
+    IsConsiderableAction: "",
+    Complited: 0,
+    AssetID: "",
+    ApplicantName: "",
+    DueDateTime: "",
+    EndDateTime: "",
+    FixedDueTime: false,
+    RequestNumber: "",
+    RegisterNumber: "",
+    RequestDate: "",
+  });
+  const formRef = useRef(form);
+  formRef.current = form;
+  const timeDateClickedRef = useRef(false);
+  const autoTimeDateRef = useRef(false);
+  const applicantClickedRef = useRef(false);
+  const pendingCloseAskRef = useRef(false);
+  const { touch, markSaved } = useDraftGuard(
+    () => formRef.current.Descriptions || "",
+  );
+
+  useEffect(() => {
+    const p = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = p;
+    };
+  }, []);
+
+  // ✅ بستن فرم با Esc فقط وقتی هیچ مودال فرزندی باز نیست
+  useEffect(() => {
+    const anyChildOpen =
+      showTimeDate ||
+      showAFModal ||
+      showFollow ||
+      showSupplier ||
+      showFolder ||
+      showAssetPicker ||
+      showMap ||
+      !!completeAsk;
+    if (anyChildOpen) return;
+    const h = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [
+    onClose,
+    showTimeDate,
+    showAFModal,
+    showFollow,
+    showSupplier,
+    showFolder,
+    showAssetPicker,
+    showMap,
+    completeAsk, // ✅ completeAsk اضافه شد
+  ]);
+
+  useEffect(() => {
+    fetch("/api/assets")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setAssets(d.data || []);
+      })
+      .catch(() => {});
+    fetch("/api/persons")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setPersons(d.data || []);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!initial) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/tasks/${initial.TaskID}`);
+        const d = await res.json();
+        const src = d.success && d.data ? d.data : initial;
+        setForm({
+          TaskTtl: src.TaskTtl || "",
+          Descriptions: src.Descriptions || "",
+          Priorities: src.TDP || src.Priorities || "نامشخص",
+          tskType: src.tskType || "",
+          IsConsiderableAction: src.IsConsiderableAction || "",
+          Complited: Number(src.Complited) === 1 ? 1 : 0,
+          AssetID:
+            src.ResolvedAssetID || src.AssetID
+              ? String(src.ResolvedAssetID || src.AssetID)
+              : "",
+          ApplicantName: src.ApplicantName || "",
+          DueDateTime: src.TDDue || src.DueDateTime || "",
+          EndDateTime: src.TDEnd || src.EndDateTime || "",
+          FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
+          RequestNumber:
+            src.RequestNumber != null ? String(src.RequestNumber) : "",
+          RegisterNumber:
+            src.RegisterNumber != null ? String(src.RegisterNumber) : "",
+          RequestDate: src.RequestDate || "",
+        });
+      } catch {}
+      fetch(`/api/applicant-functor?taskId=${initial.TaskID}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.exists && d.data) {
+            setFunctorName(d.data.FunctorName || "");
+            setForm((f) => ({
+              ...f,
+              ApplicantName: d.data.ApplicantName || "",
+            }));
+          }
+        })
+        .catch(() => {});
+    })();
+  }, [initial]);
+
+  useEffect(() => {
+    if (!initial && defaultAssetId)
+      setForm((f) => ({ ...f, AssetID: String(defaultAssetId) }));
+  }, [initial, defaultAssetId]);
+
+  useEffect(() => {
+    if (form.AssetID) {
+      const a = assets.find((x) => String(x.AssetID) === String(form.AssetID));
+      if (a) setAssetQuery(assetSpec(a));
+    } else setAssetQuery("");
+  }, [form.AssetID, assets]);
+
+  // ✅ پیشنهاد موضوع بر اساس نوع دستگاه: سابقهٔ کارهای همان دستگاه + الگوهای رایج
+  useEffect(() => {
+    const a = assets.find((x) => String(x.AssetID) === String(form.AssetID));
+    const name = a ? a.AssetName : "";
+    if (!name) {
+      setSubjectSugs([]);
+      return;
+    }
+    const verbs = [
+      "کنترل",
+      "تعمیر",
+      "بازدید",
+      "شستشو",
+      "تعویض",
+      "بررسی",
+      "سرویس",
+      "نصب",
+      "راه‌اندازی",
+      "رفع نشتی",
+    ];
+    const combos = verbs.map((v) => `${v} ${name}`);
+    fetch(
+      `/api/load-data?type=daily&offset=0&limit=500&filters=${encodeURIComponent(
+        JSON.stringify({ AssetName: [name] }),
+      )}`,
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        const past = d.success
+          ? [...new Set((d.data || []).map((t) => t.TaskTtl).filter(Boolean))]
+          : [];
+        setSubjectSugs([...past, ...combos.filter((c) => !past.includes(c))]);
+      })
+      .catch(() => setSubjectSugs(combos));
+  }, [form.AssetID, assets]);
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
+    if (name === "Descriptions") touch(value);
+  };
+
+  const reloadTimes = async () => {
+    if (!currentTaskId) return;
+    try {
+      const res = await fetch(`/api/tasks/${currentTaskId}`);
+      const d = await res.json();
+      if (d.success && d.data) {
+        const src = d.data;
+        setForm((f) => ({
+          ...f,
+          Priorities: src.TDP || src.Priorities || f.Priorities,
+          DueDateTime: src.TDDue || src.DueDateTime || "",
+          EndDateTime: src.TDEnd || src.EndDateTime || "",
+          FixedDueTime: Boolean(Number(src.TDF ?? src.FixedDueTime) === 1),
+        }));
+      }
+    } catch {}
+  };
+  const reloadDescription = async () => {
+    if (!currentTaskId) return;
+    try {
+      const res = await fetch(`/api/tasks/${currentTaskId}`);
+      const d = await res.json();
+      if (d.success && d.data)
+        setForm((f) => ({ ...f, Descriptions: d.data.Descriptions || "" }));
+    } catch {}
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.TaskTtl.trim()) {
+      alert("موضوع را وارد کنید!");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        Complited: Number(form.Complited),
+        AssetID: form.AssetID ? Number(form.AssetID) : null,
+        FixedDueTime: form.FixedDueTime ? 1 : 0,
+        RequestNumber: form.RequestNumber.trim()
+          ? Number(form.RequestNumber)
+          : null,
+        RegisterNumber: form.RegisterNumber.trim()
+          ? Number(form.RegisterNumber)
+          : null,
+        RequestDate: form.RequestDate || null,
+      };
+      const wasNew = !currentTaskId;
+      let taskId = currentTaskId;
+      if (!wasNew) {
+        const res = await fetch(`/api/tasks/${currentTaskId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, Complited: 0 }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert("خطا: " + (data.error || "نامشخص"));
+          setSaving(false);
+          return;
+        }
+      } else {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert("خطا: " + (data.error || "نامشخص"));
+          setSaving(false);
+          return;
+        }
+        taskId = data.TaskID;
+        setCurrentTaskId(taskId);
+      }
+      markSaved();
+      if (wasNew) {
+        alert(
+          `کار جدید با کد ${taskId} ثبت شد.\nاکنون دکمه «الویت و زمان (...)» را بزنید تا الویت و زمان آن تنظیم شود.`,
+        );
+        if (onSaved) onSaved();
+      } else {
+        alert(`تغییرات کار کد ${taskId} ذخیره شد.`);
+        if (onSaved) onSaved();
+        const done = await askComplete();
+        if (done) {
+          try {
+            await fetch(`/api/tasks/${taskId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...payload, Complited: 1 }),
+            });
+          } catch {}
+          alert("کار موردنظر اتمام یافت!");
+          if (onSaved) onSaved();
+          if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm("بستن فرم؟")) {
+            if (onClose) onClose();
+          }
+        } else {
+          if (!timeDateClickedRef.current) {
+            timeDateClickedRef.current = true;
+            autoTimeDateRef.current = true;
+            setShowTimeDate(true);
+          } else if (!applicantClickedRef.current) {
+            pendingCloseAskRef.current = true;
+            setShowAFModal(true);
+          } else if (confirm("بستن فرم؟")) {
+            if (onClose) onClose();
+          }
+        }
+      }
+    } catch {
+      alert("خطا در ارتباط با سرور");
+    }
+    setSaving(false);
+  };
+
+  const inp = "search-input w-full";
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            if (!saving) handleSubmit(e);
+          }
+        }}
+        className="bg-[#CCE6DF] rounded-lg shadow-2xl w-[760px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-6"
+      >
+        <h3 className="text-lg font-bold mb-4">
+          {isEdit ? `ویرایش کار — کد: ${currentTaskId}` : "ثبت کار جدید"}
+        </h3>
+        <TaskContextHeader taskId={currentTaskId} draftMode={!currentTaskId} draftAsset={!currentTaskId ? assets.find((asset) => String(asset.AssetID) === String(form.AssetID)) : null} className="mb-4" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+            <label className="block text-sm font-bold mb-1">موضوع *</label>
+            <input
+              name="TaskTtl"
+              value={form.TaskTtl}
+              onChange={handleChange}
+              className={inp}
+              list="subject-sugs"
+            />
+            <datalist id="subject-sugs">
+              {subjectSugs.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          </div>
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-bold">شرح کار</label>
+              <button
+                type="button"
+                disabled={!isEdit}
+                onClick={() => setShowFollow(true)}
+                className="btn-primary px-3 py-1 text-xs"
+              >
+                جزئیات (پیگیری)
+              </button>
+            </div>
+            <textarea
+              name="Descriptions"
+              value={form.Descriptions}
+              onChange={handleChange}
+              rows={4}
+              className={inp}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold mb-1">
+              دستگاه/مجموعه
+            </label>
+            <div className="flex gap-2">
+              <input
+                className={inp}
+                list="assets-list"
+                placeholder="تایپ کنید یا از لیست انتخاب کنید..."
+                value={assetQuery}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAssetQuery(v);
+                  const f = assets.find((a) => assetSpec(a) === v);
+                  if (f) setForm((x) => ({ ...x, AssetID: String(f.AssetID) }));
+                  else if (!v) setForm((x) => ({ ...x, AssetID: "" }));
+                }}
+              />
+              <button
+                type="button"
+                className="btn-primary px-3"
+                onClick={() => setShowAssetPicker(true)}
+              >
+                ...
+              </button>
+              <button
+                type="button"
+                className="btn-primary px-2"
+                title="نقشهٔ طبقه (پلان AutoCAD)"
+                onClick={() => setShowMap(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="1.5" />
+                  <path d="M3 10h10" />
+                  <path d="M13 3v7" />
+                  <path d="M13 14v7" />
+                  <path d="M13 14a4 4 0 0 1 4 4" />
+                  <path d="M17 10h4" />
+                  <path d="M17 3v3" />
+                </svg>
+              </button>{" "}
+            </div>
+            <datalist id="assets-list">
+              {assets.map((a) => (
+                <option key={a.AssetID} value={assetSpec(a)} />
+              ))}
+            </datalist>
+            {form.AssetID && (
+              <div className="text-xs text-gray-700 mt-1">
+                کد دستگاه: {form.AssetID}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">وضعیت</label>
+            <select
+              name="Complited"
+              value={form.Complited}
+              onChange={handleChange}
+              className={inp}
+            >
+              <option value={0}>در حال انجام</option>
+              <option value={1}>اتمام‌یافته</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">
+              درخواست‌کننده
+            </label>
+            <div className="flex gap-2">
+              <input
+                name="ApplicantName"
+                value={form.ApplicantName}
+                onChange={handleChange}
+                list="persons-list"
+                className={inp}
+              />
+              <button
+                type="button"
+                disabled={!isEdit}
+                onClick={() => {
+                  applicantClickedRef.current = true;
+                  setShowAFModal(true);
+                }}
+                className="btn-primary px-3"
+              >
+                ...
+              </button>
+            </div>
+            <datalist id="persons-list">
+              {persons.map((p) => (
+                <option key={p.PersonID} value={p.PersonName} />
+              ))}
+            </datalist>
+            {functorName && (
+              <div className="text-xs text-gray-700 mt-1">
+                انجام‌دهنده: {functorName}
+              </div>
+            )}
+          </div>
+          <div className="md:col-span-2 flex flex-wrap items-center gap-4 border border-teal-600 rounded-lg p-3 bg-[#e6f3ef]">
+            <label className="flex items-center gap-2 cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                name="FixedDueTime"
+                checked={form.FixedDueTime}
+                onChange={handleChange}
+                disabled
+                className="w-4 h-4 accent-teal-600"
+              />
+              <span className="text-sm font-bold text-teal-800">
+                زمان انجام ثابت
+              </span>
+            </label>
+            <div className="flex flex-wrap items-end gap-3 flex-1">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-bold mb-1 text-gray-700">
+                  زمان شروع (سررسید)
+                </label>
+                <DatePicker
+                  value={toPicker(form.DueDateTime)}
+                  disabled
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD HH:mm"
+                  enableTimePicker
+                  inputClass={inp}
+                />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-bold mb-1 text-gray-700">
+                  زمان اتمام
+                </label>
+                <DatePicker
+                  value={toPicker(form.EndDateTime)}
+                  disabled
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD HH:mm"
+                  enableTimePicker
+                  inputClass={inp}
+                />
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">اولویت</label>
+            <select
+              name="Priorities"
+              value={form.Priorities}
+              onChange={handleChange}
+              disabled
+              className={inp}
+            >
+              {!PRIORITIES.includes(form.Priorities) && (
+                <option value={form.Priorities}>{form.Priorities}</option>
+              )}
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={!isEdit}
+              onClick={() => {
+                timeDateClickedRef.current = true;
+                setShowTimeDate(true);
+              }}
+              className="btn-primary w-full"
+            >
+              الویت و زمان (...)
+            </button>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">نوع کار</label>
+            <select
+              name="tskType"
+              value={form.tskType}
+              onChange={handleChange}
+              className={inp}
+            >
+              <option value="">(انتخاب کنید)</option>
+              {TASK_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={!isEdit}
+              onClick={() => setShowFolder(true)}
+              className="btn-primary w-full"
+            >
+              ضمائم (...)
+            </button>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">پروژه/اقدام</label>
+            <select
+              name="IsConsiderableAction"
+              value={form.IsConsiderableAction}
+              onChange={handleChange}
+              className={inp}
+            >
+              {CONSIDERABLE.map((c) => (
+                <option key={c} value={c}>
+                  {c || "(بدون)"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <TaskPurchaseTip taskId={currentTaskId} block>
+              <button
+                type="button"
+                disabled={!isEdit}
+                onClick={() => setShowSupplier(true)}
+                className="btn-primary w-full"
+              >
+                تأمین‌کننده / خرید (...)
+              </button>
+            </TaskPurchaseTip>
+          </div>
+          {form.tskType === "خرید" && (
+            <div className="md:col-span-2 bg-[#F7C4A5] rounded p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  شماره درخواست
+                </label>
+                <input
+                  type="number"
+                  name="RequestNumber"
+                  value={form.RequestNumber}
+                  onChange={handleChange}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  شماره ثبت
+                </label>
+                <input
+                  type="number"
+                  name="RegisterNumber"
+                  value={form.RegisterNumber}
+                  onChange={handleChange}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  تاریخ درخواست
+                </label>
+                <DatePicker
+                  value={toPicker(form.RequestDate)}
+                  onChange={(d) =>
+                    setForm((f) => ({ ...f, RequestDate: fromPicker(d) }))
+                  }
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD"
+                  inputClass={inp}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button type="submit" disabled={saving} className="btn-success">
+            {saving ? "در حال ذخیره..." : isEdit ? "ویرایش" : "افزودن"}
+          </button>
+          <button type="button" onClick={onClose} className="btn-danger">
+            بستن
+          </button>
+        </div>
+      </form>
+
+      {showTimeDate && isEdit && (
+        <TimeDateModal
+          taskId={currentTaskId}
+          onClose={() => {
+            setShowTimeDate(false);
+            reloadTimes();
+            if (autoTimeDateRef.current) {
+              autoTimeDateRef.current = false;
+              if (!applicantClickedRef.current) {
+                pendingCloseAskRef.current = true;
+                setShowAFModal(true);
+              } else if (confirm("بستن فرم؟")) {
+                if (onClose) onClose();
+              }
+            }
+          }}
+          onSaved={() => {
+            reloadTimes();
+            if (onSaved) onSaved();
+          }}
+        />
+      )}
+      {showFollow && isEdit && (
+        <FollowModal
+          taskId={currentTaskId}
+          subject={form.TaskTtl}
+          onClose={() => setShowFollow(false)}
+          onSaved={() => {
+            reloadDescription();
+            if (onSaved) onSaved();
+          }}
+        />
+      )}
+      {showAFModal && isEdit && (
+        <ApplicantFunctorModal
+          taskId={currentTaskId}
+          onClose={() => {
+            setShowAFModal(false);
+            if (pendingCloseAskRef.current) {
+              pendingCloseAskRef.current = false;
+              if (confirm("بستن فرم؟")) {
+                if (onClose) onClose();
+              }
+            }
+          }}
+          onSaved={(a, f) => {
+            setForm((x) => ({ ...x, ApplicantName: a }));
+            setFunctorName(f || "");
+          }}
+        />
+      )}
+      {showSupplier && isEdit && (
+        <SupplierModal
+          taskId={currentTaskId}
+          onClose={() => setShowSupplier(false)}
+          onSaved={onSaved}
+        />
+      )}
+      {showFolder && isEdit && (
+        <FolderModal
+          taskId={currentTaskId}
+          onClose={() => setShowFolder(false)}
+          onSaved={onSaved}
+        />
+      )}
+      {showAssetPicker && (
+        <AssetsModal
+          contextTaskId={currentTaskId}
+          initialAssetId={form.AssetID || null}
+          preset={assetPreset}
+          onClose={() => {
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+          }}
+          onSelectAsset={(id) => {
+            setForm((f) => ({ ...f, AssetID: String(id) }));
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+            fetch("/api/assets")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success) setAssets(d.data || []);
+              })
+              .catch(() => {});
+          }}
+          onAssetSaved={(id) => {
+            setForm((f) => ({ ...f, AssetID: String(id) }));
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+            setShowMap(false);
+            fetch("/api/assets")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success) setAssets(d.data || []);
+              })
+              .catch(() => {});
+          }}
+        />
+      )}
+      {showMap && (
+        <div style={{ display: showAssetPicker ? "none" : "contents" }}>
+          <MapModal
+            contextTaskId={currentTaskId}
+            onClose={() => setShowMap(false)}
+            onPickAsset={(id) => {
+              setForm((f) => ({ ...f, AssetID: String(id) }));
+              setShowMap(false);
+              fetch("/api/assets")
+                .then((r) => r.json())
+                .then((d) => {
+                  if (d.success) setAssets(d.data || []);
+                      {showAssetPicker && (
+        <AssetsModal
+          contextTaskId={currentTaskId}
+          preset={assetPreset}
+          onClose={() => {
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+          }}
+          onSelectAsset={(id) => {
+            setForm((f) => ({ ...f, AssetID: String(id) }));
+            setShowAssetPicker(false);
+            setAssetPreset(null);
+            fetch("/api/assets")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success) setAssets(d.data || []);
+              })
+              .catch(() => {});
+          }}
+        />
+      )}})
+                .catch(() => {});
+            }}
+            onOpenDefineDevice={(preset) => {
+              setAssetPreset(preset);
+              setShowAssetPicker(true);
+            }}
+          />
+        </div>
+      )}
+      {completeAsk && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[10002] flex items-center justify-center p-4"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              const r = completeAsk.resolve;
+              setCompleteAsk(null);
+              r(false);
+            }
+          }}
+        >
+          <div className="bg-[#CCE6DF] rounded-lg shadow-2xl p-6 w-[380px] text-center">
+            <div className="font-bold mb-5">آیا این کار اتمام یافته است؟</div>
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                className="btn-success px-6"
+                onClick={() => {
+                  const r = completeAsk.resolve;
+                  setCompleteAsk(null);
+                  r(true);
+                }}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                autoFocus
+                className="btn-danger px-6"
+                onClick={() => {
+                  const r = completeAsk.resolve;
+                  setCompleteAsk(null);
+                  r(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
