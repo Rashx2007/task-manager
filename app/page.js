@@ -24,6 +24,13 @@ const sortSearchRows = (rows) => [...(rows || [])].sort(
   (a, b) => Number(normalizeDigits(b.TaskID)) - Number(normalizeDigits(a.TaskID)),
 );
 
+// ناتمام‌ها: زمان شروع برنامه‌ای از کم به زیاد؛ بدون زمان در انتها
+const startKey = (r) => (r.DueDateTime ? new Date(r.DueDateTime).getTime() : Infinity);
+const sortByStart = (rows) => [...(rows || [])].sort((a, b) => {
+  const x = startKey(a), y = startKey(b);
+  return x === y ? Number(normalizeDigits(a.TaskID)) - Number(normalizeDigits(b.TaskID)) : x < y ? -1 : 1;
+});
+
 const PAGE_SIZE = 10;
 
 function FullHeight({ children }) {
@@ -245,6 +252,10 @@ export default function Home() {
   };
   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
+  const unfinishedView = isSearchView && searchSourceRef.current?.kind === "unfinished";
+  const orderSearchRows = (rows) =>
+    searchSourceRef.current?.kind === "unfinished" ? sortByStart(rows) : sortSearchRows(rows);
+
   const applyClientFilters = (rows, fObj) =>
     rows.filter((t) => {
       for (const [k, vals] of Object.entries(fObj)) {
@@ -293,14 +304,14 @@ export default function Home() {
             setLoadError("بازخوانی نتایج جستجو انجام نشد؛ دوباره تلاش کنید.");
             return;
           }
-          const updatedRows = sortSearchRows(result.data);
+          const updatedRows = orderSearchRows(result.data);
           searchRowsRef.current = updatedRows;
           searchNeedsRefreshRef.current = false;
           setSelectedTask((previous) => previous
             ? updatedRows.find((row) => normalizeDigits(row.TaskID).trim() === normalizeDigits(previous.TaskID).trim()) || null
             : null);
         }
-        const filteredRows = sortSearchRows(applyClientFilters(
+        const filteredRows = orderSearchRows(applyClientFilters(
           searchRowsRef.current || [],
           filtersObj,
         ));
@@ -729,7 +740,7 @@ export default function Home() {
                 searchNeedsRefreshRef.current = false;
                 loadRequestRef.current++;
                 setTasksLoading(false); setLoadError("");
-                const orderedRows = source?.kind === "unfinished" ? [...(rows || [])] : sortSearchRows(rows);
+                const orderedRows = source?.kind === "unfinished" ? sortByStart(rows) : sortSearchRows(rows);
                 searchRowsRef.current = orderedRows;
                 setTasks(orderedRows.slice(0, PAGE_SIZE));
                 setTotalFiltered(orderedRows.length);
@@ -802,7 +813,8 @@ export default function Home() {
             tasks={tasks}
             loading={tasksLoading || searchLoading}
             loadError={loadError}
-            forceTaskIdDescending={!draft && (isSearchView || Object.values(activeFilters).some(Array.isArray))}
+            forceTaskIdDescending={!draft && !unfinishedView && (isSearchView || Object.values(activeFilters).some(Array.isArray))}
+            forceStartAscending={!draft && unfinishedView}
             startNumber={(page - 1) * PAGE_SIZE}
             onRowClick={setSelectedTask}
             onComplete={handleComplete}

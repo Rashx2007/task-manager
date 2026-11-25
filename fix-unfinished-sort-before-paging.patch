@@ -1,0 +1,52 @@
+--- a/app/page.js	2026-11-25 13:47:53.276500556 +0000
++++ b/app/page.js
+@@ -24,6 +24,13 @@
+   (a, b) => Number(normalizeDigits(b.TaskID)) - Number(normalizeDigits(a.TaskID)),
+ );
+ 
++// ناتمام‌ها: زمان شروع برنامه‌ای از کم به زیاد؛ بدون زمان در انتها
++const startKey = (r) => (r.DueDateTime ? new Date(r.DueDateTime).getTime() : Infinity);
++const sortByStart = (rows) => [...(rows || [])].sort((a, b) => {
++  const x = startKey(a), y = startKey(b);
++  return x === y ? Number(normalizeDigits(a.TaskID)) - Number(normalizeDigits(b.TaskID)) : x < y ? -1 : 1;
++});
++
+ const PAGE_SIZE = 10;
+ 
+ function FullHeight({ children }) {
+@@ -245,6 +252,9 @@
+   };
+   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+ 
++  const orderSearchRows = (rows) =>
++    searchSourceRef.current?.kind === "unfinished" ? sortByStart(rows) : sortSearchRows(rows);
++
+   const applyClientFilters = (rows, fObj) =>
+     rows.filter((t) => {
+       for (const [k, vals] of Object.entries(fObj)) {
+@@ -293,14 +303,14 @@
+             setLoadError("بازخوانی نتایج جستجو انجام نشد؛ دوباره تلاش کنید.");
+             return;
+           }
+-          const updatedRows = sortSearchRows(result.data);
++          const updatedRows = orderSearchRows(result.data);
+           searchRowsRef.current = updatedRows;
+           searchNeedsRefreshRef.current = false;
+           setSelectedTask((previous) => previous
+             ? updatedRows.find((row) => normalizeDigits(row.TaskID).trim() === normalizeDigits(previous.TaskID).trim()) || null
+             : null);
+         }
+-        const filteredRows = sortSearchRows(applyClientFilters(
++        const filteredRows = orderSearchRows(applyClientFilters(
+           searchRowsRef.current || [],
+           filtersObj,
+         ));
+@@ -729,7 +739,7 @@
+                 searchNeedsRefreshRef.current = false;
+                 loadRequestRef.current++;
+                 setTasksLoading(false); setLoadError("");
+-                const orderedRows = source?.kind === "unfinished" ? [...(rows || [])] : sortSearchRows(rows);
++                const orderedRows = source?.kind === "unfinished" ? sortByStart(rows) : sortSearchRows(rows);
+                 searchRowsRef.current = orderedRows;
+                 setTasks(orderedRows.slice(0, PAGE_SIZE));
+                 setTotalFiltered(orderedRows.length);

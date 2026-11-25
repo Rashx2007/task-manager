@@ -133,6 +133,7 @@ const MECH_COL = PLACE_COLS[3];
 export default function TaskTable({
   tasks,
   forceTaskIdDescending = false,
+  forceStartAscending = false,
   startNumber = 0,
   onRowClick,
   onComplete,
@@ -334,6 +335,7 @@ export default function TaskTable({
   const clearFilter = (key) => setFilters((prev) => ({ ...prev, [key]: null }));
 
   const sorted = [...(tasks || [])].sort((a, b) => {
+    if (forceStartAscending) return 0; // ترتیب را صفحهٔ اصلی (زمان شروع صعودی) تعیین کرده است
     if (forceTaskIdDescending)
       return Number(normalizeDigits(b.TaskID)) - Number(normalizeDigits(a.TaskID));
     if (!sortKey) return 0;
@@ -432,7 +434,7 @@ export default function TaskTable({
           <tr>
             {COLUMNS.map((col) => {
               const isFiltered = !draftActive && filters[col.key] != null;
-              const isSorted = forceTaskIdDescending ? col.key === "TaskID" : sortKey === col.key;
+              const isSorted = forceStartAscending ? col.key === "DueDateTime" : forceTaskIdDescending ? col.key === "TaskID" : sortKey === col.key;
               const isOpen = menu && menu.key === col.key;
               return (
                 <th key={col.key}>
@@ -450,7 +452,7 @@ export default function TaskTable({
                         }
                       >
                         {isSorted
-                          ? !forceTaskIdDescending && sortDir === "asc"
+                          ? forceStartAscending || (!forceTaskIdDescending && sortDir === "asc")
                             ? "▲"
                             : "▼"
                           : isFiltered
@@ -741,13 +743,19 @@ export default function TaskTable({
               </div>
             ) : (
               <>
-                {forceTaskIdDescending && menuCol.sortable && (
+                {forceStartAscending && menuCol.sortable && (
+                  <div className="col-menu-section">
+                    <div className="col-menu-title">ترتیب نتایج جستجو</div>
+                    <div className="text-sm">زمان شروع صعودی در تمام صفحات</div>
+                  </div>
+                )}
+                {forceTaskIdDescending && !forceStartAscending && menuCol.sortable && (
                   <div className="col-menu-section">
                     <div className="col-menu-title">ترتیب نتایج جستجو</div>
                     <div className="text-sm">کد کار نزولی در تمام صفحات</div>
                   </div>
                 )}
-                {menuCol.sortable && !forceTaskIdDescending && (
+                {menuCol.sortable && !forceTaskIdDescending && !forceStartAscending && (
                   <div className="col-menu-section">
                     <div className="col-menu-title">مرتب‌سازی</div>
                     <button
