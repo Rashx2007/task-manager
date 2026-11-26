@@ -2,10 +2,15 @@
 import ReadLoadingModal from "./ReadLoadingModal";
 import LoadingIndicator from "./LoadingIndicator";
 import { useState, useEffect } from 'react';
+import { TimeInput } from "./ClockTimeInput";
+
+const hmToDate = (v) => { const [h, m] = String(v || '00:00').split(':').map(Number); const d = new Date(2000, 0, 1); d.setHours(h || 0, m || 0, 0, 0); return d; };
+const dateToHm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 import TaskContextHeader from "./TaskContextHeader";
 
 export default function SettingsModal({ onClose, onSaved }) {
+  const [openClock, setOpenClock] = useState(null);
   const [form, setForm] = useState({ startWork: '07:30', restStart: '12:00', restEnd: '13:00', endWork: '16:00', ignore: false });
   const [saving, setSaving] = useState(false);
   const [reading, setReading] = useState(true);
@@ -45,10 +50,10 @@ export default function SettingsModal({ onClose, onSaved }) {
         <h3 className="text-lg font-bold mb-4">تنظیمات ساعات کاری</h3>
         <TaskContextHeader className="mb-4" />
         <div className="grid grid-cols-2 gap-4">
-          <div><label className="block text-sm font-bold mb-1">شروع کار</label><input type="time" value={form.startWork} onChange={(e) => setForm({ ...form, startWork: e.target.value })} className={inp} /></div>
-          <div><label className="block text-sm font-bold mb-1">پایان کار</label><input type="time" value={form.endWork} onChange={(e) => setForm({ ...form, endWork: e.target.value })} className={inp} /></div>
-          <div><label className="block text-sm font-bold mb-1">شروع استراحت</label><input type="time" value={form.restStart} onChange={(e) => setForm({ ...form, restStart: e.target.value })} className={inp} /></div>
-          <div><label className="block text-sm font-bold mb-1">پایان استراحت</label><input type="time" value={form.restEnd} onChange={(e) => setForm({ ...form, restEnd: e.target.value })} className={inp} /></div>
+          <div><label className="block text-sm font-bold mb-1">شروع کار</label><TimeInput value={hmToDate(form.startWork)} onChange={(d) => setForm({ ...form, startWork: dateToHm(d) })} open={openClock === "startWork"} onToggle={() => setOpenClock(openClock === "startWork" ? null : "startWork")} onClose={() => setOpenClock(null)} /></div>
+          <div><label className="block text-sm font-bold mb-1">پایان کار</label><TimeInput value={hmToDate(form.endWork)} onChange={(d) => setForm({ ...form, endWork: dateToHm(d) })} open={openClock === "endWork"} onToggle={() => setOpenClock(openClock === "endWork" ? null : "endWork")} onClose={() => setOpenClock(null)} /></div>
+          <div><label className="block text-sm font-bold mb-1">شروع استراحت</label><TimeInput value={hmToDate(form.restStart)} onChange={(d) => setForm({ ...form, restStart: dateToHm(d) })} open={openClock === "restStart"} onToggle={() => setOpenClock(openClock === "restStart" ? null : "restStart")} onClose={() => setOpenClock(null)} /></div>
+          <div><label className="block text-sm font-bold mb-1">پایان استراحت</label><TimeInput value={hmToDate(form.restEnd)} onChange={(d) => setForm({ ...form, restEnd: dateToHm(d) })} open={openClock === "restEnd"} onToggle={() => setOpenClock(openClock === "restEnd" ? null : "restEnd")} onClose={() => setOpenClock(null)} /></div>
         </div>
         <label className="flex items-center gap-2 mt-4 cursor-pointer">
           <input type="checkbox" checked={form.ignore} onChange={(e) => setForm({ ...form, ignore: e.target.checked })} className="w-4 h-4" />
