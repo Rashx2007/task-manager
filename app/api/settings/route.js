@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query, runTransaction } from '@/lib/db';
 import { lockTaskSchedule, TaskGroupError } from '@/lib/task-groups';
-const toHM = (v) => { if (!v) return ''; if (v instanceof Date) { const p = (n) => String(n).padStart(2, '0'); return `${p(v.getHours())}:${p(v.getMinutes())}`; } return String(v).substring(0, 5); };
+const toHM = (v) => { if (!v) return ''; if (v instanceof Date) { const p = (n) => String(n).padStart(2, '0'); return `${p(v.getUTCHours())}:${p(v.getUTCMinutes())}`; } return String(v).substring(0, 5); };
 export async function GET() {
   const rows = await query(`SELECT * FROM Set_tbl WHERE SetID=1001`);
   if (!rows.length) return NextResponse.json({ success: false }, { status: 404 });
