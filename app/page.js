@@ -548,6 +548,11 @@ export default function Home() {
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.success === false) { showToast(d.error || "مرتب‌سازی انجام نشد.", "error"); return; }
       setReloadKey((k) => k + 1);
+      if (Array.isArray(d.split) && d.split.length) {
+        const fmtJ = (v) => { const m = String(v).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); if (!m) return String(v); const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5])); const dp = new Intl.DateTimeFormat("fa-IR-u-ca-persian-nu-latn", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(dt); return dp + " " + m[4] + ":" + m[5]; };
+        const lines = d.split.map((t) => `• «${t.title || "بدون عنوان"}» (شناسه ${t.taskId}) | مدت: ${t.durationMinutes} دقیقه | ${t.segments.length} بخش:\n` + t.segments.map((x, i) => `   ${i === 0 ? "قطعه اصلی (اول)" : "قطعه " + (i + 1)}: ${fmtJ(x.start)} تا ${fmtJ(x.end)}`).join("\n"));
+        showToast(`${d.split.length} کار بلند به چند بخش تقسیم شد (بخش‌های بعدی ادامهٔ همان کار هستند):\n` + lines.join("\n"), "info", 15000);
+      }
       if (Array.isArray(d.skipped) && d.skipped.length) {
         const lines = d.skipped.map((t) => `• «${t.title || "بدون عنوان"}» (شناسه ${t.taskId}) | اولویت: ${t.priority} | مدت: ${t.durationMinutes} دقیقه${t.currentDue ? " | زمان فعلی: " + t.currentDue : ""}`);
         showToast(`${d.skipped.length} کار پس از ۱۰ تلاش ناموفق چیده نشد و بدون تغییر ماند. لطفاً آن را بررسی و اصلاح کنید:\n` + lines.join("\n"), "warn", 15000);
