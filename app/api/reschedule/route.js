@@ -6,8 +6,9 @@ export async function POST(request) {
     // بدنه اختیاری است: {startLocal:'YYYY-MM-DD HH:mm'}؛ بدون آن، زمان فعلی سیستم.
     let body = {};
     try { body = (await request?.json?.()) || {}; } catch { body = {}; }
-    const value = await rescheduleTasks(body.startLocal ?? null);
-    return NextResponse.json({ success: true, count: value });
+    const report = { skipped: [] };
+    const value = await rescheduleTasks(body.startLocal ?? null, report);
+    return NextResponse.json({ success: true, count: value, skipped: report.skipped });
   } catch (error) {
     const failure = schedulerFailure(error);
     return NextResponse.json(failure.body, { status: failure.status });
