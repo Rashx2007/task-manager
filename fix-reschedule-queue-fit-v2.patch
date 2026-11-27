@@ -1,0 +1,59 @@
+diff --git a/lib/scheduler-logic.js b/lib/scheduler-logic.js
+index 102ff5f..6347bd2 100644
+--- a/lib/scheduler-logic.js
++++ b/lib/scheduler-logic.js
+@@ -136,20 +136,44 @@ cursor = end;
+ export async function rescheduleAll(execute = query, startAt = null) {
+ const wh = await loadWorkHoursFromSettings(execute);
+ const rows = await execute(`SELECT TD.TaskID, TD.Priorities, TD.Durationtime FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID=tsk.TaskID WHERE (TD.Priorities <> N'زمان انجام ثابت') AND (tsk.Complited = 0) ORDER BY TD.Priorities, TD.DueDateTime`);
++const queue = rows.map(r => ({ row: r, dur: parseDuration(r.Durationtime) }));
++const atTime = (x, t) => { const y = new Date(x); y.setUTCHours(t.getUTCHours(), t.getUTCMinutes(), 0, 0); return y; };
++const windowEnd = d => (sod(d) < sod(wh.restStart) && sod(wh.restStart) < sod(wh.restEnd)) ? atTime(d, wh.restStart) : atTime(d, wh.endWork);
++const place = async (row, due, end) => {
++await execute(`UPDATE TimeDate_tbl SET DueDateTime=?, EndDateTime=? WHERE TaskID=?`, [formatSqlDateTime(due), formatSqlDateTime(end), row.TaskID]);
++await syncTskTable(row.TaskID, row.Priorities, 0, row.Durationtime, due, end, execute);
++};
+ let cursor = normalizeScheduleStart(startAt || nowWall(), wh, 5);
+-for (const row of rows) {
+-const dur = parseDuration(row.Durationtime);
+-let due = normalizeScheduleStart(cursor, wh, 1);
+-let end = new Date(due.getTime() + dur);
++let idle = 0;
++while (queue.length) {
++const due = normalizeScheduleStart(cursor, wh, 1);
++const limit = windowEnd(due);
++let pick = -1, end = null;
++for (let i = 0; i < queue.length; i++) {
++const e = new Date(due.getTime() + queue[i].dur);
++if (e > limit) continue;
++const conf = await findFixedOverlaps(queue[i].row.TaskID, due, e, execute);
++if (conf.length) continue;
++pick = i; end = e; break;
++}
++if (pick >= 0) {
++const { row } = queue.splice(pick, 1)[0];
++await place(row, due, end);
++idle = 0; cursor = end; continue;
++}
++idle++;
++if (idle < 10) { cursor = new Date(Math.max(limit.getTime(), due.getTime()) + 60000); continue; }
++// پس از ۱۰ بازهٔ بی‌نتیجه، اولین کار بدون بررسی پایان قرار می‌گیرد تا حلقه تمام شود
++const { row, dur } = queue.shift();
++let d2 = due, e2 = new Date(d2.getTime() + dur);
+ for (let g = 0; g < 20; g++) {
+-const conf = await findFixedOverlaps(row.TaskID, due, end, execute);
++const conf = await findFixedOverlaps(row.TaskID, d2, e2, execute);
+ if (!conf.length) break;
+-due = normalizeScheduleStart(new Date(conf[conf.length - 1].EndDateTime), wh, 1);
+-end = new Date(due.getTime() + dur);
++d2 = normalizeScheduleStart(new Date(conf[conf.length - 1].EndDateTime), wh, 1);
++e2 = new Date(d2.getTime() + dur);
+ }
+-await execute(`UPDATE TimeDate_tbl SET DueDateTime=?, EndDateTime=? WHERE TaskID=?`, [formatSqlDateTime(due), formatSqlDateTime(end), row.TaskID]);
+-await syncTskTable(row.TaskID, row.Priorities, 0, row.Durationtime, due, end, execute);
+-cursor = end;
++await place(row, d2, e2);
++idle = 0; cursor = e2;
+ }
+ return rows.length;
+ }

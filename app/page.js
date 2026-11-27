@@ -16,6 +16,7 @@ import PersonsModal from "@/components/PersonsModal";
 import SettingsModal from "@/components/SettingsModal";
 import FolderModal from "@/components/FolderModal";
 import RescheduleStartModal from "@/components/RescheduleStartModal";
+import GroupCreateModal from "@/components/GroupCreateModal";
 import { placeRules, normalizeFa, normalizeDigits } from "@/lib/assetRules";
 import { showToast, showConfirm } from "@/lib/toast";
 
@@ -83,6 +84,16 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [folderTask, setFolderTask] = useState(null);
   const [showRescheduleStart, setShowRescheduleStart] = useState(false);
+  const [groupMode, setGroupMode] = useState(false);
+  const [groupIds, setGroupIds] = useState([]);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const toggleGroupId = (id) => setGroupIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const cancelGroup = () => { setGroupMode(false); setGroupIds([]); setShowGroupModal(false); };
+  const handleGroup = () => {
+    if (!groupMode) { setGroupMode(true); showToast("کارهای موردنظر را تیک بزنید و دوباره روی «ثبت گروه» بزنید.", "info"); return; }
+    if (groupIds.length < 2) { showToast("حداقل دو کار انتخاب کنید.", "warn"); return; }
+    setShowGroupModal(true);
+  };
   // ✅ آیا جدول فعلاً نتیجهٔ جستجو را نشان می‌دهد؟
   const [isSearchView, setIsSearchView] = useState(false);
 
@@ -732,6 +743,10 @@ export default function Home() {
           onPersons={() => setShowPersons(true)}
           onSettings={() => setShowSettings(true)}
           onReschedule={handleReschedule}
+          onGroup={handleGroup}
+          onGroupCancel={cancelGroup}
+          groupMode={groupMode}
+          groupCount={groupIds.length}
           onMoveFixed={handleMoveFixed}
           onUpdateFolders={handleUpdateFolders}
           onCorrectPrio={handleCorrectPrio}
@@ -826,6 +841,9 @@ export default function Home() {
             forceStartAscending={!draft && unfinishedView}
             startNumber={(page - 1) * PAGE_SIZE}
             onRowClick={setSelectedTask}
+            groupMode={groupMode}
+            selectedIds={groupIds}
+            onToggleSelect={toggleGroupId}
             onComplete={handleComplete}
             onEdit={openEdit}
             onCopy={handleCopyTask}
@@ -931,6 +949,10 @@ export default function Home() {
           onClose={() => setShowSettings(false)}
           onSaved={() => setReloadKey((k) => k + 1)}
         />
+      )}
+      {showGroupModal && (
+        <GroupCreateModal taskIds={groupIds} onCancel={() => setShowGroupModal(false)}
+          onCreated={() => { cancelGroup(); showToast("گروه ساخته شد.", "success"); setReloadKey((k) => k + 1); }} />
       )}
       {showRescheduleStart && (
         <RescheduleStartModal onCancel={() => setShowRescheduleStart(false)} onConfirm={doReschedule} />

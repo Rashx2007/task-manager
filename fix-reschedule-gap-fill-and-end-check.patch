@@ -1,0 +1,108 @@
+diff --git a/lib/scheduler-logic.js b/lib/scheduler-logic.js
+index 71bc705..e6c42d4 100644
+--- a/lib/scheduler-logic.js
++++ b/lib/scheduler-logic.js
+@@ -40,6 +40,40 @@ else if (sod(dt) >= sod(wh.restStart) && sod(dt) < sod(wh.restEnd)) dt.setUTCHou
+ else if (sod(dt) >= sod(wh.endWork)) { dt.setUTCDate(dt.getUTCDate() + 1); dt.setUTCHours(wh.startWork.getUTCHours(), wh.startWork.getUTCMinutes(), 0, 0); }
+ return dt;
+ }
++// شروع مرتب‌سازی: رُند به بالا تا ضریب step دقیقه، سپس تطبیق با ساعات و روزهای کاری
++// (پنجشنبه و جمعه تعطیل؛ پیش از شروع کار، زمان استراحت و پس از پایان کار جابه‌جا می‌شود).
++const DAY_MS = 86400000;
++export function ceilToStepMinutes(date, step = 5) {
++const ms = step * 60000;
++return new Date(Math.ceil(new Date(date).getTime() / ms) * ms);
++}
++export function isWorkDay(d) { const w = new Date(d).getUTCDay(); return w !== 4 && w !== 5; }
++export function normalizeScheduleStart(date, wh, step = 5) {
++let d = ceilToStepMinutes(date, step);
++const setAt = (x, t) => { const y = new Date(x); y.setUTCHours(t.getUTCHours(), t.getUTCMinutes(), 0, 0); return y; };
++for (let i = 0; i < 40; i++) {
++const t = sod(d);
++let n = d;
++if (!isWorkDay(d)) n = setAt(new Date(d.getTime() + DAY_MS), wh.startWork);
++else if (t < sod(wh.startWork)) n = setAt(d, wh.startWork);
++else if (t >= sod(wh.restStart) && t < sod(wh.restEnd)) n = setAt(d, wh.restEnd);
++else if (t >= sod(wh.endWork)) n = setAt(new Date(d.getTime() + DAY_MS), wh.startWork);
++n = ceilToStepMinutes(n, step);
++if (n.getTime() === d.getTime()) return d;
++d = n;
++}
++return d;
++}
++// فقط «YYYY-MM-DD HH:mm» (یا با T) و مقدار تقویمی واقعی؛ در غیر این صورت null.
++export function parseStartLocal(v) {
++if (typeof v !== 'string') return null;
++const m = v.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::00)?$/);
++if (!m) return null;
++const [y, mo, da, h, mi] = m.slice(1).map(Number);
++const d = new Date(Date.UTC(y, mo - 1, da, h, mi));
++if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== da || d.getUTCHours() !== h || d.getUTCMinutes() !== mi) return null;
++return d;
++}
+ export async function checkTimeDateExists(taskId, execute = query) {
+ const r = await execute(`SELECT TimeDateID FROM TimeDate_tbl WHERE TaskID = ?`, [taskId]);
+ return r.length > 0;
+@@ -91,7 +125,7 @@ let end = new Date(due.getTime() + dur);
+ for (let g = 0; g < 20; g++) {
+ const conf = await findFixedOverlaps(row.TaskID, due, end, execute);
+ if (!conf.length) break;
+-due = correctDueDateTime(new Date(conf[conf.length - 1].EndDateTime), wh);
++due = normalizeScheduleStart(new Date(conf[conf.length - 1].EndDateTime), wh, 1);
+ end = new Date(due.getTime() + dur);
+ }
+ await execute(`UPDATE TimeDate_tbl SET DueDateTime=?, EndDateTime=? WHERE TaskID=?`, [formatSqlDateTime(due), formatSqlDateTime(end), row.TaskID]);
+@@ -99,20 +133,44 @@ await syncTskTable(row.TaskID, row.Priorities, 0, row.Durationtime, due, end, ex
+ cursor = end;
+ }
+ }
+-export async function rescheduleAll(execute = query) {
++export async function rescheduleAll(execute = query, startAt = null) {
+ const wh = await loadWorkHoursFromSettings(execute);
+ const rows = await execute(`SELECT TD.TaskID, TD.Priorities, TD.Durationtime FROM TimeDate_tbl TD LEFT JOIN Tsk_tbl tsk ON TD.TaskID=tsk.TaskID WHERE (TD.Priorities <> N'زمان انجام ثابت') AND (tsk.Complited = 0) ORDER BY TD.Priorities, TD.DueDateTime`);
+-let cursor = calculateInitialDueDateTime(nowWall(), wh);
+-for (const row of rows) {
+-const dur = parseDuration(row.Durationtime);
+-let due = correctDueDateTime(cursor, wh);
+-let end = new Date(due.getTime() + dur);
++const queue = rows.map(r => ({ row: r, dur: parseDuration(r.Durationtime) }));
++const atTime = (x, t) => { const y = new Date(x); y.setUTCHours(t.getUTCHours(), t.getUTCMinutes(), 0, 0); return y; };
++const windowEnd = d => (sod(d) < sod(wh.restStart) && sod(wh.restStart) < sod(wh.restEnd)) ? atTime(d, wh.restStart) : atTime(d, wh.endWork);
++let cursor = normalizeScheduleStart(startAt || nowWall(), wh, 5);
++let idle = 0;
++while (queue.length) {
++const due = normalizeScheduleStart(cursor, wh, 1);
++const limit = windowEnd(due);
++let pick = -1, end = null;
++for (let i = 0; i < queue.length; i++) {
++const e = new Date(due.getTime() + queue[i].dur);
++if (e > limit) continue;
++const conf = await findFixedOverlaps(queue[i].row.TaskID, due, e, execute);
++if (conf.length) continue;
++pick = i; end = e; break;
++}
++if (pick < 0) {
++idle++;
++if (idle < 10) { cursor = new Date(limit.getTime() + 60000); continue; }
++// پس از ۱۰ بازهٔ بی‌نتیجه، اولین کار بدون بررسی پایان قرار می‌گیرد تا حلقه تمام شود
++pick = 0; end = new Date(due.getTime() + queue[0].dur);
++let d2 = due;
+ for (let g = 0; g < 20; g++) {
+-const conf = await findFixedOverlaps(row.TaskID, due, end, execute);
++const conf = await findFixedOverlaps(queue[0].row.TaskID, d2, end, execute);
+ if (!conf.length) break;
+-due = correctDueDateTime(new Date(conf[conf.length - 1].EndDateTime), wh);
+-end = new Date(due.getTime() + dur);
++d2 = normalizeScheduleStart(new Date(conf[conf.length - 1].EndDateTime), wh, 1);
++end = new Date(d2.getTime() + queue[0].dur);
++}
++const { row } = queue.splice(pick, 1)[0];
++await execute(`UPDATE TimeDate_tbl SET DueDateTime=?, EndDateTime=? WHERE TaskID=?`, [formatSqlDateTime(d2), formatSqlDateTime(end), row.TaskID]);
++await syncTskTable(row.TaskID, row.Priorities, 0, row.Durationtime, d2, end, execute);
++idle = 0; cursor = end; continue;
+ }
++idle = 0;
++const { row } = queue.splice(pick, 1)[0];
+ await execute(`UPDATE TimeDate_tbl SET DueDateTime=?, EndDateTime=? WHERE TaskID=?`, [formatSqlDateTime(due), formatSqlDateTime(end), row.TaskID]);
+ await syncTskTable(row.TaskID, row.Priorities, 0, row.Durationtime, due, end, execute);
+ cursor = end;

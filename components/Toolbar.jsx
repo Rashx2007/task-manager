@@ -5,6 +5,7 @@ export default function Toolbar({
   onNewTask, onQuickCreate, onEdit, onDelete, onComplete, onSearch, onComprehensiveSearch,
   onRefresh, onReport, onBackup, onAssets, onPersons, onSettings,
   onReschedule, onMoveFixed, onUpdateFolders, onCorrectPrio, onPriorityIncrease, disableNew = false,
+  onGroup, onGroupCancel, groupMode = false, groupCount = 0,
 }) {
   const [prioOpen, setPrioOpen] = useState(false);
   const [updOpen, setUpdOpen] = useState(false);
@@ -13,6 +14,8 @@ export default function Toolbar({
     { label: 'جدید (جدولی)', icon: '📋', action: onQuickCreate, color: 'bg-amber-500 hover:bg-amber-600' },
     { label: 'ویرایش', icon: '✏️', action: onEdit, color: 'bg-blue-500 hover:bg-blue-600' },
     { label: 'حذف', icon: '🗑️', action: onDelete, color: 'bg-red-500 hover:bg-red-600' },
+    { label: groupMode ? `ثبت گروه (${groupCount})` : 'گروه‌کردن', icon: '🧩', action: onGroup, color: 'bg-cyan-600 hover:bg-cyan-700' },
+    ...(groupMode ? [{ label: 'لغو گروه‌بندی', icon: '✖️', action: onGroupCancel, color: 'bg-gray-500 hover:bg-gray-600' }] : []),
     { label: 'اتمام کار', icon: '✅', action: onComplete, color: 'bg-green-500 hover:bg-green-600' },
     { label: 'جستجو', icon: '🔍', action: onSearch, color: 'bg-purple-500 hover:bg-purple-600' },
     { label: 'جستجو جامع', icon: '🔎', action: onComprehensiveSearch, color: 'bg-indigo-500 hover:bg-indigo-600' },

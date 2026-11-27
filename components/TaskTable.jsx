@@ -148,6 +148,9 @@ export default function TaskTable({
   onDraftFinish,
   onDraftCancel,
   onFiltersChange,
+  groupMode = false,
+  selectedIds = [],
+  onToggleSelect,
   loading = false,
   loadError = "",
 }) {
@@ -432,6 +435,7 @@ export default function TaskTable({
       <table className="task-table w-full min-w-[1650px]">
         <thead>
           <tr>
+            {groupMode && <th>گروه</th>}
             {COLUMNS.map((col) => {
               const isFiltered = !draftActive && filters[col.key] != null;
               const isSorted = forceStartAscending ? col.key === "DueDateTime" : forceTaskIdDescending ? col.key === "TaskID" : sortKey === col.key;
@@ -539,7 +543,7 @@ export default function TaskTable({
           {!loading && !loadError && sorted.length === 0 && !draftActive && (
             <tr>
               <td
-                colSpan={COLUMNS.length}
+                colSpan={COLUMNS.length + (groupMode ? 1 : 0)}
                 style={{
                   textAlign: "center",
                   padding: "20px",
@@ -565,7 +569,7 @@ export default function TaskTable({
               </td>
             </tr>
           )}
-          {!draftActive && (loading || loadError) && <tr><td colSpan={COLUMNS.length}>
+          {!draftActive && (loading || loadError) && <tr><td colSpan={COLUMNS.length + (groupMode ? 1 : 0)}>
             {loading ? <LoadingIndicator label="دریافت کارها" /> : <p role="alert" className="p-4 text-center text-red-800">{loadError}</p>}
           </td></tr>}
           {!loading && !loadError && sorted.map((t, i) => (
@@ -578,6 +582,12 @@ export default function TaskTable({
               }
               style={{ cursor: "pointer" }}
             >
+              {groupMode && (
+                <td onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={selectedIds.includes(t.TaskID)}
+                    onChange={() => onToggleSelect && onToggleSelect(t.TaskID)} />
+                </td>
+              )}
               <td>
                 <TaskPurchaseTip taskId={t.TaskID} block>{startNumber + i + 1}</TaskPurchaseTip>
               </td>
