@@ -115,18 +115,31 @@ async function runLoad({ type, offset, limit, filters }) {
       }
     }
 
+    // قطعه‌های ۲ به بعد کارهای بلند (TaskSegment_tbl) به‌صورت ردیف جدا در لایهٔ روزانه
+    let from = BASE_FROM;
+    let segCol = 'CAST(NULL AS int) AS SegNo';
+    if (!hasColumnFilters) {
+      const seg = await query(`SELECT OBJECT_ID(N'dbo.TaskSegment_tbl') AS id`).catch(() => []);
+      if (seg[0]?.id != null) {
+        from = BASE_FROM.replace('LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID',
+          `LEFT JOIN (SELECT TaskID, Submit_Date, Priorities, DueDateTime, EndDateTime, 1 AS SegNo FROM TimeDate_tbl
+            UNION ALL SELECT s.TaskID, t.Submit_Date, t.Priorities, s.DueDateTime, s.EndDateTime, s.SegNo FROM TaskSegment_tbl s JOIN TimeDate_tbl t ON t.TaskID = s.TaskID) TD ON TD.TaskID = tsk.TaskID`);
+        segCol = 'TD.SegNo';
+      }
+    }
+
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     // ✅ شمارش کل، دقیقاً مثل جامع
-    const countRows = await query(`SELECT COUNT(*) AS c FROM (SELECT DISTINCT tsk.TaskID ${BASE_FROM} ${where}) AS q`, params);
+    const countRows = await query(`SELECT COUNT(*) AS c FROM (SELECT DISTINCT tsk.TaskID, ${segCol} ${from} ${where}) AS q`, params);
     const total = Number(countRows[0]?.c || 0);
 
     // ✅ ردیف‌های صفحه، دقیقاً مثل جامع + صفحه‌بندی
     const rows = await query(`SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building, asset.Block, asset.Floor, asset.Entrance, asset.Location, asset.MechSystem,
       tsk.TaskTtl, tsk.Descriptions, tsk.Complited, atk.AssetID,
-      TD.Submit_Date, TD.Priorities, TD.DueDateTime, TD.EndDateTime,
+      TD.Submit_Date, TD.Priorities, TD.DueDateTime, TD.EndDateTime, ${segCol},
       pApp.PersonName AS ApplicantName, pFun.PersonName AS FunctorName
-      ${BASE_FROM}
+      ${from}
       ${where}
       ORDER BY ${hasColumnFilters ? 'tsk.TaskID DESC, TD.DueDateTime DESC' : 'TD.DueDateTime, tsk.TaskID'}
       OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`, [...params, offset, limit]);

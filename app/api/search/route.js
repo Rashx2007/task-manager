@@ -69,8 +69,19 @@ export async function POST(request) {
     }
 
     const where = c.length ? "WHERE " + c.join(" AND ") : "";
+    // در جستجوی ناتمام‌ها قطعه‌های ۲+ کارهای تقسیم‌شده هم ردیف جدا می‌شوند
+    let tdSrc = 'TimeDate_tbl';
+    let segCol = 'CAST(NULL AS int) AS SegNo';
+    if (b.unfinished === true && !byId) {
+      const seg = await query(`SELECT OBJECT_ID(N'dbo.TaskSegment_tbl') AS id`).catch(() => []);
+      if (seg[0]?.id != null) {
+        tdSrc = `(SELECT TaskID, Submit_Date, Priorities, DueDateTime, EndDateTime, 1 AS SegNo FROM TimeDate_tbl
+          UNION ALL SELECT s.TaskID, t.Submit_Date, t.Priorities, s.DueDateTime, s.EndDateTime, s.SegNo FROM TaskSegment_tbl s JOIN TimeDate_tbl t ON t.TaskID = s.TaskID)`;
+        segCol = 'TD.SegNo';
+      }
+    }
     const rows = await query(
-      `SELECT DISTINCT tsk.TaskID, asset.AssetName, asset.AssetNumber, asset.Building,
+      `SELECT DISTINCT tsk.TaskID, ${segCol}, asset.AssetName, asset.AssetNumber, asset.Building,
               asset.Block, asset.Floor, asset.Entrance, asset.Location, asset.MechSystem,
               tsk.TaskTtl, tsk.Descriptions, tsk.Complited, TD.Priorities,
               TD.Submit_Date, TD.DueDateTime, TD.EndDateTime,
@@ -78,7 +89,7 @@ export async function POST(request) {
        FROM Tsk_tbl tsk
        LEFT JOIN Asset_Task_tbl atk ON tsk.TaskID = atk.TaskID
        LEFT JOIN Asset_2_tbl asset ON atk.AssetID = asset.AssetID
-       LEFT JOIN TimeDate_tbl TD ON TD.TaskID = tsk.TaskID
+       LEFT JOIN ${tdSrc} TD ON TD.TaskID = tsk.TaskID
        LEFT JOIN Purchase_Request_tbl pur ON pur.TaskID = tsk.TaskID
        ${where}
        ORDER BY tsk.TaskID DESC`,

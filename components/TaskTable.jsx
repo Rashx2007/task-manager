@@ -570,7 +570,7 @@ export default function TaskTable({
           </td></tr>}
           {!loading && !loadError && sorted.map((t, i) => (
             <tr
-              key={`${t.TaskID}-${t.AssetID ?? 0}-${i}`}
+              key={`${t.TaskID}-${t.AssetID ?? 0}-${t.SegNo ?? 0}-${i}`}
               onClick={() => onRowClick(t)}
               onDoubleClick={() => onEdit && onEdit(t)}
               className={
@@ -595,7 +595,7 @@ export default function TaskTable({
               <td>{t.Location || "-"}</td>
               <td className="max-w-[220px]">
                 <Tip tip={t.TaskTtl} block>
-                  <div className="truncate">{t.TaskTtl}</div>
+                  <div className="truncate">{Number(t.SegNo) > 1 ? `(ادامه، قطعه ${t.SegNo}) ` : ''}{t.TaskTtl}</div>
                 </Tip>
               </td>
               <td className="max-w-[320px]">
